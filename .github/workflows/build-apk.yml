@@ -36,7 +36,7 @@ jobs:
           gradle-version: "8.9"
 
       - name: Validate payload protocol
-        run: ./scripts/test-core.sh
+        run: bash ./scripts/test-core.sh
 
       - name: Lint and build installable APKs
         run: >-
