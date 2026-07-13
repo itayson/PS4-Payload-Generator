@@ -20,27 +20,10 @@ import java.util.Locale;
 public final class ConsoleClient {
     private static final int CONNECT_TIMEOUT_MS = 12_000;
     private static final int READ_TIMEOUT_MS = 45_000;
-    private static final long MAX_PAYLOAD_BYTES = 64L * 1024L * 1024L;
-    private static final int BUFFER_SIZE = 8 * 1024;
+    private static final int BUFFER_SIZE = 32 * 1024;
+    private static final int HEAD_SIZE = 4096;
 
     private ConsoleClient() {}
-
-    public static void testPackageInstaller(String ip, int port) throws IOException {
-        requirePrivateConsole(ip, port);
-        postJson(
-                new URL("http://" + ip + ":" + port + "/api/is_exists"),
-                "{\"title_id\":\"CUSA00000\"}"
-        );
-    }
-
-    public static void installPackage(String ip, int port, String packageUrl) throws IOException {
-        requirePrivateConsole(ip, port);
-        URL directUrl = UrlUtils.requireHttpUrl(packageUrl);
-        String body = "{\"type\":\"direct\",\"packages\":[\""
-                + jsonEscape(directUrl.toString())
-                + "\"]}";
-        postJson(new URL("http://" + ip + ":" + port + "/api/install"), body);
-    }
 
     public static TransferResult sendPayload(
             File cacheDirectory,
@@ -51,16 +34,44 @@ public final class ConsoleClient {
     ) throws IOException {
         requirePrivateConsole(ip, port);
         URL sourceUrl = UrlUtils.requireHttpUrl(payloadUrl);
-        File temporary = File.createTempFile("akirabox-payload-", ".tmp", cacheDirectory);
-        DownloadResult download = null;
-        try {
-            download = download(sourceUrl, temporary, progress);
-            sendFile(temporary, ip, port, download.size, progress);
-            return new TransferResult(download.size, download.sha256, download.finalUrl.toString());
-        } finally {
-            if (temporary.exists() && !temporary.delete()) {
-                temporary.deleteOnExit();
+        OpenedDownload opened = openDownload(sourceUrl);
+        HttpURLConnection connection = opened.connection;
+        long announced = connection.getContentLengthLong();
+        MessageDigest digest = sha256();
+
+        try (InputStream input = connection.getInputStream(); Socket socket = new Socket()) {
+            byte[] head = readHead(input);
+            long validationSize = announced > 0 ? announced : Math.max(256, head.length);
+            PayloadFormatValidator.validate(head, validationSize, opened.finalUrl);
+
+            socket.setSendBufferSize(BUFFER_SIZE);
+            socket.setTcpNoDelay(true);
+            socket.connect(new InetSocketAddress(ip, port), CONNECT_TIMEOUT_MS);
+            socket.setSoTimeout(CONNECT_TIMEOUT_MS);
+
+            long sent = 0;
+            try (OutputStream output = socket.getOutputStream()) {
+                if (head.length > 0) {
+                    output.write(head);
+                    digest.update(head);
+                    sent += head.length;
+                    notifyProgress(progress, "Transmitindo diretamente ao PS4", percentage(sent, announced), sent, announced);
+                }
+
+                byte[] buffer = new byte[BUFFER_SIZE];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                    digest.update(buffer, 0, read);
+                    sent += read;
+                    notifyProgress(progress, "Transmitindo diretamente ao PS4", percentage(sent, announced), sent, announced);
+                }
+                output.flush();
+                socket.shutdownOutput();
             }
+            return new TransferResult(sent, hex(digest.digest()), opened.finalUrl.toString());
+        } finally {
+            connection.disconnect();
         }
     }
 
@@ -70,14 +81,12 @@ public final class ConsoleClient {
             ProgressListener progress
     ) throws IOException {
         URL sourceUrl = UrlUtils.requireHttpUrl(payloadUrl);
-        File temporary = File.createTempFile("akirabox-validation-", ".tmp", cacheDirectory);
+        File temporary = File.createTempFile("orbisdrop-validation-", ".tmp", cacheDirectory);
         try {
             DownloadResult download = download(sourceUrl, temporary, progress);
             return new TransferResult(download.size, download.sha256, download.finalUrl.toString());
         } finally {
-            if (temporary.exists() && !temporary.delete()) {
-                temporary.deleteOnExit();
-            }
+            if (temporary.exists() && !temporary.delete()) temporary.deleteOnExit();
         }
     }
 
@@ -111,39 +120,26 @@ public final class ConsoleClient {
             throw new IOException("O arquivo local não está mais disponível.");
         }
         long announced = payload.length();
-        if (announced > MAX_PAYLOAD_BYTES) {
-            throw new IOException("Payload acima do limite de 64 MB.");
-        }
-
-        MessageDigest digest;
-        try {
-            digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IOException("SHA-256 indisponível.", impossible);
-        }
-
+        MessageDigest digest = sha256();
         long total = 0;
-        ByteArrayOutputStream head = new ByteArrayOutputStream(4096);
+        ByteArrayOutputStream head = new ByteArrayOutputStream(HEAD_SIZE);
+
         try (InputStream input = new FileInputStream(payload)) {
             byte[] buffer = new byte[BUFFER_SIZE];
             int read;
             while ((read = input.read(buffer)) != -1) {
                 total += read;
-                if (total > MAX_PAYLOAD_BYTES) {
-                    throw new IOException("Payload acima do limite de 64 MB.");
-                }
                 digest.update(buffer, 0, read);
-                if (head.size() < 4096) {
-                    head.write(buffer, 0, Math.min(read, 4096 - head.size()));
+                if (head.size() < HEAD_SIZE) {
+                    head.write(buffer, 0, Math.min(read, HEAD_SIZE - head.size()));
                 }
                 notifyProgress(progress, "Validando arquivo local", percentage(total, announced), total, announced);
             }
         }
 
         String safeName = displayName == null || displayName.trim().isEmpty()
-                ? "payload.bin"
-                : displayName.trim();
-        URL localUrl = new URL("https://local.akirabox.invalid/"
+                ? "payload.bin" : displayName.trim();
+        URL localUrl = new URL("https://local.orbisdrop.invalid/"
                 + URLEncoder.encode(safeName, StandardCharsets.UTF_8.name()).replace("+", "%20"));
         PayloadFormatValidator.validate(head.toByteArray(), total, localUrl);
         notifyProgress(progress, "Payload validado", 100, total, total);
@@ -152,17 +148,46 @@ public final class ConsoleClient {
 
     private static DownloadResult download(URL initialUrl, File destination, ProgressListener progress)
             throws IOException {
+        OpenedDownload opened = openDownload(initialUrl);
+        HttpURLConnection connection = opened.connection;
+        long announced = connection.getContentLengthLong();
+        MessageDigest digest = sha256();
+        long total = 0;
+        ByteArrayOutputStream head = new ByteArrayOutputStream(HEAD_SIZE);
+
+        try (InputStream input = connection.getInputStream();
+             OutputStream output = new FileOutputStream(destination)) {
+            byte[] buffer = new byte[BUFFER_SIZE];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                total += read;
+                output.write(buffer, 0, read);
+                digest.update(buffer, 0, read);
+                if (head.size() < HEAD_SIZE) {
+                    head.write(buffer, 0, Math.min(read, HEAD_SIZE - head.size()));
+                }
+                notifyProgress(progress, "Baixando para validação", percentage(total, announced), total, announced);
+            }
+        } finally {
+            connection.disconnect();
+        }
+
+        PayloadFormatValidator.validate(head.toByteArray(), total, opened.finalUrl);
+        notifyProgress(progress, "Payload validado", 100, total, total);
+        return new DownloadResult(total, hex(digest.digest()), opened.finalUrl);
+    }
+
+    private static OpenedDownload openDownload(URL initialUrl) throws IOException {
         URL current = initialUrl;
-        HttpURLConnection connection = null;
-        boolean responseReady = false;
         for (int redirect = 0; redirect <= 5; redirect++) {
-            connection = (HttpURLConnection) current.openConnection();
+            HttpURLConnection connection = (HttpURLConnection) current.openConnection();
             connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
             connection.setReadTimeout(READ_TIMEOUT_MS);
-            connection.setRequestProperty("User-Agent", "Akirabox-Android/1.0");
+            connection.setRequestProperty("User-Agent", "OrbisDrop-Android/1.0");
             connection.setRequestProperty("Accept", "application/octet-stream,*/*;q=0.8");
             int status = connection.getResponseCode();
+
             if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
                 String location = connection.getHeaderField("Location");
                 connection.disconnect();
@@ -174,59 +199,27 @@ public final class ConsoleClient {
                 }
                 continue;
             }
+
             if (status < 200 || status >= 300) {
                 String error = readSmall(connection.getErrorStream());
                 connection.disconnect();
                 throw new IOException("Servidor do payload respondeu HTTP " + status
                         + (error.isEmpty() ? "." : ": " + error));
             }
-            responseReady = true;
-            break;
+            return new OpenedDownload(connection, current);
         }
-        if (connection == null || !responseReady) {
-            if (connection != null) connection.disconnect();
-            throw new IOException("O link excedeu o limite de redirecionamentos.");
-        }
+        throw new IOException("O link excedeu o limite de redirecionamentos.");
+    }
 
-        long announced = connection.getContentLengthLong();
-        if (announced > MAX_PAYLOAD_BYTES) {
-            connection.disconnect();
-            throw new IOException("Payload acima do limite de 64 MB.");
+    private static byte[] readHead(InputStream input) throws IOException {
+        ByteArrayOutputStream head = new ByteArrayOutputStream(HEAD_SIZE);
+        byte[] buffer = new byte[1024];
+        while (head.size() < HEAD_SIZE) {
+            int read = input.read(buffer, 0, Math.min(buffer.length, HEAD_SIZE - head.size()));
+            if (read == -1) break;
+            head.write(buffer, 0, read);
         }
-
-        MessageDigest digest;
-        try {
-            digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IOException("SHA-256 indisponível.", impossible);
-        }
-
-        long total = 0;
-        ByteArrayOutputStream head = new ByteArrayOutputStream(4096);
-        try (InputStream input = connection.getInputStream();
-             OutputStream output = new FileOutputStream(destination)) {
-            byte[] buffer = new byte[BUFFER_SIZE];
-            int read;
-            while ((read = input.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_PAYLOAD_BYTES) {
-                    throw new IOException("Payload acima do limite de 64 MB.");
-                }
-                output.write(buffer, 0, read);
-                digest.update(buffer, 0, read);
-                if (head.size() < 4096) {
-                    head.write(buffer, 0, Math.min(read, 4096 - head.size()));
-                }
-                notifyProgress(progress, "Baixando payload", announced > 0
-                        ? percentage(total, announced) : -1, total, announced);
-            }
-        } finally {
-            connection.disconnect();
-        }
-
-        PayloadFormatValidator.validate(head.toByteArray(), total, current);
-        notifyProgress(progress, "Payload validado", 100, total, total);
-        return new DownloadResult(total, hex(digest.digest()), current);
+        return head.toByteArray();
     }
 
     private static void sendFile(
@@ -249,7 +242,7 @@ public final class ConsoleClient {
                 while ((read = input.read(buffer)) != -1) {
                     output.write(buffer, 0, read);
                     sent += read;
-                    notifyProgress(progress, "Transmitindo ao console", percentage(sent, total), sent, total);
+                    notifyProgress(progress, "Transmitindo ao PS4", percentage(sent, total), sent, total);
                 }
                 output.flush();
                 socket.shutdownOutput();
@@ -257,46 +250,21 @@ public final class ConsoleClient {
         }
     }
 
-    private static String postJson(URL endpoint, String json) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) endpoint.openConnection();
-        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(20_000);
-        connection.setRequestMethod("POST");
-        connection.setDoOutput(true);
-        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        byte[] body = json.getBytes(StandardCharsets.UTF_8);
-        connection.setFixedLengthStreamingMode(body.length);
-        try (OutputStream output = connection.getOutputStream()) {
-            output.write(body);
-        }
-        int status = connection.getResponseCode();
-        InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
-        String response = readSmall(stream);
-        connection.disconnect();
-        if (status < 200 || status >= 300) {
-            throw new IOException("Console respondeu HTTP " + status
-                    + (response.isEmpty() ? "." : ": " + response));
-        }
-        return response;
-    }
-
     private static void requirePrivateConsole(String ip, int port) throws IOException {
         if (!UrlUtils.isPrivateIpv4(ip)) {
-            throw new IOException("Informe um IPv4 privado válido do console.");
+            throw new IOException("Informe um IPv4 privado válido do PS4.");
         }
         if (port < 1 || port > 65535) {
             throw new IOException("A porta precisa ficar entre 1 e 65535.");
         }
     }
 
-    private static String jsonEscape(String value) {
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\b", "\\b")
-                .replace("\f", "\\f")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
+    private static MessageDigest sha256() throws IOException {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IOException("SHA-256 indisponível.", impossible);
+        }
     }
 
     private static String readSmall(InputStream input) throws IOException {
@@ -332,6 +300,16 @@ public final class ConsoleClient {
         StringBuilder result = new StringBuilder(value.length * 2);
         for (byte current : value) result.append(String.format(Locale.ROOT, "%02x", current & 0xff));
         return result.toString();
+    }
+
+    private static final class OpenedDownload {
+        private final HttpURLConnection connection;
+        private final URL finalUrl;
+
+        private OpenedDownload(HttpURLConnection connection, URL finalUrl) {
+            this.connection = connection;
+            this.finalUrl = finalUrl;
+        }
     }
 
     private static final class DownloadResult {
