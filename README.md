@@ -4,7 +4,7 @@
 
 Aplicativo Android focado exclusivamente no PlayStation 4 desbloqueado.
 
-O OrbisDrop recebe um link HTTP/HTTPS ou um arquivo BIN/ELF local, valida o conteúdo e transmite os bytes diretamente ao GoldHEN BinLoader pela porta TCP `9090`.
+O OrbisDrop recebe um link HTTP/HTTPS ou um arquivo BIN/ELF local e transmite os bytes ao GoldHEN BinLoader pela porta TCP `9090`.
 
 ## Recursos
 
@@ -12,14 +12,17 @@ O OrbisDrop recebe um link HTTP/HTTPS ou um arquivo BIN/ELF local, valida o cont
 - porta fixa `9090`;
 - links diretos de VikingFile, Rootz e Akirabox `/l`;
 - compatibilidade com GitHub Raw e redirecionamentos HTTP;
+- streaming direto de payloads por URL, sem download completo para o cache antes do envio;
+- verificação rápida dos primeiros bytes para bloquear HTML, arquivos compactados e ELF inválido;
 - seleção de payload local pelo Android;
 - sem limite artificial de tamanho de payload;
-- bloqueio preventivo de HTML, arquivos compactados e ELF inválido;
-- cálculo SHA-256 antes do envio;
+- cálculo SHA-256 durante a transmissão;
 - compartilhamento de links por outros aplicativos;
 - interface e ícone próprios do OrbisDrop.
 
-O tamanho prático ainda depende do espaço livre no armazenamento temporário do Android, da memória disponível, da estabilidade da rede e do que o GoldHEN BinLoader consegue receber.
+No envio por link, o aplicativo começa a transmitir ao PS4 após verificar apenas o cabeçalho inicial. Assim, um arquivo grande não precisa ser baixado integralmente e depois enviado novamente.
+
+O limite prático depende da velocidade do servidor, da estabilidade da rede e do que o GoldHEN BinLoader consegue receber.
 
 ## Removido
 
@@ -35,10 +38,10 @@ O tamanho prático ainda depende do espaço livre no armazenamento temporário d
 2. No GoldHEN, ative **Settings → Enable BinLoader Server**.
 3. Informe o IP local do PS4.
 4. Cole um link direto ou selecione um payload BIN/ELF.
-5. Valide o arquivo.
-6. Confirme a origem e envie pela porta 9090.
+5. Confirme a origem do payload.
+6. Envie pela porta 9090.
 
-Não abra uma conexão vazia apenas para testar o BinLoader. O OrbisDrop valida o arquivo primeiro e só conecta ao PS4 durante o envio real.
+O botão de validação separada ainda pode ler o arquivo completo quando o usuário solicitar essa verificação. O envio normal por URL usa streaming direto.
 
 ## Compatibilidade Android
 
