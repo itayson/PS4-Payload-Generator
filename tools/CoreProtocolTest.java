@@ -27,6 +27,7 @@ public final class CoreProtocolTest {
         testGitHubNormalization();
         testSharedUrlExtraction();
         testInvalidPayloads();
+        testExactLocalFileTransfer();
         testExactTcpTransfer();
         System.out.println("Akirabox core protocol tests: OK");
     }
@@ -126,6 +127,51 @@ public final class CoreProtocolTest {
         check(Arrays.equals(expected, received), "Bytes recebidos diferem do payload original");
         check(result.getBytesSent() == expected.length, "Tamanho reportado incorreto");
         check(result.getSha256().length() == 64, "SHA-256 inválido");
+    }
+
+    private static void testExactLocalFileTransfer() throws Exception {
+        byte[] expected = new byte[12 * 1024 + 5];
+        expected[0] = 0x7f;
+        expected[1] = 'E';
+        expected[2] = 'L';
+        expected[3] = 'F';
+        for (int i = 4; i < expected.length; i++) expected[i] = (byte) ((i * 7) & 0xff);
+
+        File source = File.createTempFile("akirabox-local-test-", ".elf");
+        Files.write(source.toPath(), expected);
+        String localIp = findPrivateIpv4();
+        ServerSocket receiver = new ServerSocket(0, 1, InetAddress.getByName(localIp));
+        CompletableFuture<byte[]> receivedFuture = CompletableFuture.supplyAsync(() -> {
+            try (Socket socket = receiver.accept();
+                 InputStream input = socket.getInputStream();
+                 ByteArrayOutputStream received = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[4096];
+                int read;
+                while ((read = input.read(buffer)) != -1) received.write(buffer, 0, read);
+                return received.toByteArray();
+            } catch (Exception error) {
+                throw new RuntimeException(error);
+            }
+        });
+
+        TransferResult result;
+        try {
+            result = ConsoleClient.sendPayloadFile(
+                    source,
+                    "np-fake-signin-test.elf",
+                    localIp,
+                    receiver.getLocalPort(),
+                    null
+            );
+        } finally {
+            receiver.close();
+            source.delete();
+        }
+
+        byte[] received = receivedFuture.get(3, TimeUnit.SECONDS);
+        check(Arrays.equals(expected, received), "Arquivo local recebido difere do original");
+        check(result.getBytesSent() == expected.length, "Tamanho local reportado incorreto");
+        check(result.getSha256().length() == 64, "SHA-256 local inválido");
     }
 
     private static String findPrivateIpv4() throws Exception {
