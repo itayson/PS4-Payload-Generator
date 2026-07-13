@@ -1,4 +1,5 @@
 # Akirabox para Android
+[![Build Akirabox APK](https://github.com/itayson/Akirabox-Android/actions/workflows/build-apk.yml/badge.svg)](https://github.com/itayson/Akirabox-Android/actions/workflows/build-apk.yml)
 
 Aplicativo nativo para instalar pacotes PKG e enviar payloads BIN/ELF diretamente a consoles PlayStation 4 e PlayStation 5 desbloqueados.
 
