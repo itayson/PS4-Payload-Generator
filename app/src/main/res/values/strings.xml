@@ -17,5 +17,8 @@
     <string name="clear_log">Limpar atividade</string>
     <string name="copy_log">Copiar</string>
     <string name="paste_link">Colar link</string>
+    <string name="payload_catalog">Catálogo oficial</string>
+    <string name="choose_payload_file">Arquivo do celular</string>
+    <string name="remove_file">Remover</string>
     <string name="help_support">Ajuda, compatibilidade e suporte</string>
 </resources>

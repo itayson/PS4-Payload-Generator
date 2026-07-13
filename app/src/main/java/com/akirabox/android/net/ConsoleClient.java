@@ -11,6 +11,7 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -78,6 +79,75 @@ public final class ConsoleClient {
                 temporary.deleteOnExit();
             }
         }
+    }
+
+    public static TransferResult validatePayloadFile(
+            File payload,
+            String displayName,
+            ProgressListener progress
+    ) throws IOException {
+        return inspectPayloadFile(payload, displayName, progress);
+    }
+
+    public static TransferResult sendPayloadFile(
+            File payload,
+            String displayName,
+            String ip,
+            int port,
+            ProgressListener progress
+    ) throws IOException {
+        requirePrivateConsole(ip, port);
+        TransferResult validated = inspectPayloadFile(payload, displayName, progress);
+        sendFile(payload, ip, port, validated.getBytesSent(), progress);
+        return validated;
+    }
+
+    private static TransferResult inspectPayloadFile(
+            File payload,
+            String displayName,
+            ProgressListener progress
+    ) throws IOException {
+        if (payload == null || !payload.isFile()) {
+            throw new IOException("O arquivo local não está mais disponível.");
+        }
+        long announced = payload.length();
+        if (announced > MAX_PAYLOAD_BYTES) {
+            throw new IOException("Payload acima do limite de 64 MB.");
+        }
+
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IOException("SHA-256 indisponível.", impossible);
+        }
+
+        long total = 0;
+        ByteArrayOutputStream head = new ByteArrayOutputStream(4096);
+        try (InputStream input = new FileInputStream(payload)) {
+            byte[] buffer = new byte[BUFFER_SIZE];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_PAYLOAD_BYTES) {
+                    throw new IOException("Payload acima do limite de 64 MB.");
+                }
+                digest.update(buffer, 0, read);
+                if (head.size() < 4096) {
+                    head.write(buffer, 0, Math.min(read, 4096 - head.size()));
+                }
+                notifyProgress(progress, "Validando arquivo local", percentage(total, announced), total, announced);
+            }
+        }
+
+        String safeName = displayName == null || displayName.trim().isEmpty()
+                ? "payload.bin"
+                : displayName.trim();
+        URL localUrl = new URL("https://local.akirabox.invalid/"
+                + URLEncoder.encode(safeName, StandardCharsets.UTF_8.name()).replace("+", "%20"));
+        PayloadFormatValidator.validate(head.toByteArray(), total, localUrl);
+        notifyProgress(progress, "Payload validado", 100, total, total);
+        return new TransferResult(total, hex(digest.digest()), "arquivo://" + safeName);
     }
 
     private static DownloadResult download(URL initialUrl, File destination, ProgressListener progress)

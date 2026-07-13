@@ -6,7 +6,9 @@ Aplicativo nativo para instalar pacotes PKG e enviar payloads BIN/ELF diretament
 
 O app foi projetado para funcionar no celular sem computador, sem Termux e sem servidor intermediário. O download e a transmissão acontecem no próprio Android.
 
-A interface da versão 1.2 adota cartões translúcidos, navegação em quatro etapas, fundo escuro e acentos lavanda inspirados na experiência visual do Duskaryon Web Direct Package Installer, preservando a identidade Akirabox.
+A interface adota cartões translúcidos, navegação em quatro etapas, fundo escuro e acentos lavanda inspirados na experiência visual do Duskaryon Web Direct Package Installer, preservando a identidade Akirabox.
+
+A versão 1.3 adiciona um catálogo de fontes oficiais, payloads pré-configurados e importação de arquivos locais. O catálogo do GoldHEN aponta para os itens verificados da loja oficial do SiSTR0 até `v2.4b18.10`; compras e downloads continuam acontecendo no próprio Ko-fi.
 
 ## Compatibilidade
 
@@ -23,6 +25,11 @@ A interface da versão 1.2 adota cartões translúcidos, navegação em quatro e
 
 - Instalação direta de PKG por URL.
 - Envio nativo de payload BIN/ELF por TCP, sem Akira Bridge.
+- Catálogo GoldHEN com 21 versões verificadas no Ko-fi e atalho para a loja oficial completa.
+- Payloads pré-configurados: NP Fake Signin 1.1 e FTP Server 0.20 para PS4/PS5.
+- PS4Debug 1.1.19 oficial pré-configurado.
+- Importação de BIN/ELF pelo seletor de arquivos do Android ou pelo menu **Compartilhar**.
+- Permissão de arquivo persistente do Android, sem solicitar acesso geral ao armazenamento.
 - Conversão automática de links `github.com/.../blob/...` para o arquivo bruto.
 - Recebimento de links pelo menu **Compartilhar** de navegadores e outros aplicativos.
 - Botão para colar links e memória separada dos últimos links de PKG e payload.
@@ -62,12 +69,27 @@ Os APKs de teste são assinados automaticamente pelo Android Gradle Plugin e pod
 
 1. Ative o BinLoader no GoldHEN ou o ELF Loader no etaHEN.
 2. Selecione **Enviar payload**.
-3. Informe o IP, a URL direta do BIN/ELF e confira a porta.
+3. Informe o IP e escolha uma fonte: URL direta, catálogo ou BIN/ELF do celular.
 4. Confirme que o arquivo é compatível com o firmware.
 5. Toque em **Validar payload** para conferir o download sem acessar o console.
 6. Confirme a origem do arquivo e toque em **Enviar**.
 
 Não abra e feche a porta do BinLoader somente para testar: alguns receptores mostram `payload format error` quando recebem uma conexão vazia. O Akirabox valida o arquivo primeiro e abre a conexão apenas no envio real.
+
+### GoldHEN e catálogo oficial
+
+1. Em **Enviar payload**, toque em **Catálogo oficial**.
+2. Abra **GoldHEN oficial** e escolha uma versão.
+3. O Akirabox abre o item correspondente na loja oficial do SiSTR0.
+4. Depois de baixar o arquivo pelo Ko-fi, volte ao app e use **Arquivo do celular**.
+
+O Akirabox não contorna login, verificação humana, assinatura ou pagamento do Ko-fi. GoldHEN depende do exploit, do firmware e do `stage2` compatíveis; o próprio GoldHEN não deve ser enviado como um payload comum para o BinLoader de uma sessão GoldHEN já ativa.
+
+### Payloads prontos
+
+- **NP Fake Signin 1.1:** URLs oficiais para PS4 e PS5. Exige ativação offline prévia com Account ID diferente de zero e reinicialização após a execução.
+- **FTP Server 0.20:** URLs oficiais para PS4 e PS5. Use apenas na rede local do seu próprio console.
+- **PS4Debug 1.1.19:** `ps4debug.bin` oficial pré-configurado para os firmwares indicados pelo projeto.
 
 ## Compilação local
 
