@@ -13,11 +13,13 @@ O OrbisDrop recebe um link HTTP/HTTPS ou um arquivo BIN/ELF local, valida o cont
 - links diretos de VikingFile, Rootz e Akirabox `/l`;
 - compatibilidade com GitHub Raw e redirecionamentos HTTP;
 - seleção de payload local pelo Android;
-- limite de 64 MB;
+- sem limite artificial de tamanho de payload;
 - bloqueio preventivo de HTML, arquivos compactados e ELF inválido;
 - cálculo SHA-256 antes do envio;
 - compartilhamento de links por outros aplicativos;
 - interface e ícone próprios do OrbisDrop.
+
+O tamanho prático ainda depende do espaço livre no armazenamento temporário do Android, da memória disponível, da estabilidade da rede e do que o GoldHEN BinLoader consegue receber.
 
 ## Removido
 
