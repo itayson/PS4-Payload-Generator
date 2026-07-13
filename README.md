@@ -44,6 +44,8 @@ A versão 1.3 adiciona um catálogo de fontes oficiais, payloads pré-configurad
 
 ## Como obter o APK pelo GitHub
 
+Cada versão concluída também fica disponível na seção **Releases**, com APKs ARMv7, ARM64, universal e o arquivo `SHA256SUMS.txt`. Quando uma nova versão é mesclada no branch `main`, o workflow lê o `versionName`, cria a tag correspondente e publica ou atualiza automaticamente a Release.
+
 1. Abra a aba **Actions** do repositório.
 2. Escolha **Build Akirabox APK**.
 3. Toque em **Run workflow**.
