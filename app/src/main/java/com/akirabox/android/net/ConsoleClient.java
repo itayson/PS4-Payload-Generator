@@ -63,6 +63,23 @@ public final class ConsoleClient {
         }
     }
 
+    public static TransferResult validatePayload(
+            File cacheDirectory,
+            String payloadUrl,
+            ProgressListener progress
+    ) throws IOException {
+        URL sourceUrl = UrlUtils.requireHttpUrl(payloadUrl);
+        File temporary = File.createTempFile("akirabox-validation-", ".tmp", cacheDirectory);
+        try {
+            DownloadResult download = download(sourceUrl, temporary, progress);
+            return new TransferResult(download.size, download.sha256, download.finalUrl.toString());
+        } finally {
+            if (temporary.exists() && !temporary.delete()) {
+                temporary.deleteOnExit();
+            }
+        }
+    }
+
     private static DownloadResult download(URL initialUrl, File destination, ProgressListener progress)
             throws IOException {
         URL current = initialUrl;

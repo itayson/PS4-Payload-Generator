@@ -3,8 +3,12 @@ package com.akirabox.android.net;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class UrlUtils {
+    private static final Pattern HTTP_URL = Pattern.compile("https?://\\S+", Pattern.CASE_INSENSITIVE);
+
     private UrlUtils() {}
 
     public static URL requireHttpUrl(String raw) throws MalformedURLException {
@@ -44,6 +48,20 @@ public final class UrlUtils {
         } catch (MalformedURLException ignored) {
             return raw;
         }
+    }
+
+    public static String extractFirstHttpUrl(String value) {
+        if (value == null) return null;
+        Matcher matcher = HTTP_URL.matcher(value);
+        if (!matcher.find()) return null;
+        String result = matcher.group();
+        while (!result.isEmpty()) {
+            char last = result.charAt(result.length() - 1);
+            if (last != '.' && last != ',' && last != ';' && last != ')'
+                    && last != ']' && last != '}' && last != '"' && last != '\'') break;
+            result = result.substring(0, result.length() - 1);
+        }
+        return result.isEmpty() ? null : result;
     }
 
     private static String encodePathSegment(String value) {

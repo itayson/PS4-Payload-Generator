@@ -7,6 +7,8 @@
     <color name="akira_muted">#939CAD</color>
     <color name="akira_accent">#8B7CFF</color>
     <color name="akira_accent_dark">#6B5DE6</color>
+    <color name="akira_accent_soft">#17142A</color>
+    <color name="akira_accent_line">#403873</color>
     <color name="akira_green">#39DBB2</color>
     <color name="akira_warning">#FFBF69</color>
     <color name="akira_error">#FF6D7A</color>
