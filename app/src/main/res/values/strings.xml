@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Akirabox</string>
+    <string name="hero_title">Seu console. Seus links.\nUm envio direto.</string>
+    <string name="hero_subtitle">Instale pacotes e transmita payloads diretamente pelo Android, sem Termux e sem computador.</string>
+    <string name="mode_pkg">Instalar PKG</string>
+    <string name="mode_payload">Enviar payload</string>
+    <string name="console_ps4">PlayStation 4</string>
+    <string name="console_ps5">PlayStation 5</string>
+    <string name="console_ip">IP local do console</string>
+    <string name="download_url">Link direto de download</string>
+    <string name="port">Porta</string>
+    <string name="test_connection">Testar conexão</string>
+    <string name="send">Enviar</string>
+    <string name="trusted_payload">Confirmei o firmware e confio na origem do payload.</string>
+    <string name="activity_log">Atividade</string>
+    <string name="clear_log">Limpar atividade</string>
+</resources>

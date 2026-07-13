@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="akira_background">#07080D</color>
+    <color name="akira_surface">#0D1018</color>
+    <color name="akira_surface_2">#121620</color>
+    <color name="akira_text">#F5F7FB</color>
+    <color name="akira_muted">#939CAD</color>
+    <color name="akira_accent">#8B7CFF</color>
+    <color name="akira_accent_dark">#6B5DE6</color>
+    <color name="akira_green">#39DBB2</color>
+    <color name="akira_warning">#FFBF69</color>
+    <color name="akira_error">#FF6D7A</color>
+    <color name="akira_line">#252A36</color>
+    <color name="white">#FFFFFF</color>
+</resources>
