@@ -1,4 +1,4 @@
-name: Build Akirabox APK
+name: Build OrbisDrop APK
 
 on:
   workflow_dispatch:
@@ -52,16 +52,16 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/armv7/debug/app-armv7-debug.apk dist/Akirabox-Android7-armeabi-v7a.apk
-          cp app/build/outputs/apk/arm64/debug/app-arm64-debug.apk dist/Akirabox-Android7-arm64-v8a.apk
-          cp app/build/outputs/apk/universal/debug/app-universal-debug.apk dist/Akirabox-Android7-universal.apk
+          cp app/build/outputs/apk/armv7/debug/app-armv7-debug.apk dist/OrbisDrop-Android7-armeabi-v7a.apk
+          cp app/build/outputs/apk/arm64/debug/app-arm64-debug.apk dist/OrbisDrop-Android7-arm64-v8a.apk
+          cp app/build/outputs/apk/universal/debug/app-universal-debug.apk dist/OrbisDrop-Android7-universal.apk
           cd dist
           sha256sum *.apk > SHA256SUMS.txt
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Akirabox-Android-APKs
+          name: OrbisDrop-Android-APKs
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -80,7 +80,7 @@ jobs:
           else
             gh release create "$TAG" dist/* \
               --target "$GITHUB_SHA" \
-              --title "Akirabox $VERSION" \
+              --title "OrbisDrop $VERSION" \
               --generate-notes
           fi
 
