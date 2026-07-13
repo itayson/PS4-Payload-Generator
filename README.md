@@ -6,6 +6,8 @@ Aplicativo nativo para instalar pacotes PKG e enviar payloads BIN/ELF diretament
 
 O app foi projetado para funcionar no celular sem computador, sem Termux e sem servidor intermediário. O download e a transmissão acontecem no próprio Android.
 
+A interface da versão 1.2 adota cartões translúcidos, navegação em quatro etapas, fundo escuro e acentos lavanda inspirados na experiência visual do Duskaryon Web Direct Package Installer, preservando a identidade Akirabox.
+
 ## Compatibilidade
 
 - Android 7.0 ou superior (`minSdk 24`).

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="@color/akira_accent" android:state_focused="true" />
+    <item android:color="@color/akira_error" android:state_activated="true" />
+    <item android:color="@color/akira_line" />
+</selector>

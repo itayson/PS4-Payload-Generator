@@ -71,6 +71,10 @@ public final class MainActivity extends AppCompatActivity {
     private TextView networkStatus;
     private TextView modeHint;
     private TextView logView;
+    private TextView stepConsole;
+    private TextView stepLink;
+    private TextView stepValidate;
+    private TextView stepSend;
     private SharedPreferences preferences;
 
     @Override
@@ -105,6 +109,10 @@ public final class MainActivity extends AppCompatActivity {
         networkStatus = findViewById(R.id.networkStatus);
         modeHint = findViewById(R.id.modeHint);
         logView = findViewById(R.id.logView);
+        stepConsole = findViewById(R.id.stepConsole);
+        stepLink = findViewById(R.id.stepLink);
+        stepValidate = findViewById(R.id.stepValidate);
+        stepSend = findViewById(R.id.stepSend);
         findViewById(R.id.clearLog).setOnClickListener(view -> clearLog());
         findViewById(R.id.copyLog).setOnClickListener(view -> copyLog());
     }
@@ -197,6 +205,7 @@ public final class MainActivity extends AppCompatActivity {
         trustedPayload.setChecked(false);
         networkStatus.setText("● Pronto");
         networkStatus.setTextColor(color(R.color.akira_green));
+        showStep(0);
         resetErrors();
     }
 
@@ -219,6 +228,7 @@ public final class MainActivity extends AppCompatActivity {
                     appendLog("OK", "Instalador localizado. Pronto para receber PKG.", color(R.color.akira_green));
                     networkStatus.setText("● Conectado");
                     networkStatus.setTextColor(color(R.color.akira_green));
+                    showStep(1);
                     setBusy(false, null);
                 });
             } catch (Exception error) {
@@ -228,6 +238,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void validatePayload(Input input) {
+        showStep(2);
         setBusy(true, "Baixando o payload para validar…");
         progress.setIndeterminate(true);
         appendLog("INF", "Validando link e formato sem abrir a porta do BinLoader.", color(R.color.akira_accent));
@@ -252,6 +263,7 @@ public final class MainActivity extends AppCompatActivity {
                     );
                     networkStatus.setText("● Payload válido");
                     networkStatus.setTextColor(color(R.color.akira_green));
+                    showStep(3);
                     Toast.makeText(this, "Payload validado. Nenhuma conexão foi aberta no console.", Toast.LENGTH_LONG).show();
                     setBusy(false, null);
                 });
@@ -271,6 +283,7 @@ public final class MainActivity extends AppCompatActivity {
         }
 
         saveSettings();
+        showStep(3);
         if (mode == Mode.PACKAGE) {
             installPackage(input);
         } else {
@@ -354,6 +367,7 @@ public final class MainActivity extends AppCompatActivity {
         if (requireUrl) {
             try {
                 url = UrlUtils.requireHttpUrl(text(downloadUrl));
+                showStep(2);
                 if (!url.toString().equals(text(downloadUrl))) {
                     downloadUrl.setText(url.toString());
                     downloadUrl.setSelection(url.toString().length());
@@ -438,7 +452,7 @@ public final class MainActivity extends AppCompatActivity {
 
     private void copyLog() {
         ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        String diagnostic = "Akirabox 1.1.0\nModo: " + mode.name()
+        String diagnostic = "Akirabox 1.2.0\nModo: " + mode.name()
                 + "\nConsole: " + consoleType.name()
                 + "\nIP/porta: " + text(consoleIp) + ':' + text(port)
                 + "\n\n" + logView.getText();
@@ -478,6 +492,7 @@ public final class MainActivity extends AppCompatActivity {
         String normalized = UrlUtils.normalizeGitHubBlob(extracted);
         downloadUrl.setText(normalized);
         downloadUrl.setSelection(normalized.length());
+        showStep(1);
         saveSettings();
         appendLog("INF", source + " e pronto para validar.", color(R.color.akira_accent));
         Toast.makeText(this, source + ".", Toast.LENGTH_SHORT).show();
@@ -519,6 +534,15 @@ public final class MainActivity extends AppCompatActivity {
 
     private int color(int resource) {
         return ContextCompat.getColor(this, resource);
+    }
+
+    private void showStep(int activeIndex) {
+        TextView[] steps = {stepConsole, stepLink, stepValidate, stepSend};
+        for (int index = 0; index < steps.length; index++) {
+            boolean reached = index <= activeIndex;
+            steps[index].setBackgroundResource(reached ? R.drawable.bg_step_active : R.drawable.bg_step_idle);
+            steps[index].setTextColor(color(reached ? R.color.akira_accent_bright : R.color.akira_muted));
+        }
     }
 
     private static String formatBytes(long value) {

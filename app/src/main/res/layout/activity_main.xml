@@ -3,27 +3,28 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/akira_background"
-    android:fillViewport="true">
+    android:background="@drawable/bg_app"
+    android:fillViewport="true"
+    android:overScrollMode="never">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingStart="16dp"
-        android:paddingTop="12dp"
+        android:paddingTop="16dp"
         android:paddingEnd="16dp"
-        android:paddingBottom="24dp">
+        android:paddingBottom="28dp">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="44dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <ImageView
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
                 android:background="@drawable/ic_launcher_background"
                 android:contentDescription="@string/app_name"
                 android:padding="4dp"
@@ -32,60 +33,77 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="9dp"
+                android:layout_marginStart="10dp"
+                android:fontFamily="sans-serif-medium"
                 android:text="AKIRABOX"
                 android:textColor="@color/akira_text"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:textSize="19sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
 
             <TextView
                 android:id="@+id/networkStatus"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_weight="1"
-                android:gravity="end"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_status"
+                android:gravity="center"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:text="● Pronto"
                 android:textColor="@color/akira_green"
-                android:textSize="11sp" />
+                android:textSize="10sp" />
         </LinearLayout>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:letterSpacing="0.12"
-            android:text="PS4 &amp; PS5 TOOLKIT"
-            android:textAllCaps="true"
-            android:textColor="@color/akira_accent"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="7dp"
-            android:fontFamily="sans-serif-medium"
-            android:lineSpacingExtra="-2dp"
-            android:text="@string/hero_title"
-            android:textColor="@color/akira_text"
-            android:textSize="31sp"
-            android:textStyle="bold" />
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_hero"
+            android:orientation="vertical"
+            android:padding="18dp">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="9dp"
-            android:lineSpacingExtra="2dp"
-            android:text="@string/hero_subtitle"
-            android:textColor="@color/akira_muted"
-            android:textSize="13sp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_pill"
+                android:letterSpacing="0.05"
+                android:paddingStart="10dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="4dp"
+                android:text="PLAYSTATION 4 E PLAYSTATION 5"
+                android:textColor="@color/akira_accent_bright"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="13dp"
+                android:fontFamily="sans-serif-medium"
+                android:lineSpacingExtra="1dp"
+                android:text="@string/hero_title"
+                android:textColor="@color/akira_text"
+                android:textSize="24sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="9dp"
+                android:lineSpacingExtra="3dp"
+                android:text="@string/hero_subtitle"
+                android:textColor="@color/akira_muted"
+                android:textSize="13sp" />
+        </LinearLayout>
 
         <com.google.android.material.button.MaterialButtonToggleGroup
             android:id="@+id/modeGroup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="14dp"
             app:checkedButton="@id/modePkg"
             app:selectionRequired="true"
             app:singleSelection="true">
@@ -96,12 +114,14 @@
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
                 android:text="@string/mode_pkg"
                 android:textAllCaps="false"
-                android:textColor="@color/akira_text"
-                app:backgroundTint="@color/akira_surface_2"
-                app:cornerRadius="12dp"
-                app:strokeColor="@color/akira_accent" />
+                android:textColor="@color/toggle_text"
+                app:backgroundTint="@color/toggle_background"
+                app:cornerRadius="8dp"
+                app:strokeColor="@color/toggle_stroke" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/modePayload"
@@ -110,34 +130,118 @@
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
                 android:text="@string/mode_payload"
                 android:textAllCaps="false"
-                android:textColor="@color/akira_text"
-                app:backgroundTint="@color/akira_surface_2"
-                app:cornerRadius="12dp"
-                app:strokeColor="@color/akira_line" />
+                android:textColor="@color/toggle_text"
+                app:backgroundTint="@color/toggle_background"
+                app:cornerRadius="8dp"
+                app:strokeColor="@color/toggle_stroke" />
         </com.google.android.material.button.MaterialButtonToggleGroup>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/stepConsole"
+                android:layout_width="0dp"
+                android:layout_height="62dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_step_active"
+                android:gravity="center"
+                android:lineSpacingExtra="2dp"
+                android:text="①\nConsole"
+                android:textColor="@color/akira_accent_bright"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/stepLink"
+                android:layout_width="0dp"
+                android:layout_height="62dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_step_idle"
+                android:gravity="center"
+                android:lineSpacingExtra="2dp"
+                android:text="②\nLink"
+                android:textColor="@color/akira_muted"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/stepValidate"
+                android:layout_width="0dp"
+                android:layout_height="62dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_step_idle"
+                android:gravity="center"
+                android:lineSpacingExtra="2dp"
+                android:text="③\nValidar"
+                android:textColor="@color/akira_muted"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/stepSend"
+                android:layout_width="0dp"
+                android:layout_height="62dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_step_idle"
+                android:gravity="center"
+                android:lineSpacingExtra="2dp"
+                android:text="④\nEnvio"
+                android:textColor="@color/akira_muted"
+                android:textSize="10sp" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:background="@drawable/bg_card"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:padding="16dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="CONFIGURAÇÃO DO CONSOLE"
-                android:textColor="@color/akira_accent"
-                android:textSize="10sp"
+                android:background="@drawable/bg_pill"
+                android:paddingStart="9dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="9dp"
+                android:paddingBottom="3dp"
+                android:text="CONFIGURAÇÃO"
+                android:textColor="@color/akira_accent_bright"
+                android:textSize="9sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:fontFamily="sans-serif-medium"
+                android:text="Conecte ao seu console"
+                android:textColor="@color/akira_text"
+                android:textSize="20sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:lineSpacingExtra="2dp"
+                android:text="Informe o console e o link direto do arquivo que deseja enviar."
+                android:textColor="@color/akira_muted"
+                android:textSize="12sp" />
 
             <com.google.android.material.button.MaterialButtonToggleGroup
                 android:id="@+id/consoleGroup"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
+                android:layout_marginTop="16dp"
                 app:checkedButton="@id/consolePs4"
                 app:selectionRequired="true"
                 app:singleSelection="true">
@@ -148,23 +252,32 @@
                     android:layout_width="0dp"
                     android:layout_height="44dp"
                     android:layout_weight="1"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
                     android:text="@string/console_ps4"
                     android:textAllCaps="false"
-                    android:textColor="@color/akira_text"
-                    app:backgroundTint="@color/akira_surface_2"
-                    app:strokeColor="@color/akira_accent" />
+                    android:textColor="@color/toggle_text"
+                    android:textSize="12sp"
+                    app:backgroundTint="@color/toggle_background"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="@color/toggle_stroke" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/consolePs5"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="0dp"
                     android:layout_height="44dp"
+                    android:layout_marginStart="7dp"
                     android:layout_weight="1"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
                     android:text="@string/console_ps5"
                     android:textAllCaps="false"
-                    android:textColor="@color/akira_text"
-                    app:backgroundTint="@color/akira_surface_2"
-                    app:strokeColor="@color/akira_line" />
+                    android:textColor="@color/toggle_text"
+                    android:textSize="12sp"
+                    app:backgroundTint="@color/toggle_background"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="@color/toggle_stroke" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
             <TextView
@@ -174,7 +287,7 @@
                 android:layout_marginTop="12dp"
                 android:background="@drawable/bg_hint"
                 android:lineSpacingExtra="2dp"
-                android:padding="11dp"
+                android:padding="12dp"
                 android:text="Abra o Remote Package Installer/DPI no console • porta padrão 12800"
                 android:textColor="@color/akira_muted"
                 android:textSize="11sp" />
@@ -183,7 +296,7 @@
                 android:id="@+id/ipLayout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="14dp"
                 android:hint="@string/console_ip"
                 app:endIconMode="clear_text">
 
@@ -229,7 +342,7 @@
                 android:paddingEnd="8dp"
                 android:text="@string/paste_link"
                 android:textAllCaps="false"
-                android:textColor="@color/akira_accent"
+                android:textColor="@color/akira_accent_bright"
                 android:textSize="11sp" />
 
             <com.google.android.material.textfield.TextInputLayout
@@ -267,9 +380,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="4dp"
                 android:layout_marginTop="14dp"
-                android:indeterminateTint="@color/akira_accent"
+                android:indeterminateTint="@color/akira_accent_bright"
                 android:max="100"
-                android:progressTint="@color/akira_accent"
+                android:progressTint="@color/akira_accent_bright"
                 android:visibility="gone" />
 
             <TextView
@@ -301,6 +414,7 @@
                     android:textAllCaps="false"
                     android:textColor="@color/akira_text"
                     android:textSize="12sp"
+                    app:backgroundTint="@color/akira_transparent"
                     app:cornerRadius="12dp"
                     app:strokeColor="@color/akira_line" />
 
@@ -316,9 +430,9 @@
                     android:minWidth="0dp"
                     android:text="@string/send"
                     android:textAllCaps="false"
-                    android:textColor="@color/white"
+                    android:textColor="@color/akira_primary_ink"
                     android:textSize="12sp"
-                    app:backgroundTint="@color/akira_accent"
+                    app:backgroundTint="@color/akira_accent_bright"
                     app:cornerRadius="12dp" />
             </LinearLayout>
         </LinearLayout>
@@ -332,18 +446,20 @@
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="52dp"
                 android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingEnd="8dp">
 
                 <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/activity_log"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="›  Atividade"
                     android:textColor="@color/akira_text"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:textSize="14sp" />
 
                 <TextView
                     android:id="@+id/copyLog"
@@ -353,7 +469,7 @@
                     android:paddingStart="10dp"
                     android:paddingEnd="8dp"
                     android:text="@string/copy_log"
-                    android:textColor="@color/akira_accent"
+                    android:textColor="@color/akira_accent_bright"
                     android:textSize="10sp" />
 
                 <TextView
@@ -361,22 +477,27 @@
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
                     android:gravity="center"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="4dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
                     android:text="@string/clear_log"
                     android:textColor="@color/akira_muted"
                     android:textSize="10sp" />
             </LinearLayout>
 
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/akira_line" />
+
             <TextView
                 android:id="@+id/logView"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
                 android:fontFamily="monospace"
                 android:lineSpacingExtra="4dp"
-                android:minHeight="96dp"
-                android:text="--:--  INF  Pronto para configurar o console."
+                android:minHeight="140dp"
+                android:padding="16dp"
+                android:text="--:--  INFO  Pronto para configurar o console."
                 android:textColor="@color/akira_muted"
                 android:textIsSelectable="true"
                 android:textSize="10sp" />
@@ -393,16 +514,18 @@
             android:text="@string/help_support"
             android:textAllCaps="false"
             android:textColor="@color/akira_text"
-            app:cornerRadius="12dp"
+            app:backgroundTint="@color/akira_transparent"
+            app:cornerRadius="8dp"
             app:strokeColor="@color/akira_line" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="16dp"
             android:gravity="center"
-            android:text="Use somente homebrews e backups pessoais compatíveis com seu firmware."
-            android:textColor="@color/akira_warning"
+            android:lineSpacingExtra="2dp"
+            android:text="Akirabox • Android 7+ • ARMv7 e ARM64\nUse somente arquivos compatíveis com seu firmware."
+            android:textColor="@color/akira_muted"
             android:textSize="10sp" />
     </LinearLayout>
 </ScrollView>

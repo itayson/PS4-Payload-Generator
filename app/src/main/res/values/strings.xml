@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Akirabox</string>
-    <string name="hero_title">Seu console. Seus links.\nUm envio direto.</string>
-    <string name="hero_subtitle">Instale pacotes e transmita payloads diretamente pelo Android, sem Termux e sem computador.</string>
+    <string name="hero_title">Akirabox Direct Package &amp; Payload Sender</string>
+    <string name="hero_subtitle">Instale pacotes e transmita payloads ao PlayStation 4 ou PlayStation 5 diretamente pelo Android.</string>
     <string name="mode_pkg">Instalar PKG</string>
     <string name="mode_payload">Enviar payload</string>
     <string name="console_ps4">PlayStation 4</string>
