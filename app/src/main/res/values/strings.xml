@@ -1,24 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Akirabox</string>
-    <string name="hero_title">Akirabox Direct Package &amp; Payload Sender</string>
-    <string name="hero_subtitle">Instale pacotes e transmita payloads ao PlayStation 4 ou PlayStation 5 diretamente pelo Android.</string>
-    <string name="mode_pkg">Instalar PKG</string>
-    <string name="mode_payload">Enviar payload</string>
-    <string name="console_ps4">PlayStation 4</string>
-    <string name="console_ps5">PlayStation 5</string>
-    <string name="console_ip">IP local do console</string>
-    <string name="download_url">Link direto de download</string>
-    <string name="port">Porta</string>
-    <string name="test_connection">Testar conexão</string>
-    <string name="send">Enviar</string>
+    <string name="app_name">OrbisDrop</string>
+    <string name="hero_title">Links em payloads diretos para o PS4</string>
+    <string name="hero_subtitle">Baixe um payload BIN ou ELF por link e transmita os bytes diretamente ao GoldHEN BinLoader na porta 9090.</string>
+    <string name="console_ip">IP local do PS4</string>
+    <string name="download_url">Link direto do payload</string>
+    <string name="send">Enviar ao PS4</string>
     <string name="trusted_payload">Confirmei o firmware e confio na origem do payload.</string>
     <string name="activity_log">Atividade</string>
-    <string name="clear_log">Limpar atividade</string>
-    <string name="copy_log">Copiar</string>
+    <string name="clear_log">Limpar</string>
+    <string name="copy_log">Copiar diagnóstico</string>
     <string name="paste_link">Colar link</string>
-    <string name="payload_catalog">Catálogo oficial</string>
     <string name="choose_payload_file">Arquivo do celular</string>
-    <string name="remove_file">Remover</string>
-    <string name="help_support">Ajuda, compatibilidade e suporte</string>
+    <string name="remove_file">Remover arquivo</string>
+    <string name="help_support">Ajuda e compatibilidade</string>
 </resources>
