@@ -10,10 +10,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingStart="18dp"
-        android:paddingTop="18dp"
-        android:paddingEnd="18dp"
-        android:paddingBottom="32dp">
+        android:paddingStart="16dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="24dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -22,8 +22,8 @@
             android:orientation="horizontal">
 
             <ImageView
-                android:layout_width="42dp"
-                android:layout_height="42dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:background="@drawable/ic_launcher_background"
                 android:contentDescription="@string/app_name"
                 android:padding="4dp"
@@ -32,10 +32,10 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="11dp"
+                android:layout_marginStart="9dp"
                 android:text="AKIRABOX"
                 android:textColor="@color/akira_text"
-                android:textSize="19sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -53,7 +53,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="38dp"
+            android:layout_marginTop="22dp"
             android:letterSpacing="0.12"
             android:text="PS4 &amp; PS5 TOOLKIT"
             android:textAllCaps="true"
@@ -64,28 +64,28 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="7dp"
             android:fontFamily="sans-serif-medium"
-            android:lineSpacingExtra="-3dp"
+            android:lineSpacingExtra="-2dp"
             android:text="@string/hero_title"
             android:textColor="@color/akira_text"
-            android:textSize="37sp"
+            android:textSize="31sp"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:lineSpacingExtra="3dp"
+            android:layout_marginTop="9dp"
+            android:lineSpacingExtra="2dp"
             android:text="@string/hero_subtitle"
             android:textColor="@color/akira_muted"
-            android:textSize="14sp" />
+            android:textSize="13sp" />
 
         <com.google.android.material.button.MaterialButtonToggleGroup
             android:id="@+id/modeGroup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="28dp"
+            android:layout_marginTop="20dp"
             app:checkedButton="@id/modePkg"
             app:selectionRequired="true"
             app:singleSelection="true">
@@ -94,7 +94,7 @@
                 android:id="@+id/modePkg"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="0dp"
-                android:layout_height="52dp"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:text="@string/mode_pkg"
                 android:textAllCaps="false"
@@ -107,7 +107,7 @@
                 android:id="@+id/modePayload"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="0dp"
-                android:layout_height="52dp"
+                android:layout_height="48dp"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:text="@string/mode_payload"
@@ -167,12 +167,25 @@
                     app:strokeColor="@color/akira_line" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
+            <TextView
+                android:id="@+id/modeHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_hint"
+                android:lineSpacingExtra="2dp"
+                android:padding="11dp"
+                android:text="Abra o Remote Package Installer/DPI no console • porta padrão 12800"
+                android:textColor="@color/akira_muted"
+                android:textSize="11sp" />
+
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/ipLayout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:hint="@string/console_ip">
+                android:layout_marginTop="12dp"
+                android:hint="@string/console_ip"
+                app:endIconMode="clear_text">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/consoleIp"
@@ -190,7 +203,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
-                android:hint="@string/download_url">
+                android:hint="@string/download_url"
+                app:endIconMode="clear_text">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/downloadUrl"
@@ -202,11 +216,27 @@
                     android:textColorHint="@color/akira_muted" />
             </com.google.android.material.textfield.TextInputLayout>
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pasteUrlButton"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_gravity="end"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minWidth="0dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="8dp"
+                android:text="@string/paste_link"
+                android:textAllCaps="false"
+                android:textColor="@color/akira_accent"
+                android:textSize="11sp" />
+
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/portLayout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="2dp"
                 android:hint="@string/port">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -261,23 +291,33 @@
                     android:id="@+id/testButton"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="0dp"
-                    android:layout_height="48dp"
+                    android:layout_height="52dp"
                     android:layout_weight="1"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:maxLines="1"
+                    android:minWidth="0dp"
                     android:text="@string/test_connection"
                     android:textAllCaps="false"
                     android:textColor="@color/akira_text"
+                    android:textSize="12sp"
                     app:cornerRadius="12dp"
                     app:strokeColor="@color/akira_line" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/sendButton"
                     android:layout_width="0dp"
-                    android:layout_height="48dp"
+                    android:layout_height="52dp"
                     android:layout_marginStart="9dp"
                     android:layout_weight="1"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:maxLines="1"
+                    android:minWidth="0dp"
                     android:text="@string/send"
                     android:textAllCaps="false"
                     android:textColor="@color/white"
+                    android:textSize="12sp"
                     app:backgroundTint="@color/akira_accent"
                     app:cornerRadius="12dp" />
             </LinearLayout>
@@ -306,6 +346,17 @@
                     android:textStyle="bold" />
 
                 <TextView
+                    android:id="@+id/copyLog"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:gravity="center"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="8dp"
+                    android:text="@string/copy_log"
+                    android:textColor="@color/akira_accent"
+                    android:textSize="10sp" />
+
+                <TextView
                     android:id="@+id/clearLog"
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
@@ -324,37 +375,26 @@
                 android:layout_marginTop="10dp"
                 android:fontFamily="monospace"
                 android:lineSpacingExtra="4dp"
-                android:minHeight="120dp"
+                android:minHeight="96dp"
                 android:text="--:--  INF  Pronto para configurar o console."
                 android:textColor="@color/akira_muted"
                 android:textIsSelectable="true"
                 android:textSize="10sp" />
         </LinearLayout>
 
-        <LinearLayout
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/helpButton"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="COMPATIBILIDADE"
-                android:textColor="@color/akira_accent"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:lineSpacingExtra="5dp"
-                android:text="• Android 7.0 ou superior\n• ARMv7 (armeabi-v7a) e ARM64 (arm64-v8a)\n• Remote Package Installer / DPI: porta 12800\n• GoldHEN BinLoader: porta 9090\n• etaHEN ELF Loader: porta 9021"
-                android:textColor="@color/akira_muted"
-                android:textSize="12sp" />
-        </LinearLayout>
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:text="@string/help_support"
+            android:textAllCaps="false"
+            android:textColor="@color/akira_text"
+            app:cornerRadius="12dp"
+            app:strokeColor="@color/akira_line" />
 
         <TextView
             android:layout_width="match_parent"

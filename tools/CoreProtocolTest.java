@@ -25,6 +25,7 @@ public final class CoreProtocolTest {
     public static void main(String[] args) throws Exception {
         testPrivateIps();
         testGitHubNormalization();
+        testSharedUrlExtraction();
         testInvalidPayloads();
         testExactTcpTransfer();
         System.out.println("Akirabox core protocol tests: OK");
@@ -46,6 +47,17 @@ public final class CoreProtocolTest {
                 value.equals("https://raw.githubusercontent.com/example/repo/main/payloads/goldhen.bin"),
                 "Link blob do GitHub não foi convertido"
         );
+    }
+
+    private static void testSharedUrlExtraction() {
+        check(
+                "https://example.com/payload.bin".equals(
+                        UrlUtils.extractFirstHttpUrl("Baixe aqui: (https://example.com/payload.bin).")
+                ),
+                "Link compartilhado não foi extraído corretamente"
+        );
+        check(UrlUtils.extractFirstHttpUrl("texto sem endereço") == null,
+                "Texto sem link deveria retornar nulo");
     }
 
     private static void testInvalidPayloads() throws Exception {

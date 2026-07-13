@@ -1,4 +1,5 @@
 # Akirabox para Android
+
 [![Build Akirabox APK](https://github.com/itayson/Akirabox-Android/actions/workflows/build-apk.yml/badge.svg)](https://github.com/itayson/Akirabox-Android/actions/workflows/build-apk.yml)
 
 Aplicativo nativo para instalar pacotes PKG e enviar payloads BIN/ELF diretamente a consoles PlayStation 4 e PlayStation 5 desbloqueados.
@@ -21,11 +22,15 @@ O app foi projetado para funcionar no celular sem computador, sem Termux e sem s
 - Instalação direta de PKG por URL.
 - Envio nativo de payload BIN/ELF por TCP, sem Akira Bridge.
 - Conversão automática de links `github.com/.../blob/...` para o arquivo bruto.
+- Recebimento de links pelo menu **Compartilhar** de navegadores e outros aplicativos.
+- Botão para colar links e memória separada dos últimos links de PKG e payload.
+- Validação completa do payload antes do envio, sem abrir a porta do BinLoader.
 - Bloqueio de HTML, ZIP, RAR, 7z, executáveis Windows e ELF inválido antes de acessar o console.
 - Transmissão em blocos de 8 KB para maior compatibilidade com o BinLoader.
 - Limite de payload configurado em 64 MB.
 - Cálculo SHA-256 após o download.
 - Interface em português e histórico de atividade local.
+- Diagnóstico copiável e ajuda integrada para facilitar o suporte.
 - Nenhum cadastro, rastreador ou armazenamento em servidor.
 
 ## Como obter o APK pelo GitHub
@@ -57,7 +62,8 @@ Os APKs de teste são assinados automaticamente pelo Android Gradle Plugin e pod
 2. Selecione **Enviar payload**.
 3. Informe o IP, a URL direta do BIN/ELF e confira a porta.
 4. Confirme que o arquivo é compatível com o firmware.
-5. Toque em **Enviar payload**.
+5. Toque em **Validar payload** para conferir o download sem acessar o console.
+6. Confirme a origem do arquivo e toque em **Enviar**.
 
 Não abra e feche a porta do BinLoader somente para testar: alguns receptores mostram `payload format error` quando recebem uma conexão vazia. O Akirabox valida o arquivo primeiro e abre a conexão apenas no envio real.
 

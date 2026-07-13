@@ -15,4 +15,7 @@
     <string name="trusted_payload">Confirmei o firmware e confio na origem do payload.</string>
     <string name="activity_log">Atividade</string>
     <string name="clear_log">Limpar atividade</string>
+    <string name="copy_log">Copiar</string>
+    <string name="paste_link">Colar link</string>
+    <string name="help_support">Ajuda, compatibilidade e suporte</string>
 </resources>
