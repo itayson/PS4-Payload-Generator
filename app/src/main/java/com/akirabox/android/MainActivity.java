@@ -52,7 +52,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class MainActivity extends AppCompatActivity {
     private static final String PREFS = "orbisdrop_settings";
     private static final int BINLOADER_PORT = 9090;
-    private static final long MAX_LOCAL_PAYLOAD_BYTES = 64L * 1024L * 1024L;
 
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
     private final SimpleDateFormat clock = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
@@ -344,10 +343,6 @@ public final class MainActivity extends AppCompatActivity {
                     .setNegativeButton("Cancelar", null).show();
             return;
         }
-        if (metadata.size > MAX_LOCAL_PAYLOAD_BYTES) {
-            Toast.makeText(this, "O payload ultrapassa 64 MB.", Toast.LENGTH_LONG).show();
-            return;
-        }
         try {
             getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (SecurityException ignored) { }
@@ -390,7 +385,6 @@ public final class MainActivity extends AppCompatActivity {
             int read;
             while ((read = source.read(buffer)) != -1) {
                 copied += read;
-                if (copied > MAX_LOCAL_PAYLOAD_BYTES) throw new IOException("Payload acima do limite de 64 MB.");
                 output.write(buffer, 0, read);
                 int percent = input.localPayloadSize > 0 ? (int) Math.min(100, copied * 100L / input.localPayloadSize) : -1;
                 listener.onProgress("Lendo arquivo local", percent, copied, input.localPayloadSize);
@@ -456,7 +450,7 @@ public final class MainActivity extends AppCompatActivity {
     private String formatBytes(long bytes) {
         if (bytes < 1024) return bytes + " B";
         double value = bytes;
-        String[] units = {"KB", "MB", "GB"};
+        String[] units = {"KB", "MB", "GB", "TB"};
         int unit = -1;
         do { value /= 1024.0; unit++; } while (value >= 1024 && unit < units.length - 1);
         return String.format(Locale.getDefault(), "%.1f %s", value, units[unit]);
