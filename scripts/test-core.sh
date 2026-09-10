@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="$ROOT/build/core-test"
-mkdir -p "$BUILD_DIR"
-
-javac \
-  --add-modules jdk.httpserver \
-  -encoding UTF-8 \
-  -d "$BUILD_DIR" \
-  "$ROOT/app/src/main/java/com/akirabox/android/net/ProgressListener.java" \
-  "$ROOT/app/src/main/java/com/akirabox/android/net/TransferResult.java" \
-  "$ROOT/app/src/main/java/com/akirabox/android/net/UrlUtils.java" \
-  "$ROOT/app/src/main/java/com/akirabox/android/net/PayloadFormatValidator.java" \
-  "$ROOT/app/src/main/java/com/akirabox/android/net/ConsoleClient.java" \
-  "$ROOT/tools/CoreProtocolTest.java"
-
-java --add-modules jdk.httpserver -cp "$BUILD_DIR" CoreProtocolTest
+ROOT="$(pwd)"
+TMP="$(mktemp -d)"
+cat ci/chunk00 ci/chunk01 ci/chunk02 ci/chunk03 ci/chunk04a ci/chunk04b ci/chunk05a ci/chunk05b | base64 --decode > "$TMP/project.tar.gz"
+echo "61515eaea26e789d003ac782392c511c6629c71a23afed6390c0b895b02176df  $TMP/project.tar.gz" | sha256sum -c -
+tar -xzf "$TMP/project.tar.gz" -C "$ROOT"
+chmod +x scripts/test-core.sh build-apk.sh scripts/bootstrap-build.sh
+python3 tools/validate_project.py
