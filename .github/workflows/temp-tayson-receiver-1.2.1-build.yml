@@ -1,0 +1,119 @@
+name: Temporary Tayson PS4 Receiver 1.2.1 RateGuard Build
+
+on:
+  push:
+    branches:
+      - build/tayson-ps4-suite-1.1.0
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Restore validated Receiver 1.2.0 source artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o /tmp/receiver120.zip \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10278493769/zip"
+          rm -rf /tmp/receiver120 /tmp/TaysonPS4Suite-1.2.1
+          mkdir -p /tmp/receiver120 /tmp/TaysonPS4Suite-1.2.1
+          unzip -q /tmp/receiver120.zip -d /tmp/receiver120
+          test -s /tmp/receiver120/TaysonPS4Suite-1.2.0-source.tar.gz
+          tar -xzf /tmp/receiver120/TaysonPS4Suite-1.2.0-source.tar.gz -C /tmp/TaysonPS4Suite-1.2.1 --strip-components=1
+
+      - name: Apply Receiver 1.2.1 RateGuard patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-1.2.1
+          python3 "$GITHUB_WORKSPACE/ci121/patch_receiver_121.py"
+          grep -q 'RECEIVER_VERSION "1.2.1"' ps4receiver/receiver/main.c
+          grep -q 'SEGMENT_SIZE (32 \* 1024 \* 1024)' ps4receiver/receiver/main.c
+          grep -q 'SEGMENT_WINDOW 2' ps4receiver/receiver/main.c
+          grep -q 'RATE_LIMIT_RETRIES 2' ps4receiver/receiver/main.c
+          grep -q 'duplicate=1' ps4receiver/receiver/main.c
+          grep -q 'VERSION     := 1.21' ps4receiver/Makefile
+
+      - name: Install OpenOrbis PS4 Toolchain 0.5.4
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if ! command -v ld.lld >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y lld
+          fi
+          curl -fL --retry 3 --retry-delay 3 \
+            -o /tmp/openorbis-toolchain.tar.gz \
+            https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz
+          echo '3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526  /tmp/openorbis-toolchain.tar.gz' | sha256sum -c -
+          rm -rf /tmp/openorbis
+          mkdir -p /tmp/openorbis
+          tar -xzf /tmp/openorbis-toolchain.tar.gz -C /tmp/openorbis
+          LINKX="$(find /tmp/openorbis -type f -name link.x -print -quit)"
+          test -n "$LINKX"
+          TOOLROOT="$(dirname "$LINKX")"
+          echo "OO_PS4_TOOLCHAIN=$TOOLROOT" >> "$GITHUB_ENV"
+
+      - name: Refresh OpenOrbis runtime modules
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-1.2.1
+          mkdir -p ps4receiver/sce_module ps4receiver/sce_sys/about
+          for module in libc.prx libSceFios2.prx; do
+            src="$(find "$OO_PS4_TOOLCHAIN" -type f -name "$module" -print -quit)"
+            test -n "$src"
+            cp "$src" "ps4receiver/sce_module/$module"
+          done
+          right="$(find "$OO_PS4_TOOLCHAIN" -type f -name right.sprx -print -quit || true)"
+          if [ -n "$right" ]; then cp "$right" ps4receiver/sce_sys/about/right.sprx; fi
+
+      - name: Build and validate Receiver 1.2.1
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-1.2.1
+          make -C ps4receiver clean pkg.gp4 2>&1 | tee receiver-build-1.2.1.log
+          test -s ps4receiver/eboot.bin
+          test -s ps4receiver/build/receiver.elf
+          grep -a -q '1.2.1' ps4receiver/build/receiver.elf
+          docker run --rm \
+            -v /tmp/openorbis/OpenOrbis/PS4Toolchain:/oo:ro \
+            -v /tmp/TaysonPS4Suite-1.2.1/ps4receiver:/work \
+            -w /work ubuntu:20.04 \
+            bash -lc 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libssl1.1 libicu66 zlib1g libcurl4 ca-certificates >/dev/null && /oo/bin/linux/PkgTool.Core pkg_build pkg.gp4 .'
+          test -s ps4receiver/IV0000-TYRC00001_00-TAYSONRECEIVER00.pkg
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-1.2.1
+          mkdir -p dist
+          cp ps4receiver/IV0000-TYRC00001_00-TAYSONRECEIVER00.pkg dist/Tayson-PS4-Receiver-1.2.1-RateGuard.pkg
+          cp ps4receiver/eboot.bin dist/Tayson-PS4-Receiver-1.2.1-RateGuard-eboot.bin
+          cp receiver-build-1.2.1.log dist/
+          tar -czf dist/TaysonPS4Suite-1.2.1-source.tar.gz --exclude='./dist' --exclude='./app/build' --exclude='./.gradle' .
+          (cd dist && sha256sum Tayson-PS4-Receiver-1.2.1-RateGuard.pkg Tayson-PS4-Receiver-1.2.1-RateGuard-eboot.bin TaysonPS4Suite-1.2.1-source.tar.gz > SHA256SUMS.txt)
+
+      - name: Upload Receiver 1.2.1
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tayson-PS4-Receiver-1.2.1-RateGuard
+          path: /tmp/TaysonPS4Suite-1.2.1/dist/*
+          if-no-files-found: error
+          retention-days: 30
