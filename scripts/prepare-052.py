@@ -110,6 +110,12 @@ v = replace_once(v, "check('version 0.5.1','versionName = \"0.5.1\"' in build)",
 v = replace_once(v, "check('versionCode 8','versionCode = 8' in build)", "check('versionCode 9','versionCode = 9' in build)", "validator versionCode")
 v = replace_once(
     v,
+    "check('AUTO native bridge providers','shouldNativeBridge' in main and all(x in main for x in ['Provider.ROOTZ','Provider.VIKINGFILE','Provider.AKIRABOX']))",
+    "check('AUTO native bridge universal routing','shouldNativeBridge' in main and 'SendMode.AUTO -> provider != Provider.MOCHA' in main)",
+    "validator legacy provider routing",
+)
+v = replace_once(
+    v,
     "check('AUTO captured protected flow uses bridge','SendMode.DIRECT' in main and 'info?.requestContext != null' in main and 'provider != Provider.MOCHA' in main)",
     "check('AUTO universal non-Mocha bridge','SendMode.DIRECT' in main and 'SendMode.AUTO -> provider != Provider.MOCHA' in main)",
     "validator AUTO routing",
