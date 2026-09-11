@@ -61,7 +61,7 @@ jobs:
             -o ps4receiver/third_party/jbc.o \
             https://raw.githubusercontent.com/barisyild/airpsx/aed9f7b54c45cd606969a6dceda5470528576803/toolchain/jbc.o
           test "$(stat -c%s ps4receiver/third_party/jbc.o)" = "32488"
-          calc="$((printf 'blob %s\0' "$(stat -c%s ps4receiver/third_party/jbc.o)"; cat ps4receiver/third_party/jbc.o) | sha1sum | awk '{print $1}')"
+          calc="$( (printf 'blob %s\0' "$(stat -c%s ps4receiver/third_party/jbc.o)"; cat ps4receiver/third_party/jbc.o) | sha1sum | awk '{print $1}' )"
           test "$calc" = "b28fe50deaad952cce14bed00fbf43500e65645c"
           cat > ps4receiver/third_party/README-libjbc.txt <<'EOF'
           Tayson PS4 Receiver 1.0.5 test dependency
