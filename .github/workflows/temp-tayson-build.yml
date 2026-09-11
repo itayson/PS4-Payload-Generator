@@ -29,7 +29,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Restore validated project bundle and apply 0.3.1 fix
+      - name: Restore validated project bundle and apply 0.3.2 fixes
         run: bash ./scripts/test-core.sh
 
       - name: Lint and build universal APK
@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/universal/debug/app-universal-debug.apk dist/Tayson-PS4-Link-Sender-0.3.1-universal-debug.apk
+          cp app/build/outputs/apk/universal/debug/app-universal-debug.apk dist/Tayson-PS4-Link-Sender-0.3.2-universal-debug.apk
           cd dist
           sha256sum *.apk > SHA256SUMS.txt
 
@@ -53,7 +53,7 @@ jobs:
         if: steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: Tayson-PS4-Link-Sender-0.3.1
+          name: Tayson-PS4-Link-Sender-0.3.2
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -70,12 +70,12 @@ jobs:
             echo "outcome=$BUILD_OUTCOME"
             echo "run_id=$RUN_ID"
             echo "source_sha=$SOURCE_SHA"
-          } > ci-output/result-031.txt
-          tail -n 250 ci-build.log > ci-output/build-tail-031.log || true
+          } > ci-output/result-032.txt
+          tail -n 250 ci-build.log > ci-output/build-tail-032.log || true
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add ci-output
-          git commit -m "CI_RESULT Tayson PS4 Link Sender 0.3.1: $BUILD_OUTCOME [skip ci]" || true
+          git commit -m "CI_RESULT Tayson PS4 Link Sender 0.3.2: $BUILD_OUTCOME [skip ci]" || true
           git push origin HEAD:build/tayson-ps4-link-sender-0.3.0 || true
 
       - name: Fail workflow when Android build failed
