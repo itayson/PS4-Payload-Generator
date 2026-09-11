@@ -127,6 +127,7 @@ jobs:
               raise SystemExit(f'expected 2 accept blocks, found {text.count(old_accept)}')
           text = text.replace(old_accept, new_accept)
           text = text.replace('peer.sin_addr.s_addr', 'peer.sin_addr')
+          text = text.replace('peer->sin_addr.s_addr', 'peer->sin_addr')
           text = text.replace('const struct sockaddr_in *peer', 'const receiver_net_sockaddr_in *peer')
 
           old_timeout = (
@@ -151,6 +152,7 @@ jobs:
           assert 'RECEIVER_NET_SOL_SOCKET 0xFFFF' in final
           assert 'RECEIVER_NET_SO_RCVTIMEO 0x1106' in final
           assert 'int timeout_us = 15 * 1000 * 1000;' in final
+          assert 'sin_addr.s_addr' not in final
           assert 'struct timeval tv' not in final
           assert 'socket(AF_INET' not in final
           assert 'accept(listener' not in final
