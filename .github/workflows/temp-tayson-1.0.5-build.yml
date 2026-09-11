@@ -1,0 +1,163 @@
+name: Temporary Tayson PS4 Receiver 1.0.5 Build
+
+on:
+  push:
+    branches:
+      - build/tayson-ps4-suite-1.0.5
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Restore validated Receiver 1.0.4 source artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o /tmp/receiver104.zip \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10274401824/zip"
+          rm -rf /tmp/receiver104 /tmp/TaysonPS4Suite-1.0.5
+          mkdir -p /tmp/receiver104 /tmp/TaysonPS4Suite-1.0.5
+          unzip -q /tmp/receiver104.zip -d /tmp/receiver104
+          test -s /tmp/receiver104/TaysonPS4Suite-1.0.4-source.tar.gz
+          tar -xzf /tmp/receiver104/TaysonPS4Suite-1.0.4-source.tar.gz \
+            -C /tmp/TaysonPS4Suite-1.0.5 --strip-components=1
+          test -f /tmp/TaysonPS4Suite-1.0.5/ps4receiver/receiver/main.c
+
+      - name: Apply 1.0.5 credential-elevation patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-1.0.5
+          python3 "$GITHUB_WORKSPACE/ci105/patch_receiver_105.py"
+          grep -q 'RECEIVER_VERSION "1.0.5"' ps4receiver/receiver/main.c
+          grep -q 'VERSION     := 1.05' ps4receiver/Makefile
+          grep -q 'elevate_receiver_credentials' ps4receiver/receiver/main.c
+          grep -q 'jbc-get-cred' ps4receiver/receiver/main.c
+          grep -q 'jbc-jailbreak-cred' ps4receiver/receiver/main.c
+          grep -q 'jbc-set-cred' ps4receiver/receiver/main.c
+
+      - name: Add pinned PS4 libjbc object
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-1.0.5
+          mkdir -p ps4receiver/third_party
+          curl -fL --retry 3 --retry-delay 2 \
+            -o ps4receiver/third_party/jbc.o \
+            https://raw.githubusercontent.com/barisyild/airpsx/aed9f7b54c45cd606969a6dceda5470528576803/toolchain/jbc.o
+          test "$(stat -c%s ps4receiver/third_party/jbc.o)" = "32488"
+          calc="$((printf 'blob %s\0' "$(stat -c%s ps4receiver/third_party/jbc.o)"; cat ps4receiver/third_party/jbc.o) | sha1sum | awk '{print $1}')"
+          test "$calc" = "b28fe50deaad952cce14bed00fbf43500e65645c"
+          cat > ps4receiver/third_party/README-libjbc.txt <<'EOF'
+          Tayson PS4 Receiver 1.0.5 test dependency
+
+          Component: libjbc object used for PS4 homebrew credential elevation
+          Source project: https://github.com/barisyild/airpsx
+          Pinned commit: aed9f7b54c45cd606969a6dceda5470528576803
+          Upstream path: toolchain/jbc.o
+          Git blob SHA-1: b28fe50deaad952cce14bed00fbf43500e65645c
+
+          The Receiver calls jbc lazily only when a package job is submitted;
+          normal startup/network PING remains on the safe-start path.
+          EOF
+
+      - name: Install OpenOrbis PS4 Toolchain 0.5.4
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if ! command -v ld.lld >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y lld
+          fi
+          curl -fL --retry 3 --retry-delay 3 \
+            -o /tmp/openorbis-toolchain.tar.gz \
+            https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz
+          echo '3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526  /tmp/openorbis-toolchain.tar.gz' | sha256sum -c -
+          rm -rf /tmp/openorbis
+          mkdir -p /tmp/openorbis
+          tar -xzf /tmp/openorbis-toolchain.tar.gz -C /tmp/openorbis
+          LINKX="$(find /tmp/openorbis -type f -name link.x -print -quit)"
+          test -n "$LINKX"
+          TOOLROOT="$(dirname "$LINKX")"
+          echo "OO_PS4_TOOLCHAIN=$TOOLROOT" >> "$GITHUB_ENV"
+          test -x "$TOOLROOT/bin/linux/create-fself"
+          test -x "$TOOLROOT/bin/linux/PkgTool.Core"
+          test -x "$TOOLROOT/bin/linux/create-gp4"
+
+      - name: Add OpenOrbis runtime modules
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-1.0.5
+          mkdir -p ps4receiver/sce_module ps4receiver/sce_sys/about
+          for module in libc.prx libSceFios2.prx; do
+            src="$(find "$OO_PS4_TOOLCHAIN" -type f -name "$module" -print -quit)"
+            test -n "$src"
+            cp "$src" "ps4receiver/sce_module/$module"
+          done
+          right="$(find "$OO_PS4_TOOLCHAIN" -type f -name right.sprx -print -quit || true)"
+          if [ -n "$right" ]; then cp "$right" ps4receiver/sce_sys/about/right.sprx; fi
+          test -s ps4receiver/sce_module/libc.prx
+          test -s ps4receiver/sce_module/libSceFios2.prx
+
+      - name: Build and validate Receiver 1.0.5
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-1.0.5
+          make -C ps4receiver clean pkg.gp4 2>&1 | tee receiver-build-1.0.5.log
+          test -s ps4receiver/eboot.bin
+          test -s ps4receiver/build/receiver.elf
+          readelf -d ps4receiver/build/receiver.elf | tee receiver-needed-1.0.5.txt
+          nm ps4receiver/build/receiver.elf | grep -q ' jbc_get_cred$'
+          nm ps4receiver/build/receiver.elf | grep -q ' jbc_jailbreak_cred$'
+          nm ps4receiver/build/receiver.elf | grep -q ' jbc_set_cred$'
+          ! grep -q 'libSceBgft.so' receiver-needed-1.0.5.txt
+          ! grep -q 'libSceAppInstUtil.so' receiver-needed-1.0.5.txt
+          docker run --rm \
+            -v /tmp/openorbis/OpenOrbis/PS4Toolchain:/oo:ro \
+            -v /tmp/TaysonPS4Suite-1.0.5/ps4receiver:/work \
+            -w /work ubuntu:20.04 \
+            bash -lc 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libssl1.1 libicu66 zlib1g libcurl4 ca-certificates >/dev/null && /oo/bin/linux/PkgTool.Core pkg_build pkg.gp4 .'
+          test -s ps4receiver/IV0000-TYRC00001_00-TAYSONRECEIVER00.pkg
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-1.0.5
+          mkdir -p dist
+          cp ps4receiver/IV0000-TYRC00001_00-TAYSONRECEIVER00.pkg dist/Tayson-PS4-Receiver-1.0.5.pkg
+          cp ps4receiver/eboot.bin dist/Tayson-PS4-Receiver-1.0.5-eboot.bin
+          cp receiver-build-1.0.5.log receiver-needed-1.0.5.txt dist/
+          tar -czf dist/TaysonPS4Suite-1.0.5-source.tar.gz \
+            --exclude='./dist' --exclude='./app/build' --exclude='./.gradle' .
+          (
+            cd dist
+            sha256sum Tayson-PS4-Receiver-1.0.5.pkg \
+              Tayson-PS4-Receiver-1.0.5-eboot.bin \
+              TaysonPS4Suite-1.0.5-source.tar.gz > SHA256SUMS.txt
+          )
+
+      - name: Upload Receiver 1.0.5
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tayson-PS4-Receiver-1.0.5
+          path: /tmp/TaysonPS4Suite-1.0.5/dist/*
+          if-no-files-found: error
+          retention-days: 30
