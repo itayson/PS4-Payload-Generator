@@ -63,7 +63,7 @@ jobs:
           test -x "$TOOLROOT/bin/linux/create-fself"
           test -x "$TOOLROOT/bin/linux/PkgTool.Core"
           test -x "$TOOLROOT/bin/linux/create-gp4"
-          ls -la "$TOOLROOT/lib" | head -100
+          echo "OpenOrbis toolchain ready at $TOOLROOT"
 
       - name: Build installable Tayson PS4 Receiver PKG
         shell: bash
