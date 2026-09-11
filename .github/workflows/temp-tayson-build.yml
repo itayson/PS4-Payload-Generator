@@ -1,4 +1,4 @@
-name: Temporary Tayson 0.5.2 Native Bridge Routing Build
+name: Temporary Tayson 0.5.3 Native Bridge Lazy HTTP Build
 
 on:
   push:
@@ -34,17 +34,19 @@ jobs:
         shell: bash
         run: bash ./scripts/test-core.sh
 
-      - name: Apply 0.5.1 native fixes and 0.5.2 routing fix
+      - name: Apply 0.5.1, 0.5.2 and 0.5.3 fixes
         shell: bash
         run: |
           set -euxo pipefail
           python3 scripts/prepare-051.py
           python3 scripts/prepare-052.py
-          grep -q 'versionCode = 9' app/build.gradle.kts
-          grep -q 'versionName = "0.5.2"' app/build.gradle.kts
+          python3 scripts/prepare-053.py
+          grep -q 'versionCode = 10' app/build.gradle.kts
+          grep -q 'versionName = "0.5.3"' app/build.gradle.kts
           grep -q '#define HTTP_HEADER_OVERWRITE 0' ps4bridge/main.c
-          grep -q 'pthread_create' ps4bridge/main.c
-          grep -q 'Tayson Native Bridge 0.5.2 iniciado' ps4bridge/main.c
+          grep -q 'Tayson Native Bridge 0.5.3 iniciado' ps4bridge/main.c
+          grep -q 'libSceNetCtl.sprx' ps4bridge/main.c
+          grep -q 'GET localhost recebido' ps4bridge/main.c
           grep -q 'SendMode.AUTO -> provider != Provider.MOCHA' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
 
       - name: Install PS4 Payload SDK
@@ -66,7 +68,7 @@ jobs:
           rm -rf ps4bridge/ps4-libjbc
           git clone --depth 1 https://github.com/sleirsgoevy/ps4-libjbc.git ps4bridge/ps4-libjbc
 
-      - name: Build PS4 Native Bridge ELF 0.5.2
+      - name: Build PS4 Native Bridge ELF 0.5.3
         id: bridge_build
         shell: bash
         run: |
@@ -78,7 +80,7 @@ jobs:
           sha256sum ps4bridge/native_bridge.elf
           cp ps4bridge/native_bridge.elf app/src/main/assets/native_bridge.elf
 
-      - name: Validate 0.5.2 source and native ELF
+      - name: Validate 0.5.3 source and native ELF
         shell: bash
         run: |
           set -euxo pipefail
@@ -86,39 +88,41 @@ jobs:
           test -s app/src/main/assets/native_bridge.elf
           grep -a -q 'TAYSON_BRIDGE_UPSTREAM_URL_V1' app/src/main/assets/native_bridge.elf
           grep -a -q 'TAYSON_BRIDGE_EXTRA_HEADERS_V1' app/src/main/assets/native_bridge.elf
-          grep -a -q 'Tayson Native Bridge 0.5.2 iniciado' app/src/main/assets/native_bridge.elf
+          grep -a -q 'Tayson Native Bridge 0.5.3 iniciado' app/src/main/assets/native_bridge.elf
+          grep -a -q 'HTTP etapa 1/4' app/src/main/assets/native_bridge.elf
+          grep -a -q 'GET localhost recebido' app/src/main/assets/native_bridge.elf
           if strings app/src/main/assets/native_bridge.elf | grep -qx 'Registro'; then
             echo 'Unexpected direct-template Registro string in Native Bridge ELF' >&2
             exit 1
           fi
 
-      - name: Lint and build universal APK 0.5.2
+      - name: Lint and build universal APK 0.5.3
         shell: bash
         run: |
           set -o pipefail
-          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug 2>&1 | tee ci-build-052.log
+          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug 2>&1 | tee ci-build-053.log
 
-      - name: Prepare 0.5.2 release artifacts
+      - name: Prepare 0.5.3 release artifacts
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p dist
           cp app/build/outputs/apk/universal/debug/app-universal-debug.apk \
-            dist/Tayson-PS4-Link-Sender-0.5.2-universal-debug.apk
+            dist/Tayson-PS4-Link-Sender-0.5.3-universal-debug.apk
           cp ps4bridge/native_bridge.elf \
-            dist/Tayson-PS4-Native-Bridge-0.5.2.elf
-          cp ci-build-052.log dist/android-build-0.5.2.log
+            dist/Tayson-PS4-Native-Bridge-0.5.3.elf
+          cp ci-build-053.log dist/android-build-0.5.3.log
           (
             cd dist
             sha256sum \
-              Tayson-PS4-Link-Sender-0.5.2-universal-debug.apk \
-              Tayson-PS4-Native-Bridge-0.5.2.elf > SHA256SUMS.txt
+              Tayson-PS4-Link-Sender-0.5.3-universal-debug.apk \
+              Tayson-PS4-Native-Bridge-0.5.3.elf > SHA256SUMS.txt
           )
 
-      - name: Upload 0.5.2 artifacts
+      - name: Upload 0.5.3 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Tayson-PS4-Link-Sender-0.5.2
+          name: Tayson-PS4-Link-Sender-0.5.3
           path: dist/*
           if-no-files-found: error
           retention-days: 30
