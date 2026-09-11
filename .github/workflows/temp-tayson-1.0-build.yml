@@ -73,11 +73,17 @@ jobs:
       - name: Build installable Tayson PS4 Receiver PKG
         shell: bash
         run: |
-          set -o pipefail
+          set -euxo pipefail
           cd /tmp/TaysonPS4Suite-1.0.0
-          make -C ps4receiver clean all 2>&1 | tee receiver-build-1.0.0.log
-          test -s ps4receiver/IV0000-TYRC00001_00-TAYSONRECEIVER00.pkg
+          make -C ps4receiver clean pkg.gp4 2>&1 | tee receiver-build-1.0.0.log
           test -s ps4receiver/eboot.bin
+          test -s ps4receiver/pkg.gp4
+          docker run --rm \
+            -v /tmp/openorbis/OpenOrbis/PS4Toolchain:/oo:ro \
+            -v /tmp/TaysonPS4Suite-1.0.0/ps4receiver:/work \
+            -w /work ubuntu:20.04 \
+            bash -lc 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libssl1.1 libicu66 zlib1g libcurl4 ca-certificates >/dev/null && /oo/bin/linux/PkgTool.Core pkg_build pkg.gp4 .'
+          test -s ps4receiver/IV0000-TYRC00001_00-TAYSONRECEIVER00.pkg
           file ps4receiver/eboot.bin || true
           sha256sum ps4receiver/IV0000-TYRC00001_00-TAYSONRECEIVER00.pkg ps4receiver/eboot.bin
 
