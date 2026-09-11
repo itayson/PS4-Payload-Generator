@@ -53,6 +53,48 @@ jobs:
           rm -rf ps4bridge/ps4-libjbc
           git clone --depth 1 https://github.com/sleirsgoevy/ps4-libjbc.git ps4bridge/ps4-libjbc
 
+      - name: Adapt legacy libjbc interface to modern PS4 SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          main = Path('ps4bridge/main.c')
+          s = main.read_text(encoding='utf-8')
+          legacy = '#include "ps4-libjbc/jailbreak.h"'
+          compat = r'''/* Minimal ps4-libjbc ABI declarations.  Do not include its legacy
+           * defs.h here: modern ps4-payload-sdk already defines pid_t/size_t. */
+          struct jbc_cred {
+              uint32_t uid;
+              uint32_t ruid;
+              uint32_t svuid;
+              uint32_t rgid;
+              uint32_t svgid;
+              uintptr_t prison;
+              uintptr_t cdir;
+              uintptr_t rdir;
+              uintptr_t jdir;
+              uint64_t sceProcType;
+              uint64_t sonyCred;
+              uint64_t sceProcCap;
+          };
+          int jbc_get_cred(struct jbc_cred *cred);
+          int jbc_jailbreak_cred(struct jbc_cred *cred);
+          int jbc_set_cred(const struct jbc_cred *cred);'''
+          if legacy not in s:
+              raise SystemExit('legacy libjbc include not found')
+          main.write_text(s.replace(legacy, compat, 1), encoding='utf-8')
+
+          mk = Path('ps4bridge/Makefile')
+          m = mk.read_text(encoding='utf-8')
+          old = 'LDLIBS := -L$(PS4_PAYLOAD_SDK)/target/lib -lkernel -lSceLibcInternal -lSceNet'
+          if old not in m:
+              raise SystemExit('expected LDLIBS line not found')
+          # orbis-clang already supplies libc, SceLibcInternal, SceNet and kernel_web.
+          mk.write_text(m.replace(old, 'LDLIBS :=', 1), encoding='utf-8')
+          PY
+
       - name: Build PS4 Native Bridge ELF
         id: bridge_build
         shell: bash
