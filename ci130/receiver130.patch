@@ -1,0 +1,342 @@
+--- ps4receiver/receiver/main.c
++++ ps4receiver/receiver/main.c
+@@ -10,6 +10,7 @@
+ #include <strings.h>
+ #include <sys/mman.h>
+ #include <sys/socket.h>
++#include <sys/stat.h>
+ #include <sys/time.h>
+ #include <unistd.h>
+ 
+@@ -19,7 +20,7 @@
+ #include <orbis/Ssl.h>
+ #include <orbis/Sysmodule.h>
+ 
+-#define RECEIVER_VERSION "1.2.2"
++#define RECEIVER_VERSION "1.3.0"
+ #define CONTROL_PORT 9095
+ #define PROXY_PORT 32112
+ #define MAX_CONTROL_PAYLOAD (96 * 1024)
+@@ -71,6 +72,15 @@
+ #define RATE_LIMIT_RETRIES 2
+ #define RATE_LIMIT_BACKOFF_BASE_SEC 4
+ 
++/* Persistent job registry. Only incomplete jobs are stored. The URL/header
++ * context is required because BGFT resumes through the Receiver's localhost
++ * proxy after the Receiver process itself has been restarted. */
++#define PERSIST_DIR "/data/tayson_receiver"
++#define PERSIST_PATH "/data/tayson_receiver/jobs-v1.bin"
++#define PERSIST_TMP_PATH "/data/tayson_receiver/jobs-v1.tmp"
++#define PERSIST_MAGIC 0x54595031U /* TYP1 */
++#define PERSIST_VERSION 1U
++
+ typedef struct {
+     uint8_t sin_len;
+     uint8_t sin_family;
+@@ -169,8 +179,19 @@
+     char content_id[128];
+     char file_name[512];
+     char package_type[32];
++    int parallel_disabled;
++    int rate_limit_hits;
+ } receiver_job;
+ 
++typedef struct {
++    uint32_t magic;
++    uint32_t version;
++    uint32_t record_size;
++    uint32_t max_jobs;
++    uint32_t next_job_id;
++    uint32_t checksum;
++} receiver_persist_header;
++
+ static receiver_job g_jobs[MAX_JOBS];
+ static pthread_mutex_t g_jobs_mutex = PTHREAD_MUTEX_INITIALIZER;
+ static uint32_t g_next_job_id = 1;
+@@ -190,6 +211,125 @@
+ static pthread_mutex_t g_segment_gate_mutex = PTHREAD_MUTEX_INITIALIZER;
+ static pthread_cond_t g_segment_gate_cond = PTHREAD_COND_INITIALIZER;
+ static int g_segment_fetchers = 0;
++static int g_restored_jobs = 0;
++static pthread_mutex_t g_persist_mutex = PTHREAD_MUTEX_INITIALIZER;
++
++static uint32_t persist_checksum(const void *data, size_t len) {
++    const uint8_t *p = (const uint8_t *)data;
++    uint32_t h = 2166136261U;
++    for (size_t i = 0; i < len; i++) {
++        h ^= p[i];
++        h *= 16777619U;
++    }
++    return h;
++}
++
++static int save_persisted_jobs(void) {
++    pthread_mutex_lock(&g_persist_mutex);
++    int result = -1;
++    receiver_job *snapshot = (receiver_job *)calloc(MAX_JOBS, sizeof(receiver_job));
++    if (!snapshot) goto done;
++    uint32_t next_id = 1;
++    pthread_mutex_lock(&g_jobs_mutex);
++    memcpy(snapshot, g_jobs, sizeof(g_jobs));
++    next_id = g_next_job_id;
++    pthread_mutex_unlock(&g_jobs_mutex);
++
++    /* Completed jobs stay visible in RAM for status, but their signed URLs and
++     * cookies do not need to survive a restart. */
++    for (int i = 0; i < MAX_JOBS; i++) {
++        if (!snapshot[i].used) continue;
++        if (snapshot[i].package_size > 0 && snapshot[i].total_served >= snapshot[i].package_size) {
++            memset(&snapshot[i], 0, sizeof(snapshot[i]));
++            continue;
++        }
++        snapshot[i].active_connections = 0;
++        snapshot[i].created_us = 0;
++        snapshot[i].last_activity_us = 0;
++    }
++
++    receiver_persist_header hdr;
++    memset(&hdr, 0, sizeof(hdr));
++    hdr.magic = PERSIST_MAGIC;
++    hdr.version = PERSIST_VERSION;
++    hdr.record_size = (uint32_t)sizeof(receiver_job);
++    hdr.max_jobs = MAX_JOBS;
++    hdr.next_job_id = next_id ? next_id : 1;
++    hdr.checksum = persist_checksum(snapshot, sizeof(g_jobs));
++
++    mkdir(PERSIST_DIR, 0700);
++    FILE *f = fopen(PERSIST_TMP_PATH, "wb");
++    if (!f) { free(snapshot); goto done; }
++    int ok = fwrite(&hdr, 1, sizeof(hdr), f) == sizeof(hdr) &&
++             fwrite(snapshot, 1, sizeof(g_jobs), f) == sizeof(g_jobs);
++    if (ok && fflush(f) == 0) fsync(fileno(f));
++    fclose(f);
++    free(snapshot);
++    if (!ok) { unlink(PERSIST_TMP_PATH); goto done; }
++    chmod(PERSIST_TMP_PATH, 0600);
++    if (rename(PERSIST_TMP_PATH, PERSIST_PATH) != 0) { unlink(PERSIST_TMP_PATH); goto done; }
++    chmod(PERSIST_PATH, 0600);
++    result = 0;
++done:
++    pthread_mutex_unlock(&g_persist_mutex);
++    return result;
++}
++
++static int load_persisted_jobs(void) {
++    pthread_mutex_lock(&g_persist_mutex);
++    int result = 0;
++    FILE *f = fopen(PERSIST_PATH, "rb");
++    if (!f) goto done;
++    receiver_persist_header hdr;
++    memset(&hdr, 0, sizeof(hdr));
++    if (fread(&hdr, 1, sizeof(hdr), f) != sizeof(hdr) ||
++        hdr.magic != PERSIST_MAGIC || hdr.version != PERSIST_VERSION ||
++        hdr.record_size != sizeof(receiver_job) || hdr.max_jobs != MAX_JOBS) {
++        fclose(f);
++        result = -1;
++        goto done;
++    }
++    receiver_job *snapshot = (receiver_job *)calloc(MAX_JOBS, sizeof(receiver_job));
++    if (!snapshot) { fclose(f); result = -1; goto done; }
++    int ok = fread(snapshot, 1, sizeof(g_jobs), f) == sizeof(g_jobs);
++    fclose(f);
++    if (!ok || persist_checksum(snapshot, sizeof(g_jobs)) != hdr.checksum) {
++        free(snapshot);
++        result = -1;
++        goto done;
++    }
++
++    uint32_t max_id = 0;
++    int restored = 0;
++    uint64_t now = sceKernelGetProcessTime();
++    pthread_mutex_lock(&g_jobs_mutex);
++    memset(g_jobs, 0, sizeof(g_jobs));
++    for (int i = 0; i < MAX_JOBS; i++) {
++        receiver_job *j = &snapshot[i];
++        if (!j->used || j->id == 0 || j->package_size == 0 ||
++            !j->content_id[0] || !j->file_name[0] || !j->package_type[0] ||
++            (strncmp(j->upstream_url, "http://", 7) != 0 && strncmp(j->upstream_url, "https://", 8) != 0))
++            continue;
++        j->active_connections = 0;
++        j->last_error = 0;
++        j->created_us = now;
++        j->last_activity_us = now;
++        g_jobs[i] = *j;
++        if (j->id > max_id) max_id = j->id;
++        restored++;
++    }
++    uint32_t candidate = hdr.next_job_id;
++    if (candidate == 0 || candidate <= max_id) candidate = max_id + 1;
++    if (candidate == 0) candidate = 1;
++    g_next_job_id = candidate;
++    pthread_mutex_unlock(&g_jobs_mutex);
++    free(snapshot);
++    g_restored_jobs = restored;
++    result = restored;
++done:
++    pthread_mutex_unlock(&g_persist_mutex);
++    return result;
++}
+ 
+ static void notify_text(const char *text) {
+     if (p_sceSysUtilSendSystemNotificationWithText) p_sceSysUtilSendSystemNotificationWithText(222, text);
+@@ -336,6 +476,9 @@
+     if (strncmp(out->upstream_url, "http://", 7) != 0 && strncmp(out->upstream_url, "https://", 8) != 0) return -1;
+     if (!out->content_id[0] || !out->file_name[0] || !out->package_type[0]) return -1;
+     if (!out->user_agent[0]) snprintf(out->user_agent, sizeof(out->user_agent), "TaysonPS4Receiver/%s", RECEIVER_VERSION);
++    /* Mocha has demonstrated HTTP 429 throttling under parallel Range fetches.
++     * Keep the proven large-buffer single-stream path for that provider. */
++    if (strstr(out->upstream_url, "mocha.my")) out->parallel_disabled = 1;
+     return 0;
+ }
+ 
+@@ -401,6 +544,7 @@
+     receiver_job *j = find_job_locked(id);
+     if (j) memset(j, 0, sizeof(*j));
+     pthread_mutex_unlock(&g_jobs_mutex);
++    save_persisted_jobs();
+ }
+ 
+ static int copy_job(uint32_t id, receiver_job *out) {
+@@ -417,6 +561,14 @@
+     receiver_job *j = find_job_locked(id);
+     if (j) { j->task_id = task_id; j->upstream_status = upstream_status; }
+     pthread_mutex_unlock(&g_jobs_mutex);
++    save_persisted_jobs();
++}
++
++static void job_disable_segmented(uint32_t id) {
++    pthread_mutex_lock(&g_jobs_mutex);
++    receiver_job *j = find_job_locked(id);
++    if (j) { j->parallel_disabled = 1; j->rate_limit_hits++; }
++    pthread_mutex_unlock(&g_jobs_mutex);
+ }
+ 
+ static void job_transfer_begin(uint32_t id) {
+@@ -452,6 +604,7 @@
+         j->last_activity_us = sceKernelGetProcessTime();
+     }
+     pthread_mutex_unlock(&g_jobs_mutex);
++    save_persisted_jobs();
+ }
+ 
+ static const char *job_state(const receiver_job *j) {
+@@ -473,18 +626,18 @@
+     pthread_mutex_unlock(&g_jobs_mutex);
+ 
+     char line[768];
+-    int n = snprintf(line, sizeof(line), "TAYSON/1 STATUS receiver=%s count=%d\n", RECEIVER_VERSION, count);
++    int n = snprintf(line, sizeof(line), "TAYSON/1 STATUS receiver=%s count=%d restored=%d persist=1\n", RECEIVER_VERSION, count, g_restored_jobs);
+     send_all(client, line, (size_t)n);
+     for (int i = 0; i < count; i++) {
+         receiver_job *j = &snapshot[i];
+         n = snprintf(line, sizeof(line),
+-            "TAYSON/1 JOB id=%u task=%d size=%llu frontier=%llu served=%llu active=%d upstream=%d error=%d state=%s content=%s\n",
++            "TAYSON/1 JOB id=%u task=%d size=%llu frontier=%llu served=%llu active=%d upstream=%d error=%d state=%s mode=%s content=%s\n",
+             j->id, j->task_id,
+             (unsigned long long)j->package_size,
+             (unsigned long long)j->frontier_bytes,
+             (unsigned long long)j->total_served,
+             j->active_connections, j->upstream_status, j->last_error,
+-            job_state(j), j->content_id);
++            job_state(j), j->parallel_disabled ? "single" : "adaptive", j->content_id);
+         send_all(client, line, (size_t)n);
+     }
+     respond_line(client, "TAYSON/1 END\n");
+@@ -513,6 +666,13 @@
+     return 0;
+ }
+ 
++static int ensure_http_stack_only(void) {
++    pthread_mutex_lock(&g_service_init_mutex);
++    int ret = load_http_stack();
++    pthread_mutex_unlock(&g_service_init_mutex);
++    return ret;
++}
++
+ static int elevate_receiver_credentials(void) {
+     if (g_privileged_credentials_ready) return 0;
+ 
+@@ -1156,7 +1316,10 @@
+      * CDN cool down, then finish the exact byte interval through the stable
+      * single-range path. This avoids turning a provider throttle into a local
+      * 502 error for BGFT. */
+-    if (fail_status == 429) sleep(RATE_LIMIT_BACKOFF_BASE_SEC);
++    if (fail_status == 429) {
++        job_disable_segmented(job_id);
++        sleep(RATE_LIMIT_BACKOFF_BASE_SEC);
++    }
+     if (current <= end) return stream_upstream_range(client, job, job_id, current, end, sent_total);
+     return 0;
+ }
+@@ -1202,6 +1365,11 @@
+         reply_error_http(client, 416, "Range Not Satisfiable"); return -1;
+     }
+ 
++    if (ensure_http_stack_only() < 0) {
++        reply_error_http(client, 503, "HTTP Stack Unavailable");
++        return -1;
++    }
++
+     job_transfer_begin(job_id);
+     upstream_request u;
+     int ret = upstream_open_with_backoff(&job, have_range ? range_value : NULL, &u);
+@@ -1261,7 +1429,7 @@
+ 
+     uint64_t sent = 0;
+     uint64_t absolute_end = body_len ? range_start + body_len - 1 : range_start;
+-    int use_segmented = body_len >= SEGMENT_MIN_BODY && job.upstream_status == 206;
++    int use_segmented = body_len >= SEGMENT_MIN_BODY && job.upstream_status == 206 && !job.parallel_disabled;
+     if (use_segmented) {
+         /* The first request was used only to validate the exact BGFT response
+          * length/status. Multi-range workers now fetch that same byte interval
+@@ -1439,12 +1607,22 @@
+     uint32_t job_id = 0;
+     int existing_task = BGFT_INVALID_TASK_ID;
+     if (find_duplicate_active_job(&parsed, &job_id, &existing_task)) {
+-        char existing[160];
+-        snprintf(existing, sizeof(existing),
+-                 "TAYSON/1 OK job=%u task=%d upstream=206 duplicate=1\n",
+-                 job_id, existing_task);
+-        respond_line(client, existing);
+-        return;
++        int32_t actual_task = BGFT_INVALID_TASK_ID;
++        int lookup = find_existing_bgft_task(parsed.content_id, &actual_task);
++        if (lookup == 0 && actual_task != BGFT_INVALID_TASK_ID) {
++            if (actual_task != existing_task) set_job_task(job_id, actual_task, 206);
++            char existing[192];
++            snprintf(existing, sizeof(existing),
++                     "TAYSON/1 OK job=%u task=%d upstream=206 duplicate=1 recovered=1\n",
++                     job_id, actual_task);
++            respond_line(client, existing);
++            return;
++        }
++        /* Persisted metadata outlived its BGFT task. Remove only our local
++         * registry entry and let normal registration create a fresh task. */
++        drop_job(job_id);
++        job_id = 0;
++        existing_task = BGFT_INVALID_TASK_ID;
+     }
+     if (allocate_job(&parsed, &job_id)) {
+         respond_line(client, "TAYSON/1 ERR job-table-full\n");
+@@ -1503,6 +1681,12 @@
+         for (;;) sleep(10);
+     }
+ 
++    int restored = load_persisted_jobs();
++    if (restored < 0) {
++        unlink(PERSIST_PATH);
++        g_restored_jobs = 0;
++    }
++
+     pthread_t proxy;
+     if (pthread_create(&proxy, NULL, proxy_thread, NULL) != 0) {
+         notify_text("Tayson Receiver: thread do proxy falhou");
+@@ -1516,7 +1700,7 @@
+         for (;;) sleep(10);
+     }
+ 
+-    notify_text("Tayson PS4 Receiver 1.1.1 ativo - porta 9095");
++    notify_text("Tayson PS4 Receiver 1.3.0 ativo - porta 9095");
+     printf("Tayson PS4 Receiver %s listening on TCP %d\n", RECEIVER_VERSION, CONTROL_PORT);
+ 
+     for (;;) {
