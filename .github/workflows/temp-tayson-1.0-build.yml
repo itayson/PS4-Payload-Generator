@@ -1,0 +1,116 @@
+name: Temporary Tayson PS4 Suite 1.0 Build
+
+on:
+  push:
+    branches:
+      - build/tayson-ps4-suite-1.0.0
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout temporary branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore Tayson PS4 Suite 1.0 source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat ci100/chunk00 ci100/chunk01 ci100/chunk02 ci100/chunk03 ci100/chunk04 ci100/chunk05 ci100/chunk06 ci100/chunk07 \
+            | base64 --decode > /tmp/TaysonPS4Suite-1.0.0-source.tar.gz
+          echo 'e0699edd368c3ab4529ab17348538f264abae97717a4da2cf876a4123f5def1b  /tmp/TaysonPS4Suite-1.0.0-source.tar.gz' | sha256sum -c -
+          rm -rf /tmp/TaysonPS4Suite-1.0.0
+          tar -xzf /tmp/TaysonPS4Suite-1.0.0-source.tar.gz -C /tmp
+          test -f /tmp/TaysonPS4Suite-1.0.0/app/build.gradle.kts
+          test -f /tmp/TaysonPS4Suite-1.0.0/ps4receiver/receiver/main.c
+          cd /tmp/TaysonPS4Suite-1.0.0
+          ./scripts/test-core.sh
+
+      - name: Install OpenOrbis PS4 Toolchain 0.5.4
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 --retry-delay 3 \
+            -o /tmp/openorbis-toolchain.tar.gz \
+            https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz
+          echo '3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526  /tmp/openorbis-toolchain.tar.gz' | sha256sum -c -
+          rm -rf /tmp/openorbis
+          mkdir -p /tmp/openorbis
+          tar -xzf /tmp/openorbis-toolchain.tar.gz -C /tmp/openorbis
+          LINKX="$(find /tmp/openorbis -type f -name link.x | head -1)"
+          test -n "$LINKX"
+          TOOLROOT="$(dirname "$LINKX")"
+          echo "OO_PS4_TOOLCHAIN=$TOOLROOT" >> "$GITHUB_ENV"
+          test -f "$TOOLROOT/include/orbis/Http.h"
+          test -x "$TOOLROOT/bin/linux/create-fself"
+          test -x "$TOOLROOT/bin/linux/PkgTool.Core"
+          test -x "$TOOLROOT/bin/linux/create-gp4"
+          ls -la "$TOOLROOT/lib" | head -100
+
+      - name: Build installable Tayson PS4 Receiver PKG
+        shell: bash
+        run: |
+          set -o pipefail
+          cd /tmp/TaysonPS4Suite-1.0.0
+          make -C ps4receiver clean all 2>&1 | tee receiver-build-1.0.0.log
+          test -s ps4receiver/IV0000-TYRC00001_00-TAYSONRECEIVER00.pkg
+          test -s ps4receiver/eboot.bin
+          file ps4receiver/eboot.bin || true
+          sha256sum ps4receiver/IV0000-TYRC00001_00-TAYSONRECEIVER00.pkg ps4receiver/eboot.bin
+
+      - name: Lint and build Android Sender 1.0.0
+        shell: bash
+        run: |
+          set -o pipefail
+          cd /tmp/TaysonPS4Suite-1.0.0
+          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug 2>&1 | tee android-build-1.0.0.log
+          test -s app/build/outputs/apk/universal/debug/app-universal-debug.apk
+
+      - name: Prepare Suite 1.0 artifacts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-1.0.0
+          mkdir -p dist
+          cp app/build/outputs/apk/universal/debug/app-universal-debug.apk \
+            dist/Tayson-PS4-Link-Sender-1.0.0-universal-debug.apk
+          cp ps4receiver/IV0000-TYRC00001_00-TAYSONRECEIVER00.pkg \
+            dist/Tayson-PS4-Receiver-1.0.0.pkg
+          cp ps4receiver/eboot.bin dist/Tayson-PS4-Receiver-1.0.0-eboot.bin
+          cp receiver-build-1.0.0.log dist/
+          cp android-build-1.0.0.log dist/
+          cp /tmp/TaysonPS4Suite-1.0.0-source.tar.gz dist/
+          (
+            cd dist
+            sha256sum \
+              Tayson-PS4-Link-Sender-1.0.0-universal-debug.apk \
+              Tayson-PS4-Receiver-1.0.0.pkg \
+              Tayson-PS4-Receiver-1.0.0-eboot.bin \
+              TaysonPS4Suite-1.0.0-source.tar.gz > SHA256SUMS.txt
+          )
+
+      - name: Upload Suite 1.0 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tayson-PS4-Suite-1.0.0
+          path: /tmp/TaysonPS4Suite-1.0.0/dist/*
+          if-no-files-found: error
+          retention-days: 30
