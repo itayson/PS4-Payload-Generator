@@ -13,16 +13,17 @@ Daemon will be stopped at the end of the build
 > Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preUniversalDebugBuild UP-TO-DATE
-> Task :app:checkUniversalDebugAarMetadata
 > Task :app:generateUniversalDebugResValues
+> Task :app:checkUniversalDebugAarMetadata
 > Task :app:mapUniversalDebugSourceSetPaths
 > Task :app:generateUniversalDebugResources
 > Task :app:createUniversalDebugCompatibleScreenManifests
 > Task :app:extractDeepLinksUniversalDebug
-> Task :app:processUniversalDebugMainManifest
 > Task :app:mergeUniversalDebugResources
-> Task :app:processUniversalDebugManifest
+> Task :app:processUniversalDebugMainManifest
 > Task :app:packageUniversalDebugResources
+> Task :app:parseUniversalDebugLocalResources
+> Task :app:processUniversalDebugManifest
 > Task :app:processUniversalDebugManifestForPackage
 > Task :app:javaPreCompileUniversalDebug
 > Task :app:preUniversalDebugAndroidTestBuild SKIPPED
@@ -30,7 +31,6 @@ Daemon will be stopped at the end of the build
 > Task :app:extractProguardFiles
 > Task :app:preUniversalDebugUnitTestBuild UP-TO-DATE
 > Task :app:mergeUniversalDebugNativeDebugMetadata NO-SOURCE
-> Task :app:parseUniversalDebugLocalResources
 > Task :app:mergeUniversalDebugShaders
 > Task :app:compileUniversalDebugShaders NO-SOURCE
 > Task :app:generateUniversalDebugAssets UP-TO-DATE
@@ -41,87 +41,18 @@ Daemon will be stopped at the end of the build
 > Task :app:desugarUniversalDebugFileDependencies
 
 > Task :app:compileUniversalDebugKotlin
-e: The daemon has terminated unexpectedly on startup attempt #1 with error code: 0. The daemon process output:
-    1. Kotlin compile daemon is ready
+e: file:///home/runner/work/Akirabox-Android/Akirabox-Android/app/src/main/java/com/tayson/ps4linksender/MainActivity.kt:66:13 Unresolved reference 'Build'.
 
+> Task :app:compileUniversalDebugKotlin FAILED
 > Task :app:mergeExtDexUniversalDebug
-> Task :app:mergeLibDexUniversalDebug
-> Task :app:mergeUniversalDebugJniLibFolders
-> Task :app:mergeUniversalDebugNativeLibs NO-SOURCE
-> Task :app:stripUniversalDebugDebugSymbols NO-SOURCE
-> Task :app:validateSigningUniversalDebug
-> Task :app:writeUniversalDebugAppMetadata
-> Task :app:writeUniversalDebugSigningConfigVersions
-
-> Task :app:compileUniversalDebugKotlin
-w: file:///home/runner/work/Akirabox-Android/Akirabox-Android/app/src/main/java/com/tayson/ps4linksender/web/LinkCaptureActivity.kt:97:89 'fun onBackPressed(): Unit' is deprecated. Deprecated in Java.
-
-> Task :app:compileUniversalDebugJavaWithJavac NO-SOURCE
-> Task :app:bundleUniversalDebugClassesToCompileJar
-> Task :app:generateUniversalDebugLintReportModel
-> Task :app:generateUniversalDebugAndroidTestLintModel
-> Task :app:generateUniversalDebugUnitTestLintModel
-> Task :app:lintAnalyzeUniversalDebugAndroidTest
-> Task :app:lintAnalyzeUniversalDebugUnitTest
-> Task :app:dexBuilderUniversalDebug
-> Task :app:mergeProjectDexUniversalDebug
-> Task :app:mergeUniversalDebugGlobalSynthetics
-> Task :app:processUniversalDebugJavaRes
-> Task :app:mergeUniversalDebugJavaResource
-> Task :app:packageUniversalDebug
-> Task :app:createUniversalDebugApkListingFileRedirect
-> Task :app:assembleUniversalDebug
-> Task :app:lintAnalyzeUniversalDebug
-
-> Task :app:lintReportUniversalDebug
-Wrote HTML report to file:///home/runner/work/Akirabox-Android/Akirabox-Android/app/build/reports/lint-results-universalDebug.html
-
-> Task :app:lintUniversalDebug FAILED
-Lint found 1 errors, 67 warnings. First failure:
-
-/home/runner/work/Akirabox-Android/Akirabox-Android/app/src/main/java/com/tayson/ps4linksender/relay/RelayService.kt:126: Error: When targeting Android 13 or higher, posting a permission requires holding the POST_NOTIFICATIONS permission [NotificationPermission]
-        nm.notify(NOTIFICATION_ID, notification(txt))
-        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-   Explanation for issues of type "NotificationPermission":
-   When targeting Android 13 and higher, posting permissions requires holding
-   the runtime permission android.permission.POST_NOTIFICATIONS.
-
-
-The full lint text report is located at:
-  /home/runner/work/Akirabox-Android/Akirabox-Android/app/build/intermediates/lint_intermediate_text_report/universalDebug/lintReportUniversalDebug/lint-results-universalDebug.txt
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/android_build-1789089093884.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/android_build-1789089375388.json
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:lintUniversalDebug'.
-> Lint found errors in the project; aborting build.
-  
-  Fix the issues identified by lint, or create a baseline to see only new errors.
-  To create a baseline, run `gradlew updateLintBaseline` after adding the following to the module's build.gradle file:
-  ```
-  android {
-      lint {
-          baseline = file("lint-baseline.xml")
-      }
-  }
-  ```
-  For more details, see https://developer.android.com/studio/write/lint#snapshot
-  
-  Lint found 1 errors, 67 warnings. First failure:
-  
-  /home/runner/work/Akirabox-Android/Akirabox-Android/app/src/main/java/com/tayson/ps4linksender/relay/RelayService.kt:126: Error: When targeting Android 13 or higher, posting a permission requires holding the POST_NOTIFICATIONS permission [NotificationPermission]
-          nm.notify(NOTIFICATION_ID, notification(txt))
-          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  
-     Explanation for issues of type "NotificationPermission":
-     When targeting Android 13 and higher, posting permissions requires holding
-     the runtime permission android.permission.POST_NOTIFICATIONS.
-  
-  
-  The full lint text report is located at:
-    /home/runner/work/Akirabox-Android/Akirabox-Android/app/build/intermediates/lint_intermediate_text_report/universalDebug/lintReportUniversalDebug/lint-results-universalDebug.txt
+Execution failed for task ':app:compileUniversalDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
 
 * Try:
 > Run with --stacktrace option to get the stack trace.
@@ -129,5 +60,5 @@ Execution failed for task ':app:lintUniversalDebug'.
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
 
-BUILD FAILED in 2m 37s
-44 actionable tasks: 44 executed
+BUILD FAILED in 2m 18s
+23 actionable tasks: 23 executed
