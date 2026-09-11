@@ -74,6 +74,8 @@ if 'import android.Manifest' not in s:
     s = s.replace('package com.tayson.ps4linksender\n\n', 'package com.tayson.ps4linksender\n\nimport android.Manifest\n')
 if 'import android.content.pm.PackageManager' not in s:
     s = s.replace('import android.content.Intent\n', 'import android.content.Intent\nimport android.content.pm.PackageManager\n')
+if 'import android.os.Build' not in s:
+    s = s.replace('import android.os.Bundle\n', 'import android.os.Build\nimport android.os.Bundle\n')
 marker = '        super.onCreate(savedInstanceState)\n'
 request = marker + '        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {\n            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 4040)\n        }\n'
 if 'requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS)' not in s:
