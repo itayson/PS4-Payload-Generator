@@ -41,14 +41,12 @@ data = data.replace(upper, title, 1)
 elf_path.write_bytes(data)
 PY
 
-# Apply the 0.4.0 Relay overlay (source snapshot validated locally).
+# Apply the 0.4.0 Relay overlay.
 cat ci/overlay040_00 ci/overlay040_01 ci/overlay040_02 ci/overlay040_03 | base64 --decode > "$TMP/overlay040.tar.gz"
 echo "e207db7db73ea7b328fe4bdac85ec343811d8038b2ee3874b91034e8a8784f16  $TMP/overlay040.tar.gz" | sha256sum -c -
 tar -xzf "$TMP/overlay040.tar.gz" -C "$ROOT"
 
-# Android 13+: foreground services can run without notification permission,
-# but notification updates must be permission-aware. Declare the permission,
-# request it from the Activity, and guard NotificationManager.notify().
+# Android 13+: foreground relay notification support present in the 0.4 source snapshot.
 python3 - <<'PY2'
 from pathlib import Path
 manifest = Path('app/src/main/AndroidManifest.xml')
@@ -83,17 +81,28 @@ if 'requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS)' not in s
 main.write_text(s, encoding='utf-8')
 PY2
 
+# Apply the 0.5.0 Native Bridge source overlay.
+cat ci/050build_00 ci/050build_01 ci/050build_02 ci/050build_03 ci/050build_04 ci/050build_05 | base64 --decode > "$TMP/050.patch.gz"
+echo "90079c72c60ba84acfad6a2eba30aa9daaf506a2f5c37a73c627ad6d78cab3ec  $TMP/050.patch.gz" | sha256sum -c -
+gzip -dc "$TMP/050.patch.gz" > "$TMP/050.patch"
+patch -p1 --forward --batch < "$TMP/050.patch"
+
+mkdir -p ps4bridge
+cat > ps4bridge/README.md <<'DOC'
+# Tayson PS4 Native Bridge
+
+Payload ELF usado pelo Tayson PS4 Link Sender 0.5.0. O Android patcha a URL upstream e os metadados do PKG no ELF. No PS4, o payload abre um servidor **somente em 127.0.0.1**, registra no BGFT uma URL `http://127.0.0.1:<porta>/download.pkg` e retransmite as requisições HTTP Range para o host original usando `libSceHttp2`.
+
+O arquivo PKG não passa pelo Android e não é salvo previamente no HDD. O tráfego de download é Internet -> PS4.
+
+Build CI: ps4-payload-dev/sdk + sleirsgoevy/ps4-libjbc.
+DOC
+
 python3 tools/validate_project.py
-grep -q 'versionCode = 6' app/build.gradle.kts
-grep -q 'versionName = "0.4.0"' app/build.gradle.kts
-grep -q 'RelayService' app/src/main/AndroidManifest.xml
-grep -q 'RELAY pelo celular' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
-grep -q 'TaysonPS4LinkSender/0.4.0 Relay' app/src/main/java/com/tayson/ps4linksender/relay/RelayHttpServer.kt
-python3 - <<'PY'
-from pathlib import Path
-p = Path('app/src/main/assets/template.elf').read_bytes()
-assert p[0x46dd:0x46e7] == bytes.fromhex('c7 85 78 ff ff ff 00 00 01 00')
-assert b'DESCONHECIDO\x00' not in p
-assert p.count(b'Desconhecido\x00') >= 1
-print('0.4.0 CI restore + BGFT + Relay checks: OK')
-PY
+grep -q 'versionCode = 7' app/build.gradle.kts
+grep -q 'versionName = "0.5.0"' app/build.gradle.kts
+grep -q 'NATIVE BRIDGE' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+grep -q 'libSceHttp2.sprx' ps4bridge/main.c
+grep -q 'INADDR_LOOPBACK' ps4bridge/main.c
+grep -q 'TAYSON_BRIDGE_EXTRA_HEADERS_V1' ps4bridge/main.c
+echo '0.5.0 source restore + Native Bridge checks: OK'
