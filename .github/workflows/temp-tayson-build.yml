@@ -1,4 +1,4 @@
-name: Temporary Tayson 0.5.4 Native Bridge PS4 Network Build
+name: Temporary Tayson 0.5.5 Native Bridge Skip NetCtl Build
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
         shell: bash
         run: bash ./scripts/test-core.sh
 
-      - name: Apply 0.5.1 through 0.5.4 fixes
+      - name: Apply 0.5.1 through 0.5.5 fixes
         shell: bash
         run: |
           set -euxo pipefail
@@ -42,14 +42,16 @@ jobs:
           python3 scripts/prepare-052.py
           python3 scripts/prepare-053.py
           python3 scripts/prepare-054.py
-          grep -q 'versionCode = 11' app/build.gradle.kts
-          grep -q 'versionName = "0.5.4"' app/build.gradle.kts
+          python3 scripts/prepare-055.py
+          grep -q 'versionCode = 12' app/build.gradle.kts
+          grep -q 'versionName = "0.5.5"' app/build.gradle.kts
           grep -q '#define HTTP_HEADER_OVERWRITE 0' ps4bridge/main.c
-          grep -q 'Tayson Native Bridge 0.5.4 iniciado' ps4bridge/main.c
+          grep -q 'Tayson Native Bridge 0.5.5 iniciado' ps4bridge/main.c
+          grep -q 'NET 1/2 - NetInit (NetCtl ignorado)' ps4bridge/main.c
+          ! grep -q 'ret = p_netctl_init();' ps4bridge/main.c
           grep -q 'libSceHttp.sprx' ps4bridge/main.c
           ! grep -q 'libSceHttp2.sprx' ps4bridge/main.c
           grep -q 'preflight CDN bytes=0-0' ps4bridge/main.c
-          grep -q 'NET 1/3 - NetCtl' ps4bridge/main.c
           grep -q 'SendMode.AUTO -> provider != Provider.MOCHA' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
 
       - name: Install PS4 Payload SDK
@@ -71,7 +73,7 @@ jobs:
           rm -rf ps4bridge/ps4-libjbc
           git clone --depth 1 https://github.com/sleirsgoevy/ps4-libjbc.git ps4bridge/ps4-libjbc
 
-      - name: Build PS4 Native Bridge ELF 0.5.4
+      - name: Build PS4 Native Bridge ELF 0.5.5
         shell: bash
         run: |
           set -euxo pipefail
@@ -82,7 +84,7 @@ jobs:
           sha256sum ps4bridge/native_bridge.elf
           cp ps4bridge/native_bridge.elf app/src/main/assets/native_bridge.elf
 
-      - name: Validate 0.5.4 source and native ELF
+      - name: Validate 0.5.5 source and native ELF
         shell: bash
         run: |
           set -euxo pipefail
@@ -90,7 +92,8 @@ jobs:
           test -s app/src/main/assets/native_bridge.elf
           grep -a -q 'TAYSON_BRIDGE_UPSTREAM_URL_V1' app/src/main/assets/native_bridge.elf
           grep -a -q 'TAYSON_BRIDGE_EXTRA_HEADERS_V1' app/src/main/assets/native_bridge.elf
-          grep -a -q 'Tayson Native Bridge 0.5.4 iniciado' app/src/main/assets/native_bridge.elf
+          grep -a -q 'Tayson Native Bridge 0.5.5 iniciado' app/src/main/assets/native_bridge.elf
+          grep -a -q 'NET 1/2 - NetInit (NetCtl ignorado)' app/src/main/assets/native_bridge.elf
           grep -a -q 'preflight CDN bytes=0-0' app/src/main/assets/native_bridge.elf
           grep -a -q 'libSceHttp' app/src/main/assets/native_bridge.elf
           if strings app/src/main/assets/native_bridge.elf | grep -qx 'Registro'; then
@@ -98,33 +101,33 @@ jobs:
             exit 1
           fi
 
-      - name: Lint and build universal APK 0.5.4
+      - name: Lint and build universal APK 0.5.5
         shell: bash
         run: |
           set -o pipefail
-          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug 2>&1 | tee ci-build-054.log
+          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug 2>&1 | tee ci-build-055.log
 
-      - name: Prepare 0.5.4 release artifacts
+      - name: Prepare 0.5.5 release artifacts
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p dist
           cp app/build/outputs/apk/universal/debug/app-universal-debug.apk \
-            dist/Tayson-PS4-Link-Sender-0.5.4-universal-debug.apk
+            dist/Tayson-PS4-Link-Sender-0.5.5-universal-debug.apk
           cp ps4bridge/native_bridge.elf \
-            dist/Tayson-PS4-Native-Bridge-0.5.4.elf
-          cp ci-build-054.log dist/android-build-0.5.4.log
+            dist/Tayson-PS4-Native-Bridge-0.5.5.elf
+          cp ci-build-055.log dist/android-build-0.5.5.log
           (
             cd dist
             sha256sum \
-              Tayson-PS4-Link-Sender-0.5.4-universal-debug.apk \
-              Tayson-PS4-Native-Bridge-0.5.4.elf > SHA256SUMS.txt
+              Tayson-PS4-Link-Sender-0.5.5-universal-debug.apk \
+              Tayson-PS4-Native-Bridge-0.5.5.elf > SHA256SUMS.txt
           )
 
-      - name: Upload 0.5.4 artifacts
+      - name: Upload 0.5.5 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Tayson-PS4-Link-Sender-0.5.4
+          name: Tayson-PS4-Link-Sender-0.5.5
           path: dist/*
           if-no-files-found: error
           retention-days: 30
