@@ -48,6 +48,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          if ! command -v ld.lld >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y lld
+          fi
+          ld.lld --version
           curl -fL --retry 3 --retry-delay 3 \
             -o /tmp/openorbis-toolchain.tar.gz \
             https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz
