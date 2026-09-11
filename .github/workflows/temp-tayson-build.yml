@@ -1,4 +1,4 @@
-name: Temporary Tayson 0.5.0 Native Bridge Build
+name: Temporary Tayson 0.5.1 Native Bridge 403 Fix Build
 
 on:
   push:
@@ -34,6 +34,16 @@ jobs:
         shell: bash
         run: bash ./scripts/test-core.sh
 
+      - name: Apply 0.5.1 403 and loopback fixes
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 scripts/prepare-051.py
+          grep -q 'versionCode = 8' app/build.gradle.kts
+          grep -q 'versionName = "0.5.1"' app/build.gradle.kts
+          grep -q '#define HTTP_HEADER_OVERWRITE 0' ps4bridge/main.c
+          grep -q 'pthread_create' ps4bridge/main.c
+
       - name: Install PS4 Payload SDK
         shell: bash
         run: |
@@ -53,92 +63,7 @@ jobs:
           rm -rf ps4bridge/ps4-libjbc
           git clone --depth 1 https://github.com/sleirsgoevy/ps4-libjbc.git ps4bridge/ps4-libjbc
 
-      - name: Adapt native bridge to modern PS4 SDK
-        shell: bash
-        run: |
-          set -euxo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          main = Path('ps4bridge/main.c')
-          s = main.read_text(encoding='utf-8')
-
-          legacy = '#include "ps4-libjbc/jailbreak.h"'
-          compat = r'''/* Minimal ps4-libjbc ABI declarations.  Do not include its legacy
-           * defs.h here: modern ps4-payload-sdk already defines pid_t/size_t. */
-          struct jbc_cred {
-              uint32_t uid;
-              uint32_t ruid;
-              uint32_t svuid;
-              uint32_t rgid;
-              uint32_t svgid;
-              uintptr_t prison;
-              uintptr_t cdir;
-              uintptr_t rdir;
-              uintptr_t jdir;
-              uint64_t sceProcType;
-              uint64_t sonyCred;
-              uint64_t sceProcCap;
-          };
-          int jbc_get_cred(struct jbc_cred *cred);
-          int jbc_jailbreak_cred(struct jbc_cred *cred);
-          int jbc_set_cred(const struct jbc_cred *cred);'''
-          if s.count(legacy) != 1:
-              raise SystemExit(f'legacy libjbc include count={s.count(legacy)}')
-          s = s.replace(legacy, compat, 1)
-
-          old_size = 'static uint64_t g_package_size = UINT64_C(0x1122334455667788);'
-          new_size = 'static volatile uint64_t g_package_size = UINT64_C(0x1122334455667788);'
-          old_port = 'static uint64_t g_bridge_port = UINT64_C(0xA1B2C3D4E5F6BEEF);'
-          new_port = 'static volatile uint64_t g_bridge_port = UINT64_C(0xA1B2C3D4E5F6BEEF);'
-          if s.count(old_size) != 1 or s.count(old_port) != 1:
-              raise SystemExit('numeric sentinel declarations not found uniquely')
-          s = s.replace(old_size, new_size, 1).replace(old_port, new_port, 1)
-
-          sentinel_guard = re.compile(
-              r'g_package_size\s*==\s*UINT64_C\(0x1122334455667788\)\s*\|\|\s*'
-              r'g_bridge_port\s*==\s*UINT64_C\(0xA1B2C3D4E5F6BEEF\)'
-          )
-          s, n = sentinel_guard.subn(
-              'g_package_size == 0 || g_bridge_port < 1024 || g_bridge_port > 65535',
-              s,
-              count=1,
-          )
-          if n != 1:
-              raise SystemExit(f'numeric sentinel runtime guard replacements={n}')
-
-          # After replacing the guard, each sentinel literal must occur only in its
-          # writable data initializer, so Android has one unambiguous patch target.
-          if s.count('0x1122334455667788') != 1:
-              raise SystemExit('size sentinel still appears more than once in C source')
-          if s.count('0xA1B2C3D4E5F6BEEF') != 1:
-              raise SystemExit('port sentinel still appears more than once in C source')
-          main.write_text(s, encoding='utf-8')
-
-          mk = Path('ps4bridge/Makefile')
-          m = mk.read_text(encoding='utf-8')
-          old = 'LDLIBS := -L$(PS4_PAYLOAD_SDK)/target/lib -lkernel -lSceLibcInternal -lSceNet'
-          if m.count(old) != 1:
-              raise SystemExit('expected LDLIBS line not found uniquely')
-          m = m.replace(old, 'LDLIBS :=', 1)
-          old_flags = 'CFLAGS := -Wall -Wextra -Wno-unused-parameter -O2 -g -I ps4-libjbc'
-          new_flags = 'CFLAGS := -Wall -Wextra -Wno-unused-parameter -O2 -I ps4-libjbc'
-          if m.count(old_flags) != 1:
-              raise SystemExit('expected CFLAGS line not found uniquely')
-          m = m.replace(old_flags, new_flags, 1)
-          mk.write_text(m, encoding='utf-8')
-
-          validator = Path('tools/validate_project.py')
-          v = validator.read_text(encoding='utf-8')
-          bad = "b'TAYSON_BRIDGE_PACKAGE_TYPE_V1','TAYSON_BRIDGE_EXTRA_HEADERS_V1'"
-          good = "b'TAYSON_BRIDGE_PACKAGE_TYPE_V1',b'TAYSON_BRIDGE_EXTRA_HEADERS_V1'"
-          if v.count(bad) != 1:
-              raise SystemExit('expected validator bytes bug not found uniquely')
-          validator.write_text(v.replace(bad, good, 1), encoding='utf-8')
-          PY
-
-      - name: Build PS4 Native Bridge ELF
+      - name: Build PS4 Native Bridge ELF 0.5.1
         id: bridge_build
         shell: bash
         run: |
@@ -150,7 +75,7 @@ jobs:
           sha256sum ps4bridge/native_bridge.elf
           cp ps4bridge/native_bridge.elf app/src/main/assets/native_bridge.elf
 
-      - name: Validate patched Android project
+      - name: Validate 0.5.1 source and native ELF
         shell: bash
         run: |
           set -euxo pipefail
@@ -159,33 +84,33 @@ jobs:
           grep -a -q 'TAYSON_BRIDGE_UPSTREAM_URL_V1' app/src/main/assets/native_bridge.elf
           grep -a -q 'TAYSON_BRIDGE_EXTRA_HEADERS_V1' app/src/main/assets/native_bridge.elf
 
-      - name: Lint and build universal APK
+      - name: Lint and build universal APK 0.5.1
         shell: bash
         run: |
           set -o pipefail
-          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug 2>&1 | tee ci-build-050.log
+          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug 2>&1 | tee ci-build-051.log
 
-      - name: Prepare release artifacts
+      - name: Prepare 0.5.1 release artifacts
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p dist
           cp app/build/outputs/apk/universal/debug/app-universal-debug.apk \
-            dist/Tayson-PS4-Link-Sender-0.5.0-universal-debug.apk
+            dist/Tayson-PS4-Link-Sender-0.5.1-universal-debug.apk
           cp ps4bridge/native_bridge.elf \
-            dist/Tayson-PS4-Native-Bridge-0.5.0.elf
-          cp ci-build-050.log dist/android-build-0.5.0.log
+            dist/Tayson-PS4-Native-Bridge-0.5.1.elf
+          cp ci-build-051.log dist/android-build-0.5.1.log
           (
             cd dist
             sha256sum \
-              Tayson-PS4-Link-Sender-0.5.0-universal-debug.apk \
-              Tayson-PS4-Native-Bridge-0.5.0.elf > SHA256SUMS.txt
+              Tayson-PS4-Link-Sender-0.5.1-universal-debug.apk \
+              Tayson-PS4-Native-Bridge-0.5.1.elf > SHA256SUMS.txt
           )
 
-      - name: Upload 0.5.0 artifacts
+      - name: Upload 0.5.1 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Tayson-PS4-Link-Sender-0.5.0
+          name: Tayson-PS4-Link-Sender-0.5.1
           path: dist/*
           if-no-files-found: error
           retention-days: 30
