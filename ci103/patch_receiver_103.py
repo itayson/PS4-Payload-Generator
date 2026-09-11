@@ -1,0 +1,41 @@
+from pathlib import Path
+p=Path('ps4receiver/receiver/main.c')
+t=p.read_text()
+t=t.replace('#include <orbis/AppInstUtil.h>\n','').replace('#include <orbis/SysUtil.h>\n','').replace('#include <orbis/UserService.h>\n','')
+t=t.replace('#include <orbis/Http.h>\n', '#include <orbis/Http.h>\n#include <orbis/libkernel.h>\n')
+t=t.replace('#define RECEIVER_VERSION "1.0.2"', '#define RECEIVER_VERSION "1.0.3"')
+old='''extern int32_t sceBgftServiceIntInit(receiver_bgft_init_params *params);\nextern int32_t sceBgftServiceIntDebugDownloadRegisterPkg(receiver_bgft_download_param *params, int32_t *task_id);\nextern int32_t sceBgftServiceIntDownloadStartTask(int32_t task_id);\n'''
+new='''typedef int32_t (*receiver_appinst_init_fn)(void);\ntypedef int32_t (*receiver_user_init_fn)(void *params);\ntypedef int32_t (*receiver_user_get_fg_fn)(int *user_id);\ntypedef int32_t (*receiver_bgft_init_fn)(receiver_bgft_init_params *params);\ntypedef int32_t (*receiver_bgft_register_fn)(receiver_bgft_download_param *params, int32_t *task_id);\ntypedef int32_t (*receiver_bgft_start_fn)(int32_t task_id);\ntypedef void (*receiver_notify_fn)(int type, const char *text);\n\nstatic receiver_appinst_init_fn p_sceAppInstUtilInitialize = NULL;\nstatic receiver_user_init_fn p_sceUserServiceInitialize = NULL;\nstatic receiver_user_get_fg_fn p_sceUserServiceGetForegroundUser = NULL;\nstatic receiver_bgft_init_fn p_sceBgftServiceIntInit = NULL;\nstatic receiver_bgft_register_fn p_sceBgftServiceIntDebugDownloadRegisterPkg = NULL;\nstatic receiver_bgft_start_fn p_sceBgftServiceIntDownloadStartTask = NULL;\nstatic receiver_notify_fn p_sceSysUtilSendSystemNotificationWithText = NULL;\n'''
+assert old in t
+t=t.replace(old,new)
+old='''static int g_http_ctx = -1;\nstatic void *g_bgft_heap = NULL;\n\nstatic void notify_text(const char *text) {\n    sceSysUtilSendSystemNotificationWithText(222, text);\n}\n'''
+new='''static int g_http_ctx = -1;\nstatic void *g_bgft_heap = NULL;\nstatic int g_transfer_services_ready = 0;\nstatic pthread_mutex_t g_service_init_mutex = PTHREAD_MUTEX_INITIALIZER;\n\nstatic void notify_text(const char *text) {\n    if (p_sceSysUtilSendSystemNotificationWithText) p_sceSysUtilSendSystemNotificationWithText(222, text);\n}\n\nstatic int load_module_symbol(const char *path, const char *symbol, void **out) {\n    int32_t h = (int32_t)sceKernelLoadStartModule(path, 0, NULL, 0, NULL, NULL);\n    if (h < 0) return h;\n    *out = NULL;\n    int32_t r = sceKernelDlsym(h, symbol, out);\n    return (r < 0 || !*out) ? (r < 0 ? r : -1) : h;\n}\n\nstatic void try_init_notifications(void) {\n    if (p_sceSysUtilSendSystemNotificationWithText) return;\n    void *s = NULL;\n    int r = load_module_symbol("/system/common/lib/libSceSysUtil.sprx", "sceSysUtilSendSystemNotificationWithText", &s);\n    if (r >= 0) p_sceSysUtilSendSystemNotificationWithText = (receiver_notify_fn)s;\n}\n'''
+assert old in t
+t=t.replace(old,new)
+a=t.index('static int load_modules_and_network(void) {')
+b=t.index('static int init_bgft(void) {',a)
+replacement='''static int load_control_network(void) {\n    if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NET) < 0) return -1;\n    int ret = sceNetInit();\n    if (ret < 0 && (unsigned int)ret != 0x80410004U) return ret;\n    ret = sceNetPoolCreate("TaysonReceiver", NET_POOL_SIZE, 0);\n    if (ret < 0) return ret;\n    g_net_pool = ret;\n    return 0;\n}\n\nstatic int load_http_stack(void) {\n    if (g_http_ctx >= 0) return 0;\n    if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_HTTP) < 0) return -1;\n    if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_SSL) < 0) return -1;\n    int ret = sceSslInit(SSL_POOL_SIZE);\n    if (ret < 0) return ret;\n    g_ssl_ctx = ret;\n    ret = sceHttpInit(g_net_pool, g_ssl_ctx, HTTP_POOL_SIZE);\n    if (ret < 0) return ret;\n    g_http_ctx = ret;\n    return 0;\n}\n\nstatic int load_install_symbols(void) {\n    void *s = NULL;\n    int user = load_module_symbol("/system/common/lib/libSceUserService.sprx", "sceUserServiceInitialize", &s);\n    if (user < 0) return user;\n    p_sceUserServiceInitialize = (receiver_user_init_fn)s;\n    int ret = sceKernelDlsym(user, "sceUserServiceGetForegroundUser", &s);\n    if (ret < 0 || !s) return ret < 0 ? ret : -1;\n    p_sceUserServiceGetForegroundUser = (receiver_user_get_fg_fn)s;\n    int app = load_module_symbol("/system/common/lib/libSceAppInstUtil.sprx", "sceAppInstUtilInitialize", &s);\n    if (app < 0) return app;\n    p_sceAppInstUtilInitialize = (receiver_appinst_init_fn)s;\n    int bgft = load_module_symbol("/system/common/lib/libSceBgft.sprx", "sceBgftServiceIntInit", &s);\n    if (bgft < 0) return bgft;\n    p_sceBgftServiceIntInit = (receiver_bgft_init_fn)s;\n    ret = sceKernelDlsym(bgft, "sceBgftServiceIntDebugDownloadRegisterPkg", &s);\n    if (ret < 0 || !s) return ret < 0 ? ret : -1;\n    p_sceBgftServiceIntDebugDownloadRegisterPkg = (receiver_bgft_register_fn)s;\n    ret = sceKernelDlsym(bgft, "sceBgftServiceIntDownloadStartTask", &s);\n    if (ret < 0 || !s) return ret < 0 ? ret : -1;\n    p_sceBgftServiceIntDownloadStartTask = (receiver_bgft_start_fn)s;\n    return 0;\n}\n\n'''
+t=t[:a]+replacement+t[b:]
+t=t.replace('int ret = sceUserServiceInitialize(&user_params);','int ret = p_sceUserServiceInitialize ? p_sceUserServiceInitialize(&user_params) : -1;')
+t=t.replace('ret = sceAppInstUtilInitialize();','ret = p_sceAppInstUtilInitialize ? p_sceAppInstUtilInitialize() : -1;')
+t=t.replace('ret = sceBgftServiceIntInit(&params);','ret = p_sceBgftServiceIntInit ? p_sceBgftServiceIntInit(&params) : -1;')
+t=t.replace('int ret = sceUserServiceGetForegroundUser(&user_id);','int ret = p_sceUserServiceGetForegroundUser ? p_sceUserServiceGetForegroundUser(&user_id) : -1;')
+t=t.replace('ret = sceBgftServiceIntDebugDownloadRegisterPkg(&params, &task_id);','ret = p_sceBgftServiceIntDebugDownloadRegisterPkg ? p_sceBgftServiceIntDebugDownloadRegisterPkg(&params, &task_id) : -1;')
+t=t.replace('ret = sceBgftServiceIntDownloadStartTask(task_id);','ret = p_sceBgftServiceIntDownloadStartTask ? p_sceBgftServiceIntDownloadStartTask(task_id) : -1;')
+idx=t.index('static int find_header(')
+t=t[:idx]+'''static int ensure_transfer_services(void) {\n    pthread_mutex_lock(&g_service_init_mutex);\n    if (g_transfer_services_ready) { pthread_mutex_unlock(&g_service_init_mutex); return 0; }\n    int ret = load_http_stack();\n    if (!ret) ret = load_install_symbols();\n    if (!ret) ret = init_bgft();\n    if (!ret) g_transfer_services_ready = 1;\n    pthread_mutex_unlock(&g_service_init_mutex);\n    return ret;\n}\n\n'''+t[idx:]
+needle='''    if (!strcmp(line, "TAYSON/1 PING")) {\n        char pong[96];\n        snprintf(pong, sizeof(pong), "TAYSON/1 OK receiver=%s\\n", RECEIVER_VERSION);\n        respond_line(client, pong);\n        return;\n    }\n\n    size_t payload_len = 0;\n'''
+repl='''    if (!strcmp(line, "TAYSON/1 PING")) {\n        char pong[96];\n        snprintf(pong, sizeof(pong), "TAYSON/1 OK receiver=%s\\n", RECEIVER_VERSION);\n        respond_line(client, pong);\n        return;\n    }\n\n    int service_ret = ensure_transfer_services();\n    if (service_ret) {\n        char errline[96];\n        snprintf(errline, sizeof(errline), "TAYSON/1 ERR services-0x%08X\\n", (unsigned int)service_ret);\n        respond_line(client, errline);\n        return;\n    }\n\n    size_t payload_len = 0;\n'''
+assert needle in t
+t=t.replace(needle,repl)
+old='''int main(void) {\n    notify_text("Tayson PS4 Receiver 1.0.2 iniciando");\n\n    if (load_modules_and_network()) {\n        notify_text("Tayson Receiver: rede/HTTP nao iniciou");\n        for (;;) sleep(10);\n    }\n    if (init_bgft()) {\n        notify_text("Tayson Receiver: BGFT nao iniciou");\n        for (;;) sleep(10);\n    }\n'''
+new='''int main(void) {\n    if (load_control_network()) {\n        for (;;) sleep(10);\n    }\n'''
+assert old in t
+t=t.replace(old,new)
+t=t.replace('notify_text("Tayson PS4 Receiver 1.0.2 ativo - porta 9095");','try_init_notifications();\n    notify_text("Tayson PS4 Receiver 1.0.3 ativo - porta 9095");')
+p.write_text(t)
+
+m=Path('ps4receiver/Makefile')
+s=m.read_text().replace('VERSION     := 1.02','VERSION     := 1.03')
+s=s.replace('-lSceSysUtil -lSceUserService -lSceAppInstUtil -lSceBgft','')
+m.write_text(s)
