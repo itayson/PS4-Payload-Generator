@@ -217,6 +217,9 @@ v = replace_once(v, "check('bridge 0.5.3 startup diagnostic','Tayson Native Brid
 # Replace checks that specifically described the 0.5.3 lazy probe.
 v = v.replace("check('bridge lazy HTTP init','GET localhost recebido' in bridge and bridge.find('register_bgft((uint16_t)g_bridge_port)') < bridge.find('for (;;) sleep(60)'))", "check('bridge deterministic network init','NET 1/3 - NetCtl' in bridge and 'NET 3/3 - NetPool' in bridge and 'rede PS4 pronta' in bridge)")
 v = v.replace("check('bridge network stage diagnostics','HTTP etapa 1/4' in bridge and 'HTTP etapa 4/4' in bridge and 'HTTP pronto' in bridge)", "check('bridge libSceHttp preflight','libSceHttp.sprx' in bridge and 'preflight CDN bytes=0-0' in bridge and 'CDN acessivel pelo PS4' in bridge)")
+# 0.5.1 validator named this after the original implementation; 0.5.4 intentionally
+# switches to the reference libSceHttp family while retaining the same sceHttp APIs.
+v = v.replace("check('bridge uses SceHttp2','libSceHttp2.sprx' in bridge and 'sceHttpAddRequestHeader' in bridge and 'sceHttpReadData' in bridge)", "check('bridge uses libSceHttp','libSceHttp.sprx' in bridge and 'sceHttpAddRequestHeader' in bridge and 'sceHttpReadData' in bridge)")
 # Extra regressions.
 anchor = "check('bridge libSceHttp preflight','libSceHttp.sprx' in bridge and 'preflight CDN bytes=0-0' in bridge and 'CDN acessivel pelo PS4' in bridge)"
 if anchor not in v:
