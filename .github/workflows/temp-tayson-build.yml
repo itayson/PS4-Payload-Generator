@@ -59,9 +59,11 @@ jobs:
           set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           main = Path('ps4bridge/main.c')
           s = main.read_text(encoding='utf-8')
+
           legacy = '#include "ps4-libjbc/jailbreak.h"'
           compat = r'''/* Minimal ps4-libjbc ABI declarations.  Do not include its legacy
            * defs.h here: modern ps4-payload-sdk already defines pid_t/size_t. */
@@ -82,48 +84,57 @@ jobs:
           int jbc_get_cred(struct jbc_cred *cred);
           int jbc_jailbreak_cred(struct jbc_cred *cred);
           int jbc_set_cred(const struct jbc_cred *cred);'''
-          if legacy not in s:
-              raise SystemExit('legacy libjbc include not found')
+          if s.count(legacy) != 1:
+              raise SystemExit(f'legacy libjbc include count={s.count(legacy)}')
           s = s.replace(legacy, compat, 1)
 
-          # These two values are patched in-place by Android. Mark them volatile so
-          # Clang cannot copy their initial sentinel constants into executable code.
-          s = s.replace(
-              'static uint64_t g_package_size = UINT64_C(0x1122334455667788);',
-              'static volatile uint64_t g_package_size = UINT64_C(0x1122334455667788);',
-              1,
+          old_size = 'static uint64_t g_package_size = UINT64_C(0x1122334455667788);'
+          new_size = 'static volatile uint64_t g_package_size = UINT64_C(0x1122334455667788);'
+          old_port = 'static uint64_t g_bridge_port = UINT64_C(0xA1B2C3D4E5F6BEEF);'
+          new_port = 'static volatile uint64_t g_bridge_port = UINT64_C(0xA1B2C3D4E5F6BEEF);'
+          if s.count(old_size) != 1 or s.count(old_port) != 1:
+              raise SystemExit('numeric sentinel declarations not found uniquely')
+          s = s.replace(old_size, new_size, 1).replace(old_port, new_port, 1)
+
+          sentinel_guard = re.compile(
+              r'g_package_size\s*==\s*UINT64_C\(0x1122334455667788\)\s*\|\|\s*'
+              r'g_bridge_port\s*==\s*UINT64_C\(0xA1B2C3D4E5F6BEEF\)'
           )
-          s = s.replace(
-              'static uint64_t g_bridge_port = UINT64_C(0xA1B2C3D4E5F6BEEF);',
-              'static volatile uint64_t g_bridge_port = UINT64_C(0xA1B2C3D4E5F6BEEF);',
-              1,
+          s, n = sentinel_guard.subn(
+              'g_package_size == 0 || g_bridge_port < 1024 || g_bridge_port > 65535',
+              s,
+              count=1,
           )
-          old_guard = '''        !g_content_id[0] || !g_file_name[0] || !g_package_type[0] ||
-              g_package_size == UINT64_C(0x1122334455667788) || g_bridge_port == UINT64_C(0xA1B2C3D4E5F6BEEF)) {'''
-          new_guard = '''        !g_content_id[0] || !g_file_name[0] || !g_package_type[0] ||
-              g_package_size == 0 || g_bridge_port < 1024 || g_bridge_port > 65535) {'''
-          if old_guard not in s:
-              raise SystemExit('expected native sentinel guard not found')
-          s = s.replace(old_guard, new_guard, 1)
+          if n != 1:
+              raise SystemExit(f'numeric sentinel runtime guard replacements={n}')
+
+          # After replacing the guard, each sentinel literal must occur only in its
+          # writable data initializer, so Android has one unambiguous patch target.
+          if s.count('0x1122334455667788') != 1:
+              raise SystemExit('size sentinel still appears more than once in C source')
+          if s.count('0xA1B2C3D4E5F6BEEF') != 1:
+              raise SystemExit('port sentinel still appears more than once in C source')
           main.write_text(s, encoding='utf-8')
 
           mk = Path('ps4bridge/Makefile')
           m = mk.read_text(encoding='utf-8')
           old = 'LDLIBS := -L$(PS4_PAYLOAD_SDK)/target/lib -lkernel -lSceLibcInternal -lSceNet'
-          if old not in m:
-              raise SystemExit('expected LDLIBS line not found')
+          if m.count(old) != 1:
+              raise SystemExit('expected LDLIBS line not found uniquely')
           m = m.replace(old, 'LDLIBS :=', 1)
-          # Release-style ELF: debug info can duplicate literal patch patterns.
-          m = m.replace('CFLAGS := -Wall -Wextra -Wno-unused-parameter -O2 -g -I ps4-libjbc',
-                        'CFLAGS := -Wall -Wextra -Wno-unused-parameter -O2 -I ps4-libjbc', 1)
+          old_flags = 'CFLAGS := -Wall -Wextra -Wno-unused-parameter -O2 -g -I ps4-libjbc'
+          new_flags = 'CFLAGS := -Wall -Wextra -Wno-unused-parameter -O2 -I ps4-libjbc'
+          if m.count(old_flags) != 1:
+              raise SystemExit('expected CFLAGS line not found uniquely')
+          m = m.replace(old_flags, new_flags, 1)
           mk.write_text(m, encoding='utf-8')
 
           validator = Path('tools/validate_project.py')
           v = validator.read_text(encoding='utf-8')
           bad = "b'TAYSON_BRIDGE_PACKAGE_TYPE_V1','TAYSON_BRIDGE_EXTRA_HEADERS_V1'"
           good = "b'TAYSON_BRIDGE_PACKAGE_TYPE_V1',b'TAYSON_BRIDGE_EXTRA_HEADERS_V1'"
-          if bad not in v:
-              raise SystemExit('expected validator bytes bug not found')
+          if v.count(bad) != 1:
+              raise SystemExit('expected validator bytes bug not found uniquely')
           validator.write_text(v.replace(bad, good, 1), encoding='utf-8')
           PY
 
