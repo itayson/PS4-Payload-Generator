@@ -13,8 +13,8 @@ Daemon will be stopped at the end of the build
 > Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preUniversalDebugBuild UP-TO-DATE
-> Task :app:generateUniversalDebugResValues
 > Task :app:checkUniversalDebugAarMetadata
+> Task :app:generateUniversalDebugResValues
 > Task :app:mapUniversalDebugSourceSetPaths
 > Task :app:generateUniversalDebugResources
 > Task :app:createUniversalDebugCompatibleScreenManifests
@@ -39,26 +39,41 @@ Daemon will be stopped at the end of the build
 > Task :app:processUniversalDebugResources
 > Task :app:checkUniversalDebugDuplicateClasses
 > Task :app:desugarUniversalDebugFileDependencies
+> Task :app:compileUniversalDebugKotlin
+> Task :app:mergeExtDexUniversalDebug
+> Task :app:mergeLibDexUniversalDebug
+> Task :app:mergeUniversalDebugJniLibFolders
+> Task :app:mergeUniversalDebugNativeLibs NO-SOURCE
+> Task :app:stripUniversalDebugDebugSymbols NO-SOURCE
+> Task :app:validateSigningUniversalDebug
+> Task :app:writeUniversalDebugAppMetadata
+> Task :app:writeUniversalDebugSigningConfigVersions
 
 > Task :app:compileUniversalDebugKotlin
-e: file:///home/runner/work/Akirabox-Android/Akirabox-Android/app/src/main/java/com/tayson/ps4linksender/MainActivity.kt:66:13 Unresolved reference 'Build'.
+w: file:///home/runner/work/Akirabox-Android/Akirabox-Android/app/src/main/java/com/tayson/ps4linksender/web/LinkCaptureActivity.kt:97:89 'fun onBackPressed(): Unit' is deprecated. Deprecated in Java.
 
-> Task :app:compileUniversalDebugKotlin FAILED
-> Task :app:mergeExtDexUniversalDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/android_build-1789089375388.json
+> Task :app:compileUniversalDebugJavaWithJavac NO-SOURCE
+> Task :app:bundleUniversalDebugClassesToCompileJar
+> Task :app:generateUniversalDebugLintReportModel
+> Task :app:generateUniversalDebugAndroidTestLintModel
+> Task :app:generateUniversalDebugUnitTestLintModel
+> Task :app:lintAnalyzeUniversalDebugAndroidTest
+> Task :app:lintAnalyzeUniversalDebugUnitTest
+> Task :app:dexBuilderUniversalDebug
+> Task :app:mergeProjectDexUniversalDebug
+> Task :app:mergeUniversalDebugGlobalSynthetics
+> Task :app:processUniversalDebugJavaRes
+> Task :app:mergeUniversalDebugJavaResource
+> Task :app:packageUniversalDebug
+> Task :app:createUniversalDebugApkListingFileRedirect
+> Task :app:assembleUniversalDebug
+> Task :app:lintAnalyzeUniversalDebug
 
-FAILURE: Build failed with an exception.
+> Task :app:lintReportUniversalDebug
+Wrote HTML report to file:///home/runner/work/Akirabox-Android/Akirabox-Android/app/build/reports/lint-results-universalDebug.html
 
-* What went wrong:
-Execution failed for task ':app:compileUniversalDebugKotlin'.
-> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
-   > Compilation error. See log for more details
+> Task :app:lintUniversalDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/android_build-1789089579521.json
 
-* Try:
-> Run with --stacktrace option to get the stack trace.
-> Run with --info or --debug option to get more log output.
-> Run with --scan to get full insights.
-> Get more help at https://help.gradle.org.
-
-BUILD FAILED in 2m 18s
-23 actionable tasks: 23 executed
+BUILD SUCCESSFUL in 2m 59s
+44 actionable tasks: 44 executed
