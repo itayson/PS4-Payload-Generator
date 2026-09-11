@@ -1,0 +1,1 @@
+Receiver 1.0.7 will branch from this commit and restore the validated 1.0.6 source artifact before applying ci107/patch_receiver_107.py.
