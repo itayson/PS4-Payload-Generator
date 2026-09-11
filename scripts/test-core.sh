@@ -46,6 +46,41 @@ cat ci/overlay040_00 ci/overlay040_01 ci/overlay040_02 ci/overlay040_03 | base64
 echo "e207db7db73ea7b328fe4bdac85ec343811d8038b2ee3874b91034e8a8784f16  $TMP/overlay040.tar.gz" | sha256sum -c -
 tar -xzf "$TMP/overlay040.tar.gz" -C "$ROOT"
 
+# Android 13+: foreground services can run without notification permission,
+# but notification updates must be permission-aware. Declare the permission,
+# request it from the Activity, and guard NotificationManager.notify().
+python3 - <<'PY2'
+from pathlib import Path
+manifest = Path('app/src/main/AndroidManifest.xml')
+s = manifest.read_text(encoding='utf-8')
+needle = '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />\n'
+if 'android.permission.POST_NOTIFICATIONS' not in s:
+    s = s.replace(needle, needle + '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n')
+manifest.write_text(s, encoding='utf-8')
+
+service = Path('app/src/main/java/com/tayson/ps4linksender/relay/RelayService.kt')
+s = service.read_text(encoding='utf-8')
+if 'import android.content.pm.PackageManager' not in s:
+    s = s.replace('import android.content.pm.ServiceInfo\n', 'import android.content.pm.ServiceInfo\nimport android.content.pm.PackageManager\n')
+old = '        val nm = getSystemService(NotificationManager::class.java)\n        nm.notify(NOTIFICATION_ID, notification(txt))\n'
+new = '        val nm = getSystemService(NotificationManager::class.java)\n        if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {\n            nm.notify(NOTIFICATION_ID, notification(txt))\n        }\n'
+if old in s:
+    s = s.replace(old, new)
+service.write_text(s, encoding='utf-8')
+
+main = Path('app/src/main/java/com/tayson/ps4linksender/MainActivity.kt')
+s = main.read_text(encoding='utf-8')
+if 'import android.Manifest' not in s:
+    s = s.replace('package com.tayson.ps4linksender\n\n', 'package com.tayson.ps4linksender\n\nimport android.Manifest\n')
+if 'import android.content.pm.PackageManager' not in s:
+    s = s.replace('import android.content.Intent\n', 'import android.content.Intent\nimport android.content.pm.PackageManager\n')
+marker = '        super.onCreate(savedInstanceState)\n'
+request = marker + '        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {\n            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 4040)\n        }\n'
+if 'requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS)' not in s:
+    s = s.replace(marker, request, 1)
+main.write_text(s, encoding='utf-8')
+PY2
+
 python3 tools/validate_project.py
 grep -q 'versionCode = 6' app/build.gradle.kts
 grep -q 'versionName = "0.4.0"' app/build.gradle.kts
