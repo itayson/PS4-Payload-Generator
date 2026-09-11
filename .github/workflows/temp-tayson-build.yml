@@ -91,8 +91,15 @@ jobs:
           old = 'LDLIBS := -L$(PS4_PAYLOAD_SDK)/target/lib -lkernel -lSceLibcInternal -lSceNet'
           if old not in m:
               raise SystemExit('expected LDLIBS line not found')
-          # orbis-clang already supplies libc, SceLibcInternal, SceNet and kernel_web.
           mk.write_text(m.replace(old, 'LDLIBS :=', 1), encoding='utf-8')
+
+          validator = Path('tools/validate_project.py')
+          v = validator.read_text(encoding='utf-8')
+          bad = "b'TAYSON_BRIDGE_PACKAGE_TYPE_V1','TAYSON_BRIDGE_EXTRA_HEADERS_V1'"
+          good = "b'TAYSON_BRIDGE_PACKAGE_TYPE_V1',b'TAYSON_BRIDGE_EXTRA_HEADERS_V1'"
+          if bad not in v:
+              raise SystemExit('expected validator bytes bug not found')
+          validator.write_text(v.replace(bad, good, 1), encoding='utf-8')
           PY
 
       - name: Build PS4 Native Bridge ELF
