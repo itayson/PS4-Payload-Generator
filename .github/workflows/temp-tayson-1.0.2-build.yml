@@ -40,21 +40,19 @@ jobs:
           from pathlib import Path
 
           makefile = Path('ps4receiver/Makefile')
-          text = makefile.read_text()
-          text = text.replace('VERSION     := 1.00', 'VERSION     := 1.02')
-          text = text.replace(
+          m = makefile.read_text()
+          m = m.replace('VERSION     := 1.00', 'VERSION     := 1.02')
+          m = m.replace(
               'pkg.gp4: eboot.bin sce_sys/param.sfo sce_sys/icon0.png\n\t$(TOOLCHAIN)/bin/$(CDIR)/create-gp4 -out $@ --content-id=$(CONTENT_ID) --files "$^"',
               'RUNTIME_MODULES := $(wildcard sce_module/*.prx)\nEXTRA_PACKAGE_FILES := $(wildcard sce_sys/about/*.sprx)\n\npkg.gp4: eboot.bin sce_sys/param.sfo sce_sys/icon0.png $(RUNTIME_MODULES) $(EXTRA_PACKAGE_FILES)\n\t$(TOOLCHAIN)/bin/$(CDIR)/create-gp4 -out $@ --content-id=$(CONTENT_ID) --files "$^"'
           )
-          makefile.write_text(text)
+          makefile.write_text(m)
 
           source = Path('ps4receiver/receiver/main.c')
           text = source.read_text()
           text = text.replace('#define RECEIVER_VERSION "1.0.0"', '#define RECEIVER_VERSION "1.0.2"')
           text = text.replace('Tayson PS4 Receiver 1.0 iniciando', 'Tayson PS4 Receiver 1.0.2 iniciando')
           text = text.replace('Tayson PS4 Receiver 1.0 ativo - porta 9095', 'Tayson PS4 Receiver 1.0.2 ativo - porta 9095')
-
-          # Route all socket operations through libSceNet.
           text = text.replace('ntohl(', 'sceNetNtohl(')
           text = text.replace('htons(', 'sceNetHtons(')
           text = text.replace('htonl(', 'sceNetHtonl(')
@@ -71,67 +69,76 @@ jobs:
           text = text.replace('        if (client < 0) {\n            if (errno == EINTR) continue;\n            break;\n        }', '        if (client < 0) break;')
           text = text.replace('        if (client < 0) {\n            if (errno == EINTR) continue;\n            sleep(1);\n            continue;\n        }', '        if (client < 0) {\n            sleep(1);\n            continue;\n        }')
 
-          # libSceNet sockaddr/setsockopt ABI.
           marker = '#define ORBIS_KERNEL_PRIO_FIFO_NORMAL 0x2BC\n'
-          abi = '''#define ORBIS_KERNEL_PRIO_FIFO_NORMAL 0x2BC
-
-/* libSceNet uses the PS4 socket ABI rather than the host libc socket ABI.
- * sockaddr_in starts with sin_len and socket timeouts are integer microseconds. */
-#define RECEIVER_NET_SOL_SOCKET 0xFFFF
-#define RECEIVER_NET_SO_REUSEADDR 0x00000004
-#define RECEIVER_NET_SO_SNDTIMEO 0x1105
-#define RECEIVER_NET_SO_RCVTIMEO 0x1106
-
-typedef struct {
-    uint8_t sin_len;
-    uint8_t sin_family;
-    uint16_t sin_port;
-    uint32_t sin_addr;
-    uint16_t sin_vport;
-    char sin_zero[6];
-} receiver_net_sockaddr_in;
-'''
+          abi = (
+              '#define ORBIS_KERNEL_PRIO_FIFO_NORMAL 0x2BC\n\n'
+              '/* PS4 libSceNet socket ABI. */\n'
+              '#define RECEIVER_NET_SOL_SOCKET 0xFFFF\n'
+              '#define RECEIVER_NET_SO_REUSEADDR 0x00000004\n'
+              '#define RECEIVER_NET_SO_SNDTIMEO 0x1105\n'
+              '#define RECEIVER_NET_SO_RCVTIMEO 0x1106\n\n'
+              'typedef struct {\n'
+              '    uint8_t sin_len;\n'
+              '    uint8_t sin_family;\n'
+              '    uint16_t sin_port;\n'
+              '    uint32_t sin_addr;\n'
+              '    uint16_t sin_vport;\n'
+              '    char sin_zero[6];\n'
+              '} receiver_net_sockaddr_in;\n'
+          )
           if marker not in text:
               raise SystemExit('ABI insertion marker not found')
           text = text.replace(marker, abi, 1)
 
-          old_listener = '''    int yes = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = sceNetHtons(port);
-    addr.sin_addr.s_addr = sceNetHtonl(bind_addr);'''
-          new_listener = '''    int yes = 1;
-    sceNetSetsockopt(fd, RECEIVER_NET_SOL_SOCKET, RECEIVER_NET_SO_REUSEADDR, &yes, sizeof(yes));
-    receiver_net_sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_len = (uint8_t)sizeof(addr);
-    addr.sin_family = ORBIS_NET_AF_INET;
-    addr.sin_port = sceNetHtons(port);
-    addr.sin_addr = sceNetHtonl(bind_addr);'''
+          old_listener = (
+              '    int yes = 1;\n'
+              '    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));\n'
+              '    struct sockaddr_in addr;\n'
+              '    memset(&addr, 0, sizeof(addr));\n'
+              '    addr.sin_family = AF_INET;\n'
+              '    addr.sin_port = sceNetHtons(port);\n'
+              '    addr.sin_addr.s_addr = sceNetHtonl(bind_addr);'
+          )
+          new_listener = (
+              '    int yes = 1;\n'
+              '    sceNetSetsockopt(fd, RECEIVER_NET_SOL_SOCKET, RECEIVER_NET_SO_REUSEADDR, &yes, sizeof(yes));\n'
+              '    receiver_net_sockaddr_in addr;\n'
+              '    memset(&addr, 0, sizeof(addr));\n'
+              '    addr.sin_len = (uint8_t)sizeof(addr);\n'
+              '    addr.sin_family = ORBIS_NET_AF_INET;\n'
+              '    addr.sin_port = sceNetHtons(port);\n'
+              '    addr.sin_addr = sceNetHtonl(bind_addr);'
+          )
           if old_listener not in text:
               raise SystemExit('listener block not found')
           text = text.replace(old_listener, new_listener, 1)
 
-          old_accept = '''        struct sockaddr_in peer;
-        socklen_t peer_len = sizeof(peer);
-        int client = accept(listener, (struct sockaddr *)&peer, &peer_len);'''
-          new_accept = '''        receiver_net_sockaddr_in peer;
-        OrbisNetSocklen_t peer_len = sizeof(peer);
-        int client = sceNetAccept(listener, (OrbisNetSockaddr *)&peer, &peer_len);'''
+          old_accept = (
+              '        struct sockaddr_in peer;\n'
+              '        socklen_t peer_len = sizeof(peer);\n'
+              '        int client = accept(listener, (struct sockaddr *)&peer, &peer_len);'
+          )
+          new_accept = (
+              '        receiver_net_sockaddr_in peer;\n'
+              '        OrbisNetSocklen_t peer_len = sizeof(peer);\n'
+              '        int client = sceNetAccept(listener, (OrbisNetSockaddr *)&peer, &peer_len);'
+          )
           if text.count(old_accept) != 2:
               raise SystemExit(f'expected 2 accept blocks, found {text.count(old_accept)}')
           text = text.replace(old_accept, new_accept)
           text = text.replace('peer.sin_addr.s_addr', 'peer.sin_addr')
           text = text.replace('const struct sockaddr_in *peer', 'const receiver_net_sockaddr_in *peer')
 
-          old_timeout = '''    struct timeval tv = { .tv_sec = 15, .tv_usec = 0 };
-    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));'''
-          new_timeout = '''    int timeout_us = 15 * 1000 * 1000;
-    sceNetSetsockopt(client, RECEIVER_NET_SOL_SOCKET, RECEIVER_NET_SO_RCVTIMEO, &timeout_us, sizeof(timeout_us));
-    sceNetSetsockopt(client, RECEIVER_NET_SOL_SOCKET, RECEIVER_NET_SO_SNDTIMEO, &timeout_us, sizeof(timeout_us));'''
+          old_timeout = (
+              '    struct timeval tv = { .tv_sec = 15, .tv_usec = 0 };\n'
+              '    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));\n'
+              '    setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));'
+          )
+          new_timeout = (
+              '    int timeout_us = 15 * 1000 * 1000;\n'
+              '    sceNetSetsockopt(client, RECEIVER_NET_SOL_SOCKET, RECEIVER_NET_SO_RCVTIMEO, &timeout_us, sizeof(timeout_us));\n'
+              '    sceNetSetsockopt(client, RECEIVER_NET_SOL_SOCKET, RECEIVER_NET_SO_SNDTIMEO, &timeout_us, sizeof(timeout_us));'
+          )
           if old_timeout not in text:
               raise SystemExit('timeout block not found')
           text = text.replace(old_timeout, new_timeout, 1)
