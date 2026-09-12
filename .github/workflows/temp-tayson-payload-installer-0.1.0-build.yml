@@ -1,9 +1,9 @@
-name: Temporary Tayson Payload Installer 0.1.1 Build
+name: Temporary Tayson Payload Installer 0.1.2 Build
 
 on:
   push:
     branches:
-      - build/tayson-hybrid-payload-0.1.1
+      - build/tayson-hybrid-payload-0.1.2
 
 permissions:
   contents: read
@@ -33,13 +33,16 @@ jobs:
           echo "PS4_PAYLOAD_SDK=/tmp/ps4-payload-sdk" >> "$GITHUB_ENV"
           echo "LLVM_CONFIG=$(command -v llvm-config-18)" >> "$GITHUB_ENV"
 
-      - name: Apply resilient resume patch
+      - name: Apply resilient resume patches
         shell: bash
         run: |
           set -euxo pipefail
           python3 ci011/apply_payload011.py
-          grep -q 'TAYSON_PAYLOAD_VERSION "0.1.1"' payload-installer/main.c
+          python3 ci012/apply_payload012.py
+          grep -q 'TAYSON_PAYLOAD_VERSION "0.1.2"' payload-installer/main.c
           grep -q 'max_retries = 24' payload-installer/main.c
+          grep -q 'TAYSONP/1 RESUME' payload-installer/main.c
+          grep -q 'resumed=1' payload-installer/main.c
 
       - name: Build payload ELF and BIN
         shell: bash
@@ -47,29 +50,30 @@ jobs:
           set -euxo pipefail
           cd payload-installer
           make clean all
-          test -s Tayson-Payload-Installer-0.1.1.elf
-          test -s Tayson-Payload-Installer-0.1.1.bin
-          file Tayson-Payload-Installer-0.1.1.elf | tee build-info.txt
-          file Tayson-Payload-Installer-0.1.1.bin | tee -a build-info.txt
-          strings Tayson-Payload-Installer-0.1.1.elf | grep -q 'Tayson Payload Installer 0.1.1'
-          strings Tayson-Payload-Installer-0.1.1.elf | grep -q 'retomando download'
-          strings Tayson-Payload-Installer-0.1.1.elf | grep -q 'sceAppInstUtilAppInstallPkg'
+          test -s Tayson-Payload-Installer-0.1.2.elf
+          test -s Tayson-Payload-Installer-0.1.2.bin
+          file Tayson-Payload-Installer-0.1.2.elf | tee build-info.txt
+          file Tayson-Payload-Installer-0.1.2.bin | tee -a build-info.txt
+          strings Tayson-Payload-Installer-0.1.2.elf | grep -q 'Tayson Payload Installer 0.1.2'
+          strings Tayson-Payload-Installer-0.1.2.elf | grep -q 'retomando download'
+          strings Tayson-Payload-Installer-0.1.2.elf | grep -q 'TAYSONP/1 RESUME'
+          strings Tayson-Payload-Installer-0.1.2.elf | grep -q 'sceAppInstUtilAppInstallPkg'
 
       - name: Prepare artifacts
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p /tmp/tayson-payload-011
-          cp payload-installer/Tayson-Payload-Installer-0.1.1.elf /tmp/tayson-payload-011/
-          cp payload-installer/Tayson-Payload-Installer-0.1.1.bin /tmp/tayson-payload-011/
-          cp payload-installer/README.md payload-installer/build-info.txt /tmp/tayson-payload-011/
-          tar -czf /tmp/tayson-payload-011/Tayson-Payload-Installer-0.1.1-source.tar.gz payload-installer ci011
-          (cd /tmp/tayson-payload-011 && sha256sum Tayson-Payload-Installer-0.1.1.elf Tayson-Payload-Installer-0.1.1.bin Tayson-Payload-Installer-0.1.1-source.tar.gz > SHA256SUMS.txt)
+          mkdir -p /tmp/tayson-payload-012
+          cp payload-installer/Tayson-Payload-Installer-0.1.2.elf /tmp/tayson-payload-012/
+          cp payload-installer/Tayson-Payload-Installer-0.1.2.bin /tmp/tayson-payload-012/
+          cp payload-installer/README.md payload-installer/build-info.txt /tmp/tayson-payload-012/
+          tar -czf /tmp/tayson-payload-012/Tayson-Payload-Installer-0.1.2-source.tar.gz payload-installer ci011 ci012
+          (cd /tmp/tayson-payload-012 && sha256sum Tayson-Payload-Installer-0.1.2.elf Tayson-Payload-Installer-0.1.2.bin Tayson-Payload-Installer-0.1.2-source.tar.gz > SHA256SUMS.txt)
 
       - name: Upload payload installer
         uses: actions/upload-artifact@v4
         with:
-          name: Tayson-Payload-Installer-0.1.1
-          path: /tmp/tayson-payload-011/*
+          name: Tayson-Payload-Installer-0.1.2
+          path: /tmp/tayson-payload-012/*
           if-no-files-found: error
           retention-days: 30
