@@ -1,6 +1,7 @@
 package com.tayson.ps4linksender.ps4
 
 import android.content.Context
+import android.net.Uri
 import com.tayson.ps4linksender.model.PkgInfo
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -31,12 +32,15 @@ object BgftPayloadClient {
         val host: String,
         val bytesSent: Int,
         val packageName: String,
-        val contentId: String
+        val contentId: String,
+        val bgftUrl: String,
+        val compatibilityAliasApplied: Boolean
     )
 
     fun send(context: Context, host: String, pkg: PkgInfo): SendResult {
         requireHost(host)
-        val payload = generate(context, pkg)
+        val normalized = makeBgftCompatibleUrl(pkg.finalUrl)
+        val payload = generate(context, pkg, normalized.first)
         Socket().use { socket ->
             socket.connect(InetSocketAddress(host, PORT), CONNECT_TIMEOUT_MS)
             socket.soTimeout = IO_TIMEOUT_MS
@@ -46,21 +50,51 @@ object BgftPayloadClient {
                 out.flush()
             }
         }
-        return SendResult(host, payload.size, pkg.fileName, pkg.contentId)
+        return SendResult(
+            host = host,
+            bytesSent = payload.size,
+            packageName = pkg.fileName,
+            contentId = pkg.contentId,
+            bgftUrl = normalized.first,
+            compatibilityAliasApplied = normalized.second
+        )
     }
 
-    fun generate(context: Context, pkg: PkgInfo): ByteArray {
+    fun generate(context: Context, pkg: PkgInfo): ByteArray =
+        generate(context, pkg, makeBgftCompatibleUrl(pkg.finalUrl).first)
+
+    private fun generate(context: Context, pkg: PkgInfo, bgftUrl: String): ByteArray {
         val bytes = context.assets.open(ASSET_NAME).use { it.readBytes() }
         require(bytes.isNotEmpty()) { "Template BGFT embutido está vazio" }
         require(bytes.size <= MAX_PAYLOAD_BYTES) { "Template BGFT excede o limite esperado" }
 
         patchAscii(bytes, contentIdSlot, pkg.contentId)
-        patchAscii(bytes, urlSlot, pkg.finalUrl)
+        patchAscii(bytes, urlSlot, bgftUrl)
         patchAscii(bytes, nameSlot, pkg.fileName)
         patchAscii(bytes, typeSlot, pkg.packageType)
         patchAscii(bytes, sizeSlot, pkg.size.toString())
         patchAscii(bytes, categorySlot, pkg.sfo?.category.orEmpty())
         return bytes
+    }
+
+    /**
+     * PS4 BGFT rejects remote package URLs whose URL extension is not .pkg
+     * (0x80990033 / CE-32942-0). Several supported providers expose signed CDN
+     * URLs with opaque paths while the real filename only exists in response
+     * headers/query metadata. A URI fragment is not transmitted in the HTTP
+     * request, so adding a .pkg fragment gives BGFT a package-looking URL while
+     * preserving the provider's signed path and query string byte-for-byte.
+     */
+    private fun makeBgftCompatibleUrl(rawUrl: String): Pair<String, Boolean> {
+        val clean = rawUrl.substringBefore('#')
+        val path = runCatching { Uri.parse(clean).path.orEmpty() }.getOrDefault("")
+        if (path.lowercase().endsWith(".pkg")) return clean to false
+
+        val candidate = "$clean#tayson.pkg"
+        require(candidate.toByteArray(StandardCharsets.UTF_8).size < urlSlot.capacity) {
+            "URL final é grande demais para o payload BGFT"
+        }
+        return candidate to true
     }
 
     private fun patchAscii(bytes: ByteArray, slot: Slot, value: String) {
