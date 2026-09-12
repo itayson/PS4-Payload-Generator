@@ -9,7 +9,7 @@ object RelayManager {
     fun prepare(context: Context, info: PkgInfo): Prepared {
         RelayService.ensureRunning(context.applicationContext)
         val ip = RelayService.localIpv4(context)
-        val entry = RelayRegistry.register(info.finalUrl, info.fileName, info.size)
+        val entry = RelayRegistry.register(info.finalUrl, info.fileName, info.size, info.requestContext)
         val url = "http://$ip:${RelayService.PORT}${RelayRegistry.buildPath(entry)}"
         return Prepared(url, entry.upstreamUrl, entry.token)
     }
