@@ -83,11 +83,13 @@ jobs:
           set -euxo pipefail
           cd /tmp/TaysonHybrid-1.2.0
           python3 "$GITHUB_WORKSPACE/ci120hybrid/apply_android_hybrid120.py"
+          sed -i '/android.permission.ACCESS_NETWORK_STATE/a\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' app/src/main/AndroidManifest.xml
           grep -q 'versionCode = 17' app/build.gradle.kts
           grep -q 'versionName = "1.2.0"' app/build.gradle.kts
           grep -q 'ENVIAR VIA PAYLOAD LOCAL' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
           grep -q 'PayloadLoaderClient.sendEmbedded' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
           grep -q 'RelayManager.prepare' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+          grep -q 'android.permission.POST_NOTIFICATIONS' app/src/main/AndroidManifest.xml
           grep -q 'foregroundServiceType="connectedDevice"' app/src/main/AndroidManifest.xml
           test -s app/src/main/assets/tayson_payload_installer_0_1_0.bin
 
