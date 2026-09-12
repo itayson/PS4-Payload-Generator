@@ -22,15 +22,6 @@ s = s.replace(
     'O PKG é salvo temporariamente em /data/tayson/payload-cache/current.pkg e depois entregue ao instalador local do PS4. O caminho BGFT continua disponível acima.',
     'O PKG é salvo temporariamente em /data/tayson/payload-cache/current.pkg e depois entregue ao instalador local do PS4. O Payload 0.1.1 retoma automaticamente transferências interrompidas usando Range. O caminho BGFT continua disponível acima.'
 )
-# Friendlier message if retries are eventually exhausted and the legacy -7002 sentinel surfaces.
-s = s.replace(
-    'if (st.error != 0L) append("\\nErro 0x${st.error.toULong().toString(16).uppercase().padStart(8, \'0\')}")',
-    'if (st.error != 0L) {\\n'
-    '                        val hex = st.error.toULong().toString(16).uppercase().padStart(8, \'0\')\\n'
-    '                        append("\\nErro 0x$hex")\\n'
-    '                        if (st.error == 0xFFFFE4A6L) append(" • cache incompleto após várias tentativas de retomada")\\n'
-    '                    }'
-)
 main.write_text(s)
 
 # Embed/load Payload Installer 0.1.1.
@@ -48,6 +39,5 @@ relay.write_text(r)
 assert 'versionCode = 18' in gradle.read_text()
 assert 'versionName = "1.2.1"' in gradle.read_text()
 assert 'Payload Installer 0.1.1' in main.read_text()
-assert '0xFFFFE4A6L' in main.read_text()
 assert 'tayson_payload_installer_0_1_1.bin' in loader.read_text()
 assert 'readTimeout = 120_000' in relay.read_text()
