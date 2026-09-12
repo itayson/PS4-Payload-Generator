@@ -1,0 +1,133 @@
+name: Temporary Tayson PS4 Downloader 2.0.0 One-Tap Build
+
+on:
+  push:
+    branches:
+      - build/tayson-one-tap-2.0.0
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Checkout BGFT payload base
+        uses: actions/checkout@v4
+        with:
+          repository: infinitykkj/BGFT-Payload
+          ref: 9964021e5993119d8bb9b999a09d6070d8d5450e
+          path: vendor-bgft
+
+      - name: Build patchable one-shot BGFT payload template
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y yasm make gcc binutils file
+          cp ci200onetap/template_info.c vendor-bgft/info.c
+          sed -i 's/Infinitykkj STORE/Tayson PS4 Downloader/g; s/DPI:/Tayson:/g; s/Instalador Encerrado!/Tayson: payload finalizado/g' vendor-bgft/main.c
+          make -C vendor-bgft clean
+          make -C vendor-bgft \
+            PKG_URL=x PKG_NAME=x PKG_ID=x PKG_ICON=x PKG_TYPE=PS4GD PKG_SIZE=1
+          test -s vendor-bgft/payload.bin
+          python3 - <<'PY'
+          from pathlib import Path
+          b=Path('vendor-bgft/payload.bin').read_bytes()
+          markers=[
+            b'TAYSON_CONTENT_ID_SLOT_V1', b'TAYSON_URL_SLOT_V1',
+            b'TAYSON_NAME_SLOT_V1', b'TAYSON_TYPE_V1',
+            b'TAYSON_SIZE_SLOT_V1', b'TAYSON_CAT_V1'
+          ]
+          for m in markers:
+              n=b.count(m)
+              print(m.decode(), n)
+              assert n == 1, (m, n)
+          assert len(b) < 2*1024*1024
+          PY
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore validated Link Sender 1.3.0 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o /tmp/autopilot130.zip \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10300965239/zip"
+          rm -rf /tmp/autopilot130 /tmp/TaysonOneTap-2.0.0
+          mkdir -p /tmp/autopilot130 /tmp/TaysonOneTap-2.0.0
+          unzip -q /tmp/autopilot130.zip -d /tmp/autopilot130
+          test -s /tmp/autopilot130/TaysonPS4LinkSender-1.3.0-Autopilot-source.tar.gz
+          tar -xzf /tmp/autopilot130/TaysonPS4LinkSender-1.3.0-Autopilot-source.tar.gz \
+            -C /tmp/TaysonOneTap-2.0.0 --strip-components=1
+
+      - name: Overlay One-Tap direct payload engine
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonOneTap-2.0.0
+          mkdir -p app/src/main/java/com/tayson/ps4linksender/ps4 app/src/main/assets
+          cp "$GITHUB_WORKSPACE/app/src/main/java/com/tayson/ps4linksender/ps4/BgftPayloadClient.kt" \
+             app/src/main/java/com/tayson/ps4linksender/ps4/
+          cp "$GITHUB_WORKSPACE/vendor-bgft/payload.bin" app/src/main/assets/tayson_bgft_template.bin
+          python3 "$GITHUB_WORKSPACE/ci200onetap/apply_android_onetap200.py"
+          grep -q 'versionCode = 30' app/build.gradle.kts
+          grep -q 'versionName = "2.0.0"' app/build.gradle.kts
+          grep -q 'TAYSON PS4 DOWNLOADER' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+          grep -q 'ENVIAR AO PS4' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+          grep -q 'BgftPayloadClient.send' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+          test -s app/src/main/assets/tayson_bgft_template.bin
+
+      - name: Lint and build Android 2.0.0 One-Tap
+        shell: bash
+        run: |
+          set -o pipefail
+          cd /tmp/TaysonOneTap-2.0.0
+          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug 2>&1 | tee android-build-2.0.0-one-tap.log
+          test -s app/build/outputs/apk/universal/debug/app-universal-debug.apk
+
+      - name: Prepare One-Tap artifacts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonOneTap-2.0.0
+          mkdir -p dist
+          cp app/build/outputs/apk/universal/debug/app-universal-debug.apk \
+             dist/Tayson-PS4-Downloader-2.0.0-OneTap-universal-debug.apk
+          cp app/src/main/assets/tayson_bgft_template.bin dist/Tayson-BGFT-OneShot-Template-2.0.0.bin
+          cp android-build-2.0.0-one-tap.log dist/
+          tar -czf dist/TaysonPS4Downloader-2.0.0-OneTap-source.tar.gz \
+            --exclude='./dist' --exclude='./app/build' --exclude='./.gradle' .
+          (cd dist && sha256sum \
+            Tayson-PS4-Downloader-2.0.0-OneTap-universal-debug.apk \
+            Tayson-BGFT-OneShot-Template-2.0.0.bin \
+            TaysonPS4Downloader-2.0.0-OneTap-source.tar.gz > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload Tayson PS4 Downloader 2.0.0 One-Tap
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tayson-PS4-Downloader-2.0.0-OneTap
+          path: /tmp/TaysonOneTap-2.0.0/dist/*
+          if-no-files-found: error
+          retention-days: 30
