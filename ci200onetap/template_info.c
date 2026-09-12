@@ -23,13 +23,21 @@ int get_pkg_info(struct bgft_download_param *params) {
 
     params->id = TAYSON_CONTENT_ID;
     params->content_url = TAYSON_URL;
+    params->content_ex_url = 0;
     params->content_name = TAYSON_NAME;
     params->icon_path = "";
+    params->sku_id = 0;
     params->package_type = TAYSON_TYPE;
+    params->package_sub_type = "";
     params->package_size = parse_u64_decimal(TAYSON_SIZE_TEXT);
 
-    /* CATEGORY=gp is a PS4 patch/update. FORCE_UPDATE improves compatibility
-     * with update registration while preserving signed query strings. */
+    /* 2.0.1: do NOT use DISABLE_CDN_QUERY_PARAM here. VikingFile, AkiraBox,
+     * Rootz and Mocha can return signed URLs whose query string is required by
+     * the CDN. REMOTE marks this as a network source while preserving the URL
+     * exactly as supplied by Android. */
+    params->option = BGFT_TASK_OPTION_REMOTE;
+
+    /* CATEGORY=gp is a PS4 patch/update. */
     if (TAYSON_CATEGORY[0] == 'g' && TAYSON_CATEGORY[1] == 'p')
         params->option = (enum bgft_task_option_t)(params->option | BGFT_TASK_OPTION_FORCE_UPDATE);
 
