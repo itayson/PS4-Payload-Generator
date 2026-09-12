@@ -1,0 +1,136 @@
+--- ps4receiver/receiver/main.c
++++ ps4receiver/receiver/main.c
+@@ -20,7 +20,7 @@
+ #include <orbis/Ssl.h>
+ #include <orbis/Sysmodule.h>
+ 
+-#define RECEIVER_VERSION "1.4.1"
++#define RECEIVER_VERSION "1.4.2"
+ #define CONTROL_PORT 9095
+ #define PROXY_PORT 32112
+ #define MAX_CONTROL_PAYLOAD (96 * 1024)
+@@ -1077,6 +1077,98 @@
+     return 0;
+ }
+ 
++static uint16_t read_le16(const uint8_t *p) {
++    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
++}
++
++static uint32_t read_le32(const uint8_t *p) {
++    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
++}
++
++/* Minimal PARAM.SFO reader used only for installed-title diagnostics. */
++static int read_sfo_text_value(const char *path, const char *wanted_key, char *out, size_t out_cap) {
++    if (!path || !wanted_key || !out || out_cap < 2) return -1;
++    out[0] = 0;
++    FILE *fp = fopen(path, "rb");
++    if (!fp) return -2;
++    if (fseek(fp, 0, SEEK_END) != 0) { fclose(fp); return -3; }
++    long sz = ftell(fp);
++    if (sz < 20 || sz > (1024 * 1024)) { fclose(fp); return -4; }
++    rewind(fp);
++    uint8_t *buf = (uint8_t *)malloc((size_t)sz);
++    if (!buf) { fclose(fp); return -5; }
++    size_t got = fread(buf, 1, (size_t)sz, fp);
++    fclose(fp);
++    if (got != (size_t)sz || read_le32(buf) != 0x46535000U) { free(buf); return -6; }
++
++    uint32_t key_table = read_le32(buf + 8);
++    uint32_t data_table = read_le32(buf + 12);
++    uint32_t count = read_le32(buf + 16);
++    if (count > 512 || 20ULL + (uint64_t)count * 16ULL > (uint64_t)sz ||
++        key_table >= (uint32_t)sz || data_table >= (uint32_t)sz) {
++        free(buf); return -7;
++    }
++
++    for (uint32_t i = 0; i < count; ++i) {
++        const uint8_t *idx = buf + 20 + i * 16;
++        uint16_t key_off = read_le16(idx);
++        uint32_t value_len = read_le32(idx + 4);
++        uint32_t data_off = read_le32(idx + 12);
++        uint64_t key_pos = (uint64_t)key_table + key_off;
++        uint64_t data_pos = (uint64_t)data_table + data_off;
++        if (key_pos >= (uint64_t)sz || data_pos >= (uint64_t)sz ||
++            data_pos + value_len > (uint64_t)sz) continue;
++        const char *key = (const char *)(buf + key_pos);
++        size_t key_room = (size_t)sz - (size_t)key_pos;
++        if (!memchr(key, 0, key_room) || strcmp(key, wanted_key) != 0) continue;
++        size_t n = value_len;
++        if (n >= out_cap) n = out_cap - 1;
++        memcpy(out, buf + data_pos, n);
++        out[n] = 0;
++        while (n > 0 && (out[n - 1] == 0 || out[n - 1] == '\r' || out[n - 1] == '\n' || out[n - 1] == ' '))
++            out[--n] = 0;
++        free(buf);
++        return out[0] ? 0 : -8;
++    }
++    free(buf);
++    return -9;
++}
++
++static int read_installed_sfo_value(const char *title_id, int patch, const char *key, char *out, size_t out_cap) {
++    char path[192];
++    if (patch) {
++        snprintf(path, sizeof(path), "/user/patch/%s/sce_sys/param.sfo", title_id);
++        return read_sfo_text_value(path, key, out, out_cap);
++    }
++    const char *patterns[] = {
++        "/user/appmeta/%s/param.sfo",
++        "/user/app/%s/sce_sys/param.sfo",
++        "/system_data/priv/appmeta/%s/param.sfo"
++    };
++    for (size_t i = 0; i < sizeof(patterns) / sizeof(patterns[0]); ++i) {
++        snprintf(path, sizeof(path), patterns[i], title_id);
++        if (read_sfo_text_value(path, key, out, out_cap) == 0) return 0;
++    }
++    return -1;
++}
++
++static int extract_version_hint(const char *name, char out[16]) {
++    if (!name || !out) return -1;
++    out[0] = 0;
++    for (const char *p = name; *p; ++p) {
++        if ((*p != 'v' && *p != 'V') || p[1] < '0' || p[1] > '9') continue;
++        const char *q = p + 1;
++        size_t n = 0;
++        while (*q && n < 15 && ((*q >= '0' && *q <= '9') || *q == '.')) {
++            out[n++] = *q++;
++        }
++        out[n] = 0;
++        if (strchr(out, '.')) return 0;
++        out[0] = 0;
++    }
++    return -1;
++}
++
+ static int diagnose_patch_rejection(const receiver_job *job, char *detail, size_t detail_cap) {
+     if (!detail || detail_cap == 0) return -1;
+     detail[0] = 0;
+@@ -1093,7 +1185,27 @@
+         return 0;
+     }
+     if (ret == 0 && exists) {
+-        snprintf(detail, detail_cap, "patch-rejected-%s-0x80990117", title_id);
++        char installed_patch_ver[24] = {0};
++        char requested_ver[16] = {0};
++        char base_content_id[80] = {0};
++        int have_patch = read_installed_sfo_value(title_id, 1, "APP_VER", installed_patch_ver, sizeof(installed_patch_ver)) == 0;
++        extract_version_hint(job->file_name, requested_ver);
++        if (have_patch) {
++            if (requested_ver[0])
++                snprintf(detail, detail_cap, "patch-existing-%s-v%s-request-v%s", title_id, installed_patch_ver, requested_ver);
++            else
++                snprintf(detail, detail_cap, "patch-existing-%s-v%s", title_id, installed_patch_ver);
++            return 0;
++        }
++        if (read_installed_sfo_value(title_id, 0, "CONTENT_ID", base_content_id, sizeof(base_content_id)) == 0 &&
++            strcmp(base_content_id, job->content_id) != 0) {
++            snprintf(detail, detail_cap, "patch-base-content-mismatch-%s", title_id);
++            return 0;
++        }
++        snprintf(detail, detail_cap, "patch-base-present-%s-compatibility-0x80990117", title_id);
+         return 0;
+     }
+     snprintf(detail, detail_cap, "patch-check-0x%08X", (unsigned int)ret);
