@@ -8,7 +8,7 @@ object PayloadLoaderClient {
     const val PORT = 9090
     private const val CONNECT_TIMEOUT_MS = 3000
     private const val IO_TIMEOUT_MS = 5000
-    private const val ASSET_NAME = "tayson_payload_installer_0_1_0.bin"
+    private const val ASSET_NAME = "tayson_payload_installer_0_2_0.bin"
     private const val MAX_PAYLOAD_BYTES = 4 * 1024 * 1024
 
     data class SendResult(val bytesSent: Int)
