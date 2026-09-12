@@ -1,0 +1,108 @@
+--- ps4receiver/receiver/main.c
++++ ps4receiver/receiver/main.c
+@@ -20,7 +20,7 @@
+ #include <orbis/Ssl.h>
+ #include <orbis/Sysmodule.h>
+ 
+-#define RECEIVER_VERSION "1.4.0"
++#define RECEIVER_VERSION "1.4.1"
+ #define CONTROL_PORT 9095
+ #define PROXY_PORT 32112
+ #define MAX_CONTROL_PAYLOAD (96 * 1024)
+@@ -116,6 +116,7 @@
+ } receiver_bgft_download_param;
+ 
+ typedef int32_t (*receiver_appinst_init_fn)(void);
++typedef int32_t (*receiver_appinst_exists_fn)(const char *title_id, int *exists);
+ typedef int32_t (*receiver_user_init_fn)(void *params);
+ typedef int32_t (*receiver_user_get_fg_fn)(int *user_id);
+ typedef int32_t (*receiver_bgft_init_fn)(receiver_bgft_init_params *params);
+@@ -150,6 +151,7 @@
+ extern int jbc_set_cred(const struct receiver_jbc_cred *cred);
+ 
+ static receiver_appinst_init_fn p_sceAppInstUtilInitialize = NULL;
++static receiver_appinst_exists_fn p_sceAppInstUtilAppExists = NULL;
+ static receiver_user_init_fn p_sceUserServiceInitialize = NULL;
+ static receiver_user_get_fg_fn p_sceUserServiceGetForegroundUser = NULL;
+ static receiver_bgft_init_fn p_sceBgftServiceIntInit = NULL;
+@@ -763,6 +765,9 @@
+     ret = resolve_symbol(g_mod_appinst, "sceAppInstUtilInitialize", &s);
+     if (ret < 0) return ret;
+     p_sceAppInstUtilInitialize = (receiver_appinst_init_fn)s;
++    /* Optional but useful for patch/update diagnostics. */
++    if (resolve_symbol(g_mod_appinst, "sceAppInstUtilAppExists", &s) == 0)
++        p_sceAppInstUtilAppExists = (receiver_appinst_exists_fn)s;
+ 
+     /* Notifications are optional and must never block transfer setup. */
+     set_service_stage("sysutil-load");
+@@ -1061,7 +1066,42 @@
+     return ret;
+ }
+ 
+-static int register_bgft(receiver_job *job) {
++static int extract_title_id_from_content_id(const char *content_id, char out[10]) {
++    if (!content_id || !out) return -1;
++    const char *dash = strchr(content_id, '-');
++    if (!dash || strlen(dash + 1) < 9) return -1;
++    const char *p = dash + 1;
++    if (strncmp(p, "CUSA", 4) != 0) return -1;
++    memcpy(out, p, 9);
++    out[9] = 0;
++    return 0;
++}
++
++static int diagnose_patch_rejection(const receiver_job *job, char *detail, size_t detail_cap) {
++    if (!detail || detail_cap == 0) return -1;
++    detail[0] = 0;
++    char title_id[10];
++    if (extract_title_id_from_content_id(job->content_id, title_id) != 0) return -1;
++    if (!p_sceAppInstUtilAppExists) {
++        snprintf(detail, detail_cap, "patch-rejected-%s-0x80990117", title_id);
++        return 0;
++    }
++    int exists = 0;
++    int ret = p_sceAppInstUtilAppExists(title_id, &exists);
++    if (ret == 0 && !exists) {
++        snprintf(detail, detail_cap, "patch-base-missing-%s", title_id);
++        return 0;
++    }
++    if (ret == 0 && exists) {
++        snprintf(detail, detail_cap, "patch-rejected-%s-0x80990117", title_id);
++        return 0;
++    }
++    snprintf(detail, detail_cap, "patch-check-0x%08X", (unsigned int)ret);
++    return ret;
++}
++
++static int register_bgft(receiver_job *job, char *detail, size_t detail_cap) {
++    if (detail && detail_cap) detail[0] = 0;
+     int user_id = 0;
+     int ret = p_sceUserServiceGetForegroundUser ? p_sceUserServiceGetForegroundUser(&user_id) : -1;
+     if (ret) return ret;
+@@ -1097,6 +1137,8 @@
+             ret = p_sceBgftServiceIntDebugDownloadRegisterPkg ? p_sceBgftServiceIntDebugDownloadRegisterPkg(&params, &task_id) : -1;
+         }
+     }
++    if ((uint32_t)ret == 0x80990117U)
++        diagnose_patch_rejection(job, detail, detail_cap);
+     if (ret) return ret;
+     if (task_id == BGFT_INVALID_TASK_ID) return -1;
+     ret = p_sceBgftServiceIntDownloadStartTask ? p_sceBgftServiceIntDownloadStartTask(task_id) : -1;
+@@ -1697,10 +1739,15 @@
+         return;
+     }
+     job.upstream_status = 206;
+-    ret = register_bgft(&job);
++    char bgft_detail[128];
++    bgft_detail[0] = 0;
++    ret = register_bgft(&job, bgft_detail, sizeof(bgft_detail));
+     if (ret) {
+         drop_job(job_id);
+-        snprintf(msg, sizeof(msg), "TAYSON/1 ERR bgft-0x%08X\n", (unsigned int)ret);
++        if (bgft_detail[0])
++            snprintf(msg, sizeof(msg), "TAYSON/1 ERR %s\n", bgft_detail);
++        else
++            snprintf(msg, sizeof(msg), "TAYSON/1 ERR bgft-0x%08X\n", (unsigned int)ret);
+         respond_line(client, msg);
+         notify_code("Tayson Receiver: BGFT", ret);
+         return;
