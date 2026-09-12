@@ -68,6 +68,41 @@ object PayloadClient {
         return StartResult(line)
     }
 
+    fun direct(host: String, pkg: PkgInfo, resume: Boolean = false): StartResult {
+        val verb = if (resume) "DIRECTRESUME" else "DIRECT"
+        val ctx = pkg.requestContext
+        val command = buildString {
+            append("TAYSONP/1 $verb\r\n")
+            appendHeader("Url", pkg.finalUrl)
+            appendHeader("Size", pkg.size.toString())
+            appendHeader("Name", pkg.fileName)
+            appendHeader("Title", pkg.titleId.orEmpty())
+            ctx?.userAgent?.takeIf { it.isNotBlank() }?.let { appendHeader("User-Agent", it) }
+            ctx?.referer?.takeIf { it.isNotBlank() }?.let { appendHeader("Referer", it) }
+            ctx?.cookie?.takeIf { it.isNotBlank() }?.let { appendHeader("Cookie", it) }
+            ctx?.extraHeaders?.forEach { (name, value) ->
+                val safe = name.trim()
+                if (safe.matches(Regex("[A-Za-z0-9_-]{1,64}")) && value.isNotBlank()) {
+                    appendHeader("Upstream-$safe", value)
+                }
+            }
+            append("\r\n")
+        }
+        val line = exchange(host, command, IO_TIMEOUT_MS)
+        if (!line.startsWith("TAYSONP/1 ACCEPTED")) {
+            val reason = line.removePrefix("TAYSONP/1 ERR ").ifBlank { line }
+            throw IllegalStateException("Payload recusou o modo direto: $reason")
+        }
+        return StartResult(line)
+    }
+
+    fun supportsDirect(version: String): Boolean {
+        val parts = version.split('.').map { it.toIntOrNull() ?: 0 }
+        val major = parts.getOrElse(0) { 0 }
+        val minor = parts.getOrElse(1) { 0 }
+        return major > 0 || minor >= 2
+    }
+
     fun status(host: String): StatusResult {
         val line = exchange(host, "TAYSONP/1 STATUS\r\n\r\n")
         require(line.startsWith("TAYSONP/1 STATUS ")) { "Status inválido do Payload: $line" }
@@ -88,11 +123,11 @@ object PayloadClient {
     fun reset(host: String): String = exchange(host, "TAYSONP/1 RESET\r\n\r\n")
     fun exit(host: String): String = exchange(host, "TAYSONP/1 EXIT\r\n\r\n")
 
-    private fun exchange(host: String, payload: String): String {
+    private fun exchange(host: String, payload: String, ioTimeoutMs: Int = IO_TIMEOUT_MS): String {
         requireHost(host)
         Socket().use { socket ->
             socket.connect(InetSocketAddress(host, PORT), CONNECT_TIMEOUT_MS)
-            socket.soTimeout = IO_TIMEOUT_MS
+            socket.soTimeout = ioTimeoutMs
             socket.getOutputStream().apply {
                 write(payload.toByteArray(StandardCharsets.UTF_8))
                 flush()
