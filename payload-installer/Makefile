@@ -14,12 +14,12 @@ ELF := $(TARGET).elf
 BIN := $(TARGET).bin
 SRC := main.c
 
-CFLAGS += -std=c11 -O2 -Wall -Wextra -Wno-unused-parameter
+CFLAGS += -std=c11 -O2 -Wall -Wextra -Wno-unused-parameter -include compat.h
 
 .PHONY: all clean
 all: $(ELF) $(BIN)
 
-$(ELF): $(SRC)
+$(ELF): $(SRC) compat.h
 	$(CC) $(CFLAGS) -o $@ $<
 
 $(BIN): $(ELF)
