@@ -33,19 +33,27 @@ object PayloadClient {
     }
 
     fun start(host: String, relayUrl: String, pkg: PkgInfo): StartResult {
-        require(relayUrl.startsWith("http://")) { "O Payload 0.1.0 requer URL HTTP do Relay local" }
+        require(relayUrl.startsWith("http://")) { "O Payload requer URL HTTP do Relay local" }
 
-        // 0.1.0 has one fixed staging file. Reset it before a different package so
-        // stale bytes can never be appended to a new PKG. A busy payload refuses RESET.
+        // START is intentionally clean: remove stale bytes from a different package.
         val resetLine = exchange(host, "TAYSONP/1 RESET\r\n\r\n")
         if (!resetLine.startsWith("TAYSONP/1 OK ")) {
             val reason = resetLine.removePrefix("TAYSONP/1 ERR ").ifBlank { resetLine }
             throw IllegalStateException("Payload não pode iniciar outro trabalho: $reason")
         }
+        return sendJobCommand(host, "START", relayUrl, pkg)
+    }
 
+    fun resume(host: String, relayUrl: String, pkg: PkgInfo): StartResult {
+        require(relayUrl.startsWith("http://")) { "O Payload requer URL HTTP do Relay local" }
+        // RESUME never sends RESET: current.pkg is deliberately preserved.
+        return sendJobCommand(host, "RESUME", relayUrl, pkg)
+    }
+
+    private fun sendJobCommand(host: String, verb: String, relayUrl: String, pkg: PkgInfo): StartResult {
         val title = pkg.titleId.orEmpty()
         val command = buildString {
-            append("TAYSONP/1 START\r\n")
+            append("TAYSONP/1 $verb\r\n")
             appendHeader("Url", relayUrl)
             appendHeader("Size", pkg.size.toString())
             appendHeader("Name", pkg.fileName)
@@ -78,6 +86,7 @@ object PayloadClient {
 
     fun stop(host: String): String = exchange(host, "TAYSONP/1 STOP\r\n\r\n")
     fun reset(host: String): String = exchange(host, "TAYSONP/1 RESET\r\n\r\n")
+    fun exit(host: String): String = exchange(host, "TAYSONP/1 EXIT\r\n\r\n")
 
     private fun exchange(host: String, payload: String): String {
         requireHost(host)
