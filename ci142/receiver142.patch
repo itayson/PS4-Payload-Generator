@@ -108,7 +108,7 @@
  static int diagnose_patch_rejection(const receiver_job *job, char *detail, size_t detail_cap) {
      if (!detail || detail_cap == 0) return -1;
      detail[0] = 0;
-@@ -1093,7 +1185,27 @@
+@@ -1093,7 +1185,24 @@
          return 0;
      }
      if (ret == 0 && exists) {
