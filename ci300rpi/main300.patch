@@ -1,0 +1,298 @@
+--- a/app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
++++ b/app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+@@ -20,6 +20,7 @@
+ import com.tayson.ps4linksender.ps4.PayloadLoaderClient
+ import com.tayson.ps4linksender.ps4.AutoPilotEngine
+ import com.tayson.ps4linksender.ps4.BgftPayloadClient
++import com.tayson.ps4linksender.ps4.RpiClient
+ import com.tayson.ps4linksender.relay.RelayManager
+ import com.tayson.ps4linksender.resolver.ResolverRegistry
+ import com.tayson.ps4linksender.storage.AppStore
+@@ -51,6 +52,10 @@
+     private var pkgInfo: PkgInfo? = null
+     private var autoPilotInFlight = false
+     private var oneTapPending = false
++    private var rpiTaskId: Int? = null
++    private var rpiPort: Int? = null
++    private var rpiMonitoring = false
++    private var rpiMonitorInFlight = false
+ 
+     private lateinit var linkInput: EditText
+     private lateinit var ipInput: EditText
+@@ -68,6 +73,8 @@
+     private lateinit var monitorButton: Button
+     private lateinit var autoPilotSwitch: Switch
+     private lateinit var oneTapButton: Button
++    private lateinit var rpiStatus: TextView
++    private lateinit var rpiMonitorButton: Button
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+@@ -96,12 +103,12 @@
+         scroll.addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+ 
+         root.addView(text("TAYSON PS4 DOWNLOADER", 24f, true).apply { gravity = Gravity.CENTER_HORIZONTAL })
+-        root.addView(text("2.0.1 ONE-TAP • Payload BGFT direto • VikingFile • AkiraBox • Rootz • Mocha • link direto", 13f, false).apply {
++        root.addView(text("3.0.0 RPI-FIRST • Remote Package Installer + Payload fallback • VikingFile • AkiraBox • Rootz • Mocha", 13f, false).apply {
+             gravity = Gravity.CENTER_HORIZONTAL
+             setPadding(0, dp(4), 0, dp(18))
+         })
+ 
+-        root.addView(label("IP do PS4 (GoldHEN BinLoader :9090)"))
++        root.addView(label("IP do PS4"))
+         ipInput = edit("192.168.0.10").apply { inputType = InputType.TYPE_CLASS_PHONE }
+         root.addView(ipInput)
+ 
+@@ -124,11 +131,25 @@
+         progress = ProgressBar(this).apply { visibility = View.GONE; isIndeterminate = true }
+         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+ 
+-        status = text("Ative o BinLoader Server no GoldHEN, informe o IP do PS4, cole o link e toque em ENVIAR AO PS4.", 15f, true)
++        status = text("Informe o IP do PS4, cole o link e toque em ENVIAR AO PS4. O app tenta RPI :12800/:11200 primeiro e usa Payload :9090 como fallback.", 15f, true)
+         root.addView(card(status))
+         details = text("", 14f, false)
+         root.addView(card(details))
+ 
++        root.addView(label("Remote Package Installer — RPI"))
++        rpiStatus = text("RPI ainda não testado. O modo One-Tap detecta automaticamente as portas 12800 e 11200.", 13f, false)
++        root.addView(card(rpiStatus))
++        val rpiActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
++        rpiActions.addView(button("TESTAR RPI") { testRpi() }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
++        rpiMonitorButton = button("MONITORAR RPI") { toggleRpiMonitoring() }
++        rpiActions.addView(rpiMonitorButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
++        root.addView(rpiActions)
++        val rpiControls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
++        rpiControls.addView(button("PAUSAR") { controlRpi("pause") }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
++        rpiControls.addView(button("RETOMAR") { controlRpi("resume") }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
++        rpiControls.addView(button("CANCELAR") { controlRpi("cancel") }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
++        root.addView(rpiControls)
++
+         root.addView(label("Controles avançados / fallback"))
+         root.addView(text("Normalmente você não precisa usar os botões abaixo: o Autopilot detecta, carrega e escolhe o backend sozinho.", 12f, false))
+         root.addView(label("PS4 — Tayson Receiver :${ReceiverClient.PORT}"))
+@@ -194,6 +215,172 @@
+         analyzeInput()
+     }
+ 
++    private fun sendSmart(info: PkgInfo) {
++        val host = ipInput.text.toString().trim()
++        if (host.isBlank()) { toast("Informe o IP do PS4"); return }
++        savePrefs()
++        setBusy(true, "One-Tap: procurando Remote Package Installer :12800/:11200…")
++        executor.execute {
++            try {
++                val fresh = try { PkgScanner.scan(info.finalUrl, info.requestContext) } catch (_: Exception) { info }
++                pkgInfo = fresh
++                val rpi = RpiClient.install(host, listOf(fresh.finalUrl))
++                rpiPort = rpi.port
++                rpiTaskId = rpi.taskId
++                runOnUiThread {
++                    setBusy(false)
++                    status.text = buildString {
++                        append("✓ Enviado pelo Remote Package Installer :${rpi.port}.")
++                        rpi.taskId?.let { append(" • Task $it") }
++                        append("\nO PS4 baixa diretamente da Internet; o celular não fica no caminho dos dados.")
++                    }
++                    rpiStatus.text = buildString {
++                        append("RPI :${rpi.port} • HTTP ${rpi.httpCode}")
++                        rpi.taskId?.let { append(" • Task $it") }
++                        if (rpi.taskId == null) append("\nO servidor aceitou o envio, mas não retornou Task ID no corpo da resposta.")
++                    }
++                    details.text = details.text.toString() + "\nModo escolhido: Remote Package Installer :${rpi.port}"
++                    if (rpi.taskId != null) startRpiMonitoring()
++                }
++            } catch (rpiError: Exception) {
++                runOnUiThread { status.text = "RPI indisponível/recusou. Tentando Payload BGFT :${BgftPayloadClient.PORT}…" }
++                try {
++                    val result = BgftPayloadClient.send(this, host, info)
++                    runOnUiThread {
++                        setBusy(false)
++                        status.text = buildString {
++                            append("✓ Fallback Payload enviado ao PS4 (${result.bytesSent} bytes).\n")
++                            append("RPI não estava disponível; o payload registrará o PKG no BGFT e encerrará.")
++                        }
++                        rpiStatus.text = "RPI não utilizado: ${rpiError.message}"
++                        details.text = details.text.toString() + "\nModo escolhido: Payload BGFT fallback :${BgftPayloadClient.PORT}"
++                    }
++                } catch (payloadError: Exception) {
++                    runOnUiThread {
++                        setBusy(false)
++                        status.text = "Falharam RPI e Payload. RPI: ${rpiError.message} • Payload: ${payloadError.message}"
++                    }
++                }
++            }
++        }
++    }
++
++    private fun testRpi() {
++        val host = ipInput.text.toString().trim()
++        if (host.isBlank()) { toast("Informe o IP do PS4"); return }
++        setBusy(true, "Testando Remote Package Installer…")
++        executor.execute {
++            try {
++                val result = RpiClient.probe(host)
++                rpiPort = result.port
++                runOnUiThread {
++                    setBusy(false)
++                    rpiStatus.text = "✓ RPI respondeu em $host:${result.port}. Pronto para receber /api/install."
++                }
++            } catch (e: Exception) {
++                runOnUiThread { setBusy(false); rpiStatus.text = "RPI indisponível: ${e.message}" }
++            }
++        }
++    }
++
++    private fun toggleRpiMonitoring() {
++        if (rpiMonitoring) stopRpiMonitoring() else startRpiMonitoring()
++    }
++
++    private fun startRpiMonitoring() {
++        if (rpiTaskId == null || rpiPort == null) {
++            toast("Nenhuma Task ID do RPI disponível")
++            return
++        }
++        rpiMonitoring = true
++        updateRpiMonitorButton()
++        if (activityResumed) {
++            monitorHandler.removeCallbacks(rpiMonitorTick)
++            monitorHandler.post(rpiMonitorTick)
++        }
++    }
++
++    private fun stopRpiMonitoring() {
++        rpiMonitoring = false
++        monitorHandler.removeCallbacks(rpiMonitorTick)
++        updateRpiMonitorButton()
++    }
++
++    private fun updateRpiMonitorButton() {
++        if (::rpiMonitorButton.isInitialized) rpiMonitorButton.text = if (rpiMonitoring) "PARAR RPI" else "MONITORAR RPI"
++    }
++
++    private val rpiMonitorTick = object : Runnable {
++        override fun run() {
++            if (!rpiMonitoring || !activityResumed) return
++            refreshRpiProgress(false)
++            monitorHandler.postDelayed(this, MONITOR_INTERVAL_MS)
++        }
++    }
++
++    private fun refreshRpiProgress(manual: Boolean) {
++        val host = ipInput.text.toString().trim()
++        val port = rpiPort
++        val task = rpiTaskId
++        if (host.isBlank() || port == null || task == null) {
++            if (manual) toast("Nenhuma tarefa RPI disponível")
++            return
++        }
++        if (rpiMonitorInFlight) return
++        rpiMonitorInFlight = true
++        executor.execute {
++            try {
++                val p = RpiClient.progress(host, port, task)
++                val pct = if (p.totalBytes > 0) (p.downloadedBytes * 100.0 / p.totalBytes).coerceIn(0.0, 100.0) else null
++                runOnUiThread {
++                    rpiMonitorInFlight = false
++                    rpiStatus.text = buildString {
++                        append("RPI :$port • Task ${p.taskId}")
++                        p.status?.let { append(" • $it") }
++                        if (p.totalBytes > 0) {
++                            append("\n${Format.bytes(p.downloadedBytes)} / ${Format.bytes(p.totalBytes)}")
++                            pct?.let { append(" • ${"%.1f".format(it)}%") }
++                        }
++                    }
++                }
++            } catch (e: Exception) {
++                runOnUiThread {
++                    rpiMonitorInFlight = false
++                    rpiStatus.text = "Monitoramento RPI indisponível: ${e.message}"
++                }
++            }
++        }
++    }
++
++    private fun controlRpi(action: String) {
++        val host = ipInput.text.toString().trim()
++        val port = rpiPort
++        val task = rpiTaskId
++        if (host.isBlank() || port == null || task == null) { toast("Nenhuma Task ID do RPI disponível"); return }
++        executor.execute {
++            try {
++                when (action) {
++                    "pause" -> RpiClient.pause(host, port, task)
++                    "resume" -> RpiClient.resume(host, port, task)
++                    "cancel" -> RpiClient.cancel(host, port, task)
++                }
++                runOnUiThread {
++                    rpiStatus.text = when (action) {
++                        "pause" -> "RPI Task $task pausada."
++                        "resume" -> "RPI Task $task retomada."
++                        else -> "RPI Task $task cancelada/removida."
++                    }
++                    if (action == "cancel") {
++                        stopRpiMonitoring()
++                        rpiTaskId = null
++                    }
++                }
++            } catch (e: Exception) {
++                runOnUiThread { rpiStatus.text = "Falha no comando RPI: ${e.message}" }
++            }
++        }
++    }
++
+     private fun sendBgftPayload(info: PkgInfo) {
+         val host = ipInput.text.toString().trim()
+         if (host.isBlank()) { oneTapPending = false; toast("Informe o IP do PS4"); return }
+@@ -281,7 +468,7 @@
+                 renderPkg(info)
+                 if (oneTapPending) {
+                     oneTapPending = false
+-                    sendBgftPayload(info)
++                    sendSmart(info)
+                 } else if (autoPilotSwitch.isChecked) runAutopilot()
+             }
+         } catch (e: Exception) {
+@@ -299,7 +486,7 @@
+             sfo?.title?.let { append("Título: $it\n") }
+             append("Arquivo: ${info.fileName}\n")
+             append("Provedor: ${currentProvider.label}\n")
+-            append("Transporte padrão: Payload BGFT direto (Internet → PS4)\n")
++            append("Transporte padrão: RPI HTTP direto; fallback Payload BGFT (Internet → PS4)\n")
+             append("Tamanho: ${Format.bytes(info.size)}\n")
+             append("Content ID: ${info.contentId}\n")
+             append("Title ID: ${info.titleId ?: "não identificado"}\n")
+@@ -962,6 +1149,8 @@
+         ipInput.setText(p.getString("receiver_ip", ""))
+         linkInput.setText(p.getString("last_link", ""))
+         if (::autoPilotSwitch.isInitialized) autoPilotSwitch.isChecked = p.getBoolean("autopilot_enabled", true)
++        rpiTaskId = p.getInt("rpi_task_id", -1).takeIf { it >= 0 }
++        rpiPort = p.getInt("rpi_port", -1).takeIf { it > 0 }
+     }
+ 
+     private fun savePrefs() {
+@@ -969,6 +1158,8 @@
+             .putString("receiver_ip", ipInput.text.toString().trim())
+             .putString("last_link", linkInput.text.toString().trim())
+             .putBoolean("autopilot_enabled", !::autoPilotSwitch.isInitialized || autoPilotSwitch.isChecked)
++            .putInt("rpi_task_id", rpiTaskId ?: -1)
++            .putInt("rpi_port", rpiPort ?: -1)
+             .apply()
+     }
+ 
+@@ -1024,11 +1215,16 @@
+             monitorHandler.removeCallbacks(monitorTick)
+             monitorHandler.post(monitorTick)
+         }
++        if (rpiMonitoring) {
++            monitorHandler.removeCallbacks(rpiMonitorTick)
++            monitorHandler.post(rpiMonitorTick)
++        }
+     }
+ 
+     override fun onPause() {
+         activityResumed = false
+         monitorHandler.removeCallbacks(monitorTick)
++        monitorHandler.removeCallbacks(rpiMonitorTick)
+         savePrefs()
+         super.onPause()
+     }
