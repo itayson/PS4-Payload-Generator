@@ -1,0 +1,1 @@
+Tayson PS4 Receiver 1.4.2 Patch Inspector: inspects installed base/update metadata when BGFT rejects a patch with 0x80990117.
