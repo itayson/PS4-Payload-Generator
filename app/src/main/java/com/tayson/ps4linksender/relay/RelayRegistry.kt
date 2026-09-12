@@ -1,5 +1,6 @@
 package com.tayson.ps4linksender.relay
 
+import com.tayson.ps4linksender.model.RequestContext
 import java.net.URLEncoder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -10,18 +11,19 @@ object RelayRegistry {
         val upstreamUrl: String,
         val fileName: String,
         val size: Long,
+        val requestContext: RequestContext? = null,
         val createdAt: Long = System.currentTimeMillis()
     )
 
     private val entries = ConcurrentHashMap<String, Entry>()
 
-    fun register(upstreamUrl: String, fileName: String, size: Long): Entry {
+    fun register(upstreamUrl: String, fileName: String, size: Long, requestContext: RequestContext? = null): Entry {
         require(upstreamUrl.startsWith("http://") || upstreamUrl.startsWith("https://")) { "Relay aceita somente HTTP/HTTPS" }
         require(size > 0) { "Tamanho do PKG inválido para Relay" }
         prune()
         val token = UUID.randomUUID().toString().replace("-", "")
         val safeName = sanitizeName(fileName)
-        return Entry(token, upstreamUrl.substringBefore('#'), safeName, size).also { entries[token] = it }
+        return Entry(token, upstreamUrl.substringBefore('#'), safeName, size, requestContext).also { entries[token] = it }
     }
 
     fun get(token: String): Entry? = entries[token]
