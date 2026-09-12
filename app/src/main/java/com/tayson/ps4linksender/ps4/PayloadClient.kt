@@ -34,6 +34,15 @@ object PayloadClient {
 
     fun start(host: String, relayUrl: String, pkg: PkgInfo): StartResult {
         require(relayUrl.startsWith("http://")) { "O Payload 0.1.0 requer URL HTTP do Relay local" }
+
+        // 0.1.0 has one fixed staging file. Reset it before a different package so
+        // stale bytes can never be appended to a new PKG. A busy payload refuses RESET.
+        val resetLine = exchange(host, "TAYSONP/1 RESET\r\n\r\n")
+        if (!resetLine.startsWith("TAYSONP/1 OK ")) {
+            val reason = resetLine.removePrefix("TAYSONP/1 ERR ").ifBlank { resetLine }
+            throw IllegalStateException("Payload não pode iniciar outro trabalho: $reason")
+        }
+
         val title = pkg.titleId.orEmpty()
         val command = buildString {
             append("TAYSONP/1 START\r\n")
