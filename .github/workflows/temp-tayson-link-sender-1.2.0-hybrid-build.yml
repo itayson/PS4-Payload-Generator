@@ -1,9 +1,9 @@
-name: Temporary Tayson Link Sender 1.2.1 Hybrid Build
+name: Temporary Tayson Link Sender 1.2.2 Hybrid Build
 
 on:
   push:
     branches:
-      - build/tayson-hybrid-payload-0.1.1
+      - build/tayson-hybrid-payload-0.1.2
 
 permissions:
   contents: read
@@ -40,12 +40,11 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -o /tmp/suite110.zip \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10282012224/zip"
-          rm -rf /tmp/suite110 /tmp/TaysonHybrid-1.2.1
-          mkdir -p /tmp/suite110 /tmp/TaysonHybrid-1.2.1
+          rm -rf /tmp/suite110 /tmp/TaysonHybrid-1.2.2
+          mkdir -p /tmp/suite110 /tmp/TaysonHybrid-1.2.2
           unzip -q /tmp/suite110.zip -d /tmp/suite110
           test -s /tmp/suite110/TaysonPS4Suite-1.1.0-source.tar.gz
-          tar -xzf /tmp/suite110/TaysonPS4Suite-1.1.0-source.tar.gz \
-            -C /tmp/TaysonHybrid-1.2.1 --strip-components=1
+          tar -xzf /tmp/suite110/TaysonPS4Suite-1.1.0-source.tar.gz -C /tmp/TaysonHybrid-1.2.2 --strip-components=1
 
       - name: Overlay Relay and Payload Android clients
         shell: bash
@@ -53,7 +52,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          cd /tmp/TaysonHybrid-1.2.1
+          cd /tmp/TaysonHybrid-1.2.2
           mkdir -p app/src/main/java/com/tayson/ps4linksender/relay
           mkdir -p app/src/main/java/com/tayson/ps4linksender/ps4
           cp "$GITHUB_WORKSPACE"/app/src/main/java/com/tayson/ps4linksender/relay/*.kt app/src/main/java/com/tayson/ps4linksender/relay/
@@ -64,61 +63,58 @@ jobs:
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            -o /tmp/payload011.zip \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10299977223/zip"
-          rm -rf /tmp/payload011
-          mkdir -p /tmp/payload011 app/src/main/assets
-          unzip -q /tmp/payload011.zip -d /tmp/payload011
-          test -s /tmp/payload011/Tayson-Payload-Installer-0.1.1.bin
-          cp /tmp/payload011/Tayson-Payload-Installer-0.1.1.bin app/src/main/assets/tayson_payload_installer_0_1_1.bin
+            -o /tmp/payload012.zip \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10300262205/zip"
+          rm -rf /tmp/payload012
+          mkdir -p /tmp/payload012 app/src/main/assets
+          unzip -q /tmp/payload012.zip -d /tmp/payload012
+          test -s /tmp/payload012/Tayson-Payload-Installer-0.1.2.bin
+          cp /tmp/payload012/Tayson-Payload-Installer-0.1.2.bin app/src/main/assets/tayson_payload_installer_0_1_2.bin
 
-      - name: Apply Hybrid 1.2.0 base patch
+      - name: Apply Hybrid base patches
         shell: bash
         run: |
           set -euxo pipefail
-          cd /tmp/TaysonHybrid-1.2.1
+          cd /tmp/TaysonHybrid-1.2.2
           python3 "$GITHUB_WORKSPACE/ci120hybrid/apply_android_hybrid120.py"
           sed -i '/android.permission.ACCESS_NETWORK_STATE/a\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' app/src/main/AndroidManifest.xml
-
-      - name: Apply Hybrid 1.2.1 resilient patch
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cd /tmp/TaysonHybrid-1.2.1
           python3 "$GITHUB_WORKSPACE/ci121hybrid/apply_android_hybrid121.py"
-          grep -q 'versionCode = 18' app/build.gradle.kts
-          grep -q 'versionName = "1.2.1"' app/build.gradle.kts
-          grep -q 'Payload Installer 0.1.1' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+          python3 "$GITHUB_WORKSPACE/ci122hybrid/apply_android_hybrid122.py"
+          grep -q 'versionCode = 19' app/build.gradle.kts
+          grep -q 'versionName = "1.2.2"' app/build.gradle.kts
+          grep -q 'RETOMAR CACHE EXISTENTE' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+          grep -q 'PayloadClient.resume' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+          grep -q 'PayloadClient.exit' app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
           grep -q 'readTimeout = 120_000' app/src/main/java/com/tayson/ps4linksender/relay/RelayHttpServer.kt
-          grep -q 'tayson_payload_installer_0_1_1.bin' app/src/main/java/com/tayson/ps4linksender/ps4/PayloadLoaderClient.kt
-          test -s app/src/main/assets/tayson_payload_installer_0_1_1.bin
+          grep -q 'tayson_payload_installer_0_1_2.bin' app/src/main/java/com/tayson/ps4linksender/ps4/PayloadLoaderClient.kt
+          test -s app/src/main/assets/tayson_payload_installer_0_1_2.bin
 
-      - name: Lint and build Android 1.2.1 Hybrid
+      - name: Lint and build Android 1.2.2 Hybrid
         shell: bash
         run: |
           set -o pipefail
-          cd /tmp/TaysonHybrid-1.2.1
-          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug 2>&1 | tee android-build-1.2.1-hybrid.log
+          cd /tmp/TaysonHybrid-1.2.2
+          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug 2>&1 | tee android-build-1.2.2-hybrid.log
           test -s app/build/outputs/apk/universal/debug/app-universal-debug.apk
 
       - name: Prepare Hybrid artifacts
         shell: bash
         run: |
           set -euxo pipefail
-          cd /tmp/TaysonHybrid-1.2.1
+          cd /tmp/TaysonHybrid-1.2.2
           mkdir -p dist
-          cp app/build/outputs/apk/universal/debug/app-universal-debug.apk dist/Tayson-PS4-Link-Sender-1.2.1-Hybrid-universal-debug.apk
-          cp /tmp/payload011/Tayson-Payload-Installer-0.1.1.bin dist/
-          cp /tmp/payload011/Tayson-Payload-Installer-0.1.1.elf dist/
-          cp android-build-1.2.1-hybrid.log dist/
-          tar -czf dist/TaysonPS4LinkSender-1.2.1-Hybrid-source.tar.gz --exclude='./dist' --exclude='./app/build' --exclude='./.gradle' .
-          (cd dist && sha256sum Tayson-PS4-Link-Sender-1.2.1-Hybrid-universal-debug.apk Tayson-Payload-Installer-0.1.1.bin Tayson-Payload-Installer-0.1.1.elf TaysonPS4LinkSender-1.2.1-Hybrid-source.tar.gz > SHA256SUMS.txt)
+          cp app/build/outputs/apk/universal/debug/app-universal-debug.apk dist/Tayson-PS4-Link-Sender-1.2.2-Hybrid-universal-debug.apk
+          cp /tmp/payload012/Tayson-Payload-Installer-0.1.2.bin dist/
+          cp /tmp/payload012/Tayson-Payload-Installer-0.1.2.elf dist/
+          cp android-build-1.2.2-hybrid.log dist/
+          tar -czf dist/TaysonPS4LinkSender-1.2.2-Hybrid-source.tar.gz --exclude='./dist' --exclude='./app/build' --exclude='./.gradle' .
+          (cd dist && sha256sum Tayson-PS4-Link-Sender-1.2.2-Hybrid-universal-debug.apk Tayson-Payload-Installer-0.1.2.bin Tayson-Payload-Installer-0.1.2.elf TaysonPS4LinkSender-1.2.2-Hybrid-source.tar.gz > SHA256SUMS.txt)
           cat dist/SHA256SUMS.txt
 
-      - name: Upload Hybrid 1.2.1
+      - name: Upload Hybrid 1.2.2
         uses: actions/upload-artifact@v4
         with:
-          name: Tayson-PS4-Link-Sender-1.2.1-Hybrid
-          path: /tmp/TaysonHybrid-1.2.1/dist/*
+          name: Tayson-PS4-Link-Sender-1.2.2-Hybrid
+          path: /tmp/TaysonHybrid-1.2.2/dist/*
           if-no-files-found: error
           retention-days: 30
