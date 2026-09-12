@@ -39,7 +39,7 @@ jobs:
           set -euxo pipefail
           python3 ci011/apply_payload011.py
           python3 ci012/apply_payload012.py
-          sed -i 's/Tayson-Payload-Installer-0.1.0/Tayson-Payload-Installer-0.2.0/' payload-installer/Makefile
+          sed -i 's/Tayson-Payload-Installer-0.1.2/Tayson-Payload-Installer-0.2.0/' payload-installer/Makefile
           python3 ci020/apply_payload020.py
           grep -q 'TAYSON_PAYLOAD_VERSION "0.2.0"' payload-installer/main.c
           grep -q 'TAYSONP/1 DIRECTRESUME' payload-installer/main.c
