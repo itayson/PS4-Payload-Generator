@@ -1,0 +1,67 @@
+name: Temporary Tayson Payload Installer 0.1.0 Build
+
+on:
+  push:
+    branches:
+      - build/tayson-hybrid-payload-0.1.0
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Checkout PS4 Payload SDK
+        uses: actions/checkout@v4
+        with:
+          repository: ps4-payload-dev/sdk
+          path: payload-sdk
+
+      - name: Build and install PS4 Payload SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y clang-18 lld-18 llvm-18 make
+          make -C payload-sdk DESTDIR=/tmp/ps4-payload-sdk clean install
+          echo "PS4_PAYLOAD_SDK=/tmp/ps4-payload-sdk" >> "$GITHUB_ENV"
+          echo "LLVM_CONFIG=$(command -v llvm-config-18)" >> "$GITHUB_ENV"
+
+      - name: Build payload ELF and BIN
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd payload-installer
+          make clean all
+          test -s Tayson-Payload-Installer-0.1.0.elf
+          test -s Tayson-Payload-Installer-0.1.0.bin
+          file Tayson-Payload-Installer-0.1.0.elf | tee build-info.txt
+          file Tayson-Payload-Installer-0.1.0.bin | tee -a build-info.txt
+          strings Tayson-Payload-Installer-0.1.0.elf | grep -q 'Tayson Payload Installer 0.1.0'
+          strings Tayson-Payload-Installer-0.1.0.elf | grep -q 'TAYSONP/1 STATUS'
+          strings Tayson-Payload-Installer-0.1.0.elf | grep -q 'sceAppInstUtilAppInstallPkg'
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/tayson-payload-010
+          cp payload-installer/Tayson-Payload-Installer-0.1.0.elf /tmp/tayson-payload-010/
+          cp payload-installer/Tayson-Payload-Installer-0.1.0.bin /tmp/tayson-payload-010/
+          cp payload-installer/README.md payload-installer/build-info.txt /tmp/tayson-payload-010/
+          tar -czf /tmp/tayson-payload-010/Tayson-Payload-Installer-0.1.0-source.tar.gz payload-installer
+          (cd /tmp/tayson-payload-010 && sha256sum Tayson-Payload-Installer-0.1.0.elf Tayson-Payload-Installer-0.1.0.bin Tayson-Payload-Installer-0.1.0-source.tar.gz > SHA256SUMS.txt)
+
+      - name: Upload payload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tayson-Payload-Installer-0.1.0
+          path: /tmp/tayson-payload-010/*
+          if-no-files-found: error
+          retention-days: 30
