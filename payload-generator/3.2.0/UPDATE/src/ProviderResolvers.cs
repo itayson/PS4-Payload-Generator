@@ -25,16 +25,24 @@ public static class ProviderResolvers
         if (!IsRootz(uri)) return null;
         Match match = RootzShort.Match(uri.AbsolutePath);
         if (!match.Success) return null;
-        // The regex already limits the short id to URL-safe ASCII.
         return "https://www.rootz.so/api/files/proxy-download/" + match.Groups[1].Value;
     }
 
-    public static bool IsAkiraSignedDownload(Uri uri)
+    public static bool IsAkiraDownloadCandidate(Uri uri)
     {
         if (!IsAkiraBox(uri)) return false;
-        if (!uri.AbsolutePath.StartsWith("/download/", StringComparison.OrdinalIgnoreCase)) return false;
-        return uri.AbsolutePath.IndexOf(".pkg", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            uri.Query.IndexOf("signature=", StringComparison.OrdinalIgnoreCase) >= 0 ||
+        string host = uri.IdnHost.TrimEnd('.');
+        bool pkgPath = uri.AbsolutePath.IndexOf(".pkg", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool signedPath = uri.AbsolutePath.StartsWith("/download/", StringComparison.OrdinalIgnoreCase);
+        bool signedQuery = uri.Query.IndexOf("signature=", StringComparison.OrdinalIgnoreCase) >= 0 ||
             uri.Query.IndexOf("expiration=", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool accessQuery = uri.Query.IndexOf("access=", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool downloadHost = host.StartsWith("download.", StringComparison.OrdinalIgnoreCase) ||
+            host.StartsWith("eeur", StringComparison.OrdinalIgnoreCase) ||
+            host.StartsWith("eus", StringComparison.OrdinalIgnoreCase) ||
+            host.StartsWith("us", StringComparison.OrdinalIgnoreCase);
+        return signedPath || (pkgPath && (signedQuery || accessQuery || downloadHost));
     }
+
+    public static bool IsAkiraSignedDownload(Uri uri) => IsAkiraDownloadCandidate(uri);
 }
