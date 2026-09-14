@@ -39,21 +39,26 @@ public static class Integration
         Field<Image>(page, "imgIcon").Source = null;
     }
 
+    static Task<DownloadInfo> ProbeForProviderAsync(string url, int limit = 128)
+    {
+        Uri uri = LinkPolicy.Parse(url);
+        return ProviderResolvers.IsAkiraBox(uri)
+            ? AkiraDownloadProbe.ProbeAsync(url, limit)
+            : Client.ProbeAsync(url, limit);
+    }
+
     public static async Task<string> ResolveAsync(MainPage page, string value)
     {
         Uri uri = LinkPolicy.Parse(value);
         Provider provider = LinkPolicy.Detect(uri);
         bool knownProviderPage = provider != Provider.Direct || ProviderResolvers.IsAkiraBox(uri);
 
-        try { return (await Client.ProbeAsync(uri.AbsoluteUri)).Url.AbsoluteUri; }
+        try { return (await ProbeForProviderAsync(uri.AbsoluteUri)).Url.AbsoluteUri; }
         catch (Exception ex) when (ex is InvalidDataException || ex is System.Net.Http.HttpRequestException || ex is OperationCanceledException)
         {
             if (!knownProviderPage) throw;
         }
 
-        // Rootz public /d/<shortId> pages have a stable ranged proxy endpoint.
-        // Prefer it before opening WebView; if the endpoint is unavailable for a
-        // particular file, fall back to the normal browser-assisted flow.
         if (ProviderResolvers.IsRootz(uri))
         {
             string proxy = ProviderResolvers.RootzProxyUrl(uri);
@@ -83,17 +88,12 @@ public static class Integration
             catch (Exception ex) when (ex is InvalidDataException || ex is System.Net.Http.HttpRequestException || ex is OperationCanceledException) { }
         }
 
-        // AkiraBox migrated public links from .com to .to. The .to page must
-        // reach WebView even though older V3 provider detection only knew .com;
-        // browser capture then observes the signed /download/... URL after the
-        // site's verification step. Rootz also lands here when its direct proxy
-        // is not available for a particular public file.
         return await ProviderBrowser.ResolveAsync(page, uri, Client);
     }
 
     public static async Task<PkgMetadata> AnalyzeAsync(MainPage page, string url, int limit)
     {
-        DownloadInfo info = await Client.ProbeAsync(url, Math.Min(2097152, Math.Max(128, limit)));
+        DownloadInfo info = await ProbeForProviderAsync(url, Math.Min(2097152, Math.Max(128, limit)));
         var sfo = ((string Title, string Category))typeof(MainPage).GetMethod("ExtractMetadataFromSfo", PrivateInstance)
             .Invoke(page, new object[] { info.Prefix });
         string title = sfo.Title;
@@ -116,15 +116,16 @@ public static class Integration
     {
         PkgMetadata meta = Field<PkgMetadata>(page, "_currentMeta");
         if (meta == null) throw new InvalidDataException("Analise um link válido antes de gerar o payload.");
-        DownloadInfo current = await Client.ProbeAsync(meta.Url);
+        DownloadInfo current = await ProbeForProviderAsync(meta.Url);
         if (!ReferenceEquals(meta, Field<PkgMetadata>(page, "_currentMeta")))
             throw new InvalidDataException("O link foi alterado durante a verificação. Analise o novo link antes de enviar.");
         if (current.Length != meta.ContentLength || current.ContentId != meta.ContentId)
             throw new InvalidDataException("O arquivo mudou desde a análise. Analise o link novamente.");
 
         // The real provider URL was validated above. Only now adapt its transport
-        // representation for PS4 BGFT. No Receiver/RPI is involved: the generated
-        // ELF is still injected directly into GoldHEN BinLoader on TCP 9090.
+        // representation for PS4 BGFT. VikingFile and Rootz R2 signed URLs are
+        // converted to the universal Worker route; AkiraBox remains direct until
+        // hardware proves BGFT itself also needs a transport shim.
         string bgftUrl = await Router.PrepareAsync(current.Url.AbsoluteUri);
         using Stream input = await FileSystem.OpenAppPackageFileAsync("template.elf");
         using var buffer = new MemoryStream();
