@@ -42,13 +42,29 @@ public static class Integration
     public static async Task<string> ResolveAsync(MainPage page, string value)
     {
         Uri uri = LinkPolicy.Parse(value);
+        Provider provider = LinkPolicy.Detect(uri);
+        bool knownProviderPage = provider != Provider.Direct || ProviderResolvers.IsAkiraBox(uri);
+
         try { return (await Client.ProbeAsync(uri.AbsoluteUri)).Url.AbsoluteUri; }
         catch (Exception ex) when (ex is InvalidDataException || ex is System.Net.Http.HttpRequestException || ex is OperationCanceledException)
         {
-            if (LinkPolicy.Detect(uri) == Provider.Direct) throw;
+            if (!knownProviderPage) throw;
         }
 
-        if (LinkPolicy.Detect(uri) == Provider.MediaFire)
+        // Rootz public /d/<shortId> pages have a stable ranged proxy endpoint.
+        // Prefer it before opening WebView; if the endpoint is unavailable for a
+        // particular file, fall back to the normal browser-assisted flow.
+        if (ProviderResolvers.IsRootz(uri))
+        {
+            string proxy = ProviderResolvers.RootzProxyUrl(uri);
+            if (!string.IsNullOrEmpty(proxy))
+            {
+                try { return (await Client.ProbeAsync(proxy)).Url.AbsoluteUri; }
+                catch (Exception ex) when (ex is InvalidDataException || ex is System.Net.Http.HttpRequestException || ex is OperationCanceledException) { }
+            }
+        }
+
+        if (provider == Provider.MediaFire)
         {
             try
             {
@@ -66,6 +82,12 @@ public static class Integration
             }
             catch (Exception ex) when (ex is InvalidDataException || ex is System.Net.Http.HttpRequestException || ex is OperationCanceledException) { }
         }
+
+        // AkiraBox migrated public links from .com to .to. The .to page must
+        // reach WebView even though older V3 provider detection only knew .com;
+        // browser capture then observes the signed /download/... URL after the
+        // site's verification step. Rootz also lands here when its direct proxy
+        // is not available for a particular public file.
         return await ProviderBrowser.ResolveAsync(page, uri, Client);
     }
 
