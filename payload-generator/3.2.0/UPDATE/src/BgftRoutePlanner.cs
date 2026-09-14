@@ -19,7 +19,6 @@ public sealed class BgftRoutePlanner : IDisposable
     public const string DefaultWorkerBase = "https://drive.itaysondaniel.workers.dev";
     const int PayloadUrlLimit = 2047;
     const int RouteReplyLimit = 4096;
-    const int MinimumLifetimeSeconds = 90;
 
     readonly Func<HttpMessageHandler> factory;
     readonly string workerBase;
@@ -42,7 +41,7 @@ public sealed class BgftRoutePlanner : IDisposable
     public async Task<string> PrepareAsync(string upstreamUrl, CancellationToken token = default)
     {
         Uri uri = LinkPolicy.Parse(upstreamUrl);
-        ValidateExpiry(uri);
+        ValidateTemporalParameters(uri);
 
         if (!IsVikingR2(uri))
             return upstreamUrl.Trim();
@@ -90,9 +89,7 @@ public sealed class BgftRoutePlanner : IDisposable
             if (status == 400 || status == 401 || status == 403 || status == 410)
                 throw new InvalidDataException(string.IsNullOrWhiteSpace(text) ? "O Worker recusou a URL VikingFile (HTTP " + status + ")." : text.Trim());
 
-            // 404/405/5xx mean the optional route API is absent/unavailable. Return
-            // null instead of constructing HttpRequestException with an overload
-            // that is not present in the Xamarin/MAUI reference set used by V3.
+            // 404/405/5xx mean the optional route API is absent/unavailable.
             if (status == 404 || status == 405 || status >= 500)
                 return null;
 
@@ -107,8 +104,6 @@ public sealed class BgftRoutePlanner : IDisposable
             !result.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("O Worker retornou uma rota BGFT inválida.");
 
-        // Keep query text if the Worker selected inline mode; RegistrationUrl
-        // will append the local #tayson.pkg fragment later when needed.
         if (Encoding.UTF8.GetByteCount(PayloadPatcher.RegistrationUrl(route)) > PayloadUrlLimit)
             throw new InvalidDataException("A rota devolvida pelo Worker excede o espaço disponível no payload.");
         return route;
@@ -133,8 +128,6 @@ public sealed class BgftRoutePlanner : IDisposable
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
 
-        // Avoid Regex API/version differences in the Xamarin/MAUI reference set.
-        // Required form: vikingfile.<32 hex>.r2.cloudflarestorage.com
         string host = uri.IdnHost.TrimEnd('.');
         const string prefix = "vikingfile.";
         const string suffix = ".r2.cloudflarestorage.com";
@@ -158,40 +151,43 @@ public sealed class BgftRoutePlanner : IDisposable
             Query(uri, "X-Amz-Date").Length > 0 && Query(uri, "X-Amz-Expires").Length > 0;
     }
 
-    public static void ValidateExpiry(Uri uri)
+    /// <summary>
+    /// Performs format/range validation without using DateTimeOffset APIs that
+    /// are absent from the trimmed Xamarin runtime embedded in the original V3.
+    /// Actual clock-expiry enforcement for VikingFile is performed by Worker v6;
+    /// Mocha itself remains authoritative for its direct token expiry.
+    /// </summary>
+    public static void ValidateTemporalParameters(Uri uri)
     {
         if (IsVikingR2(uri))
         {
             string date = Query(uri, "X-Amz-Date");
             string secondsText = Query(uri, "X-Amz-Expires");
-            if (!DateTimeOffset.TryParseExact(date, "yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture,
-                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTimeOffset start) ||
+            if (!LooksLikeAmzDate(date) ||
                 !long.TryParse(secondsText, NumberStyles.None, CultureInfo.InvariantCulture, out long seconds) ||
                 seconds <= 0 || seconds > 604800)
-                throw new InvalidDataException("A assinatura temporária do VikingFile contém uma validade inválida.");
-            RejectNearExpiry(start.AddSeconds(seconds), "VikingFile");
+                throw new InvalidDataException("A assinatura temporária do VikingFile contém parâmetros de validade inválidos.");
             return;
         }
 
         if (LinkPolicy.Domain(uri.IdnHost, "mocha.my"))
         {
             string expires = Query(uri, "expires");
-            if (expires.Length > 0)
-            {
-                if (!long.TryParse(expires, NumberStyles.None, CultureInfo.InvariantCulture, out long unix) || unix <= 0)
-                    throw new InvalidDataException("O parâmetro expires do Mocha é inválido.");
-                DateTimeOffset end;
-                try { end = DateTimeOffset.FromUnixTimeSeconds(unix); }
-                catch (ArgumentOutOfRangeException) { throw new InvalidDataException("O parâmetro expires do Mocha é inválido."); }
-                RejectNearExpiry(end, "Mocha");
-            }
+            if (expires.Length > 0 &&
+                (!long.TryParse(expires, NumberStyles.None, CultureInfo.InvariantCulture, out long unix) || unix <= 0))
+                throw new InvalidDataException("O parâmetro expires do Mocha é inválido.");
         }
     }
 
-    static void RejectNearExpiry(DateTimeOffset expires, string provider)
+    static bool LooksLikeAmzDate(string value)
     {
-        if (expires <= DateTimeOffset.UtcNow.AddSeconds(MinimumLifetimeSeconds))
-            throw new InvalidDataException("O link do " + provider + " expirou ou está perto de expirar. Gere um link novo no site antes de criar o payload.");
+        if (value == null || value.Length != 16 || value[8] != 'T' || value[15] != 'Z') return false;
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (i == 8 || i == 15) continue;
+            if (value[i] < '0' || value[i] > '9') return false;
+        }
+        return true;
     }
 
     static string Query(Uri uri, string wanted)
