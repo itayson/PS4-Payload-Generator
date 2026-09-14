@@ -1,0 +1,311 @@
+diff --git a/app/src/main/java/com/tayson/ps4linksender/MainActivity.kt b/app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+index 8043ef5..6c5a9bd 100644
+--- a/app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
++++ b/app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+@@ -13,6 +13,7 @@ import android.view.View
+ import android.view.ViewGroup
+ import android.widget.*
+ import com.tayson.ps4linksender.model.*
++import com.tayson.ps4linksender.compat.BgftRoutePlanner
+ import com.tayson.ps4linksender.pkg.PkgScanner
+ import com.tayson.ps4linksender.ps4.ReceiverClient
+ import com.tayson.ps4linksender.ps4.ReceiverDiscovery
+@@ -44,6 +45,7 @@ class MainActivity : Activity() {
+     private var currentProvider = Provider.UNKNOWN
+     private var currentOriginalUrl = ""
+     private var pkgInfo: PkgInfo? = null
++    private var currentRoute: BgftRoutePlanner.Route? = null
+ 
+     private lateinit var linkInput: EditText
+     private lateinit var ipInput: EditText
+@@ -173,6 +175,7 @@ class MainActivity : Activity() {
+     }
+ 
+     private fun scanCandidate(url: String, requestContext: RequestContext? = null) {
++        currentRoute = null
+         try {
+             runOnUiThread { status.text = "Validando URL e lendo metadados do PKG…" }
+             val info = PkgScanner.scan(url, requestContext)
+@@ -210,6 +213,10 @@ class MainActivity : Activity() {
+             append("Arquivo: ${info.fileName}\n")
+             append("Provedor: ${currentProvider.label}\n")
+             append("Transporte: PS4 Receiver (Internet → PS4)\n")
++            currentRoute?.let { route ->
++                append("Rota BGFT: ${BgftRoutePlanner.describe(route.strategy)}\n")
++                if (route.viaWorker) append("Worker: drive.itaysondaniel.workers.dev\n")
++            }
+             append("Tamanho: ${Format.bytes(info.size)}\n")
+             append("Content ID: ${info.contentId}\n")
+             append("Title ID: ${info.titleId ?: "não identificado"}\n")
+@@ -299,8 +306,11 @@ class MainActivity : Activity() {
+             try {
+                 val fresh = PkgScanner.scan(current.finalUrl, current.requestContext)
+                 pkgInfo = fresh
+-                runOnUiThread { status.text = "Enviando metadados ao PS4 Receiver…" }
+-                val result = ReceiverClient.sendJob(host, fresh)
++                val route = BgftRoutePlanner.prepare(currentProvider, fresh.finalUrl)
++                currentRoute = route
++                val transportPkg = route.transportPkg(fresh)
++                runOnUiThread { status.text = "Enviando metadados ao PS4 Receiver… (${BgftRoutePlanner.describe(route.strategy)})" }
++                val result = ReceiverClient.sendJob(host, transportPkg)
+                 result.jobId?.let { jobId ->
+                     store.addReceiverJob(
+                         ReceiverJobMeta(
+@@ -406,8 +416,12 @@ class MainActivity : Activity() {
+                 for ((index, item) in snapshot.withIndex()) {
+                     runOnUiThread { status.text = "Revalidando ${index + 1}/${snapshot.size}: ${item.pkg.titleId ?: item.pkg.fileName}" }
+                     val fresh = revalidateQueueItem(item)
+-                    runOnUiThread { status.text = "Registrando ${index + 1}/${snapshot.size} no Receiver…" }
+-                    val result = ReceiverClient.sendJob(host, fresh)
++                    val route = BgftRoutePlanner.prepare(item.provider, fresh.finalUrl)
++                    val transportPkg = route.transportPkg(fresh)
++                    runOnUiThread {
++                        status.text = "Registrando ${index + 1}/${snapshot.size} no Receiver… (${BgftRoutePlanner.describe(route.strategy)})"
++                    }
++                    val result = ReceiverClient.sendJob(host, transportPkg)
+                     result.jobId?.let { jobId ->
+                         store.addReceiverJob(
+                             ReceiverJobMeta(
+@@ -621,6 +635,7 @@ class MainActivity : Activity() {
+ 
+     private fun clearPkg() {
+         pkgInfo = null
++        currentRoute = null
+         setPkgButtons(false)
+     }
+ 
+diff --git a/app/src/main/java/com/tayson/ps4linksender/compat/BgftRoutePlanner.kt b/app/src/main/java/com/tayson/ps4linksender/compat/BgftRoutePlanner.kt
+new file mode 100644
+index 0000000..19c309f
+--- /dev/null
++++ b/app/src/main/java/com/tayson/ps4linksender/compat/BgftRoutePlanner.kt
+@@ -0,0 +1,183 @@
++package com.tayson.ps4linksender.compat
++
++import android.util.Base64
++import com.tayson.ps4linksender.model.PkgInfo
++import com.tayson.ps4linksender.model.Provider
++import com.tayson.ps4linksender.net.Http
++import java.net.URI
++import java.time.Instant
++import java.time.LocalDateTime
++import java.time.ZoneOffset
++import java.time.format.DateTimeFormatter
++import org.json.JSONObject
++
++/**
++ * Converts a validated upstream PKG URL into the URL that should be sent to the
++ * PS4/Receiver. The upstream URL is never rewritten before PkgScanner validates
++ * it, so signed URLs and provider-specific authorization remain intact.
++ */
++object BgftRoutePlanner {
++    const val DEFAULT_WORKER_BASE = "https://drive.itaysondaniel.workers.dev"
++    private const val FRAGMENT = "tayson.pkg"
++    private const val MAX_INLINE_BGFT_URL_BYTES = 1900
++    private const val EXPIRY_SAFETY_SECONDS = 90L
++
++    enum class Strategy {
++        DIRECT,
++        EXTENSION_FRAGMENT,
++        VIKING_WORKER_SHORT,
++        VIKING_WORKER_INLINE
++    }
++
++    data class Route(
++        val upstreamUrl: String,
++        val bgftUrl: String,
++        val strategy: Strategy,
++        val expiresAtEpochSeconds: Long? = null,
++        val viaWorker: Boolean = false
++    ) {
++        fun transportPkg(pkg: PkgInfo): PkgInfo = pkg.copy(
++            finalUrl = bgftUrl,
++            // The Worker already owns the signed R2 URL. Do not leak browser
++            // cookies/referers to the Worker when they are unnecessary.
++            requestContext = if (viaWorker) null else pkg.requestContext
++        )
++    }
++
++    fun prepare(
++        provider: Provider,
++        upstreamUrl: String,
++        workerBase: String = DEFAULT_WORKER_BASE
++    ): Route {
++        val clean = stripFragment(upstreamUrl)
++        val uri = parseHttpUri(clean)
++        val expiresAt = expirationEpochSeconds(provider, uri)
++        ensureFresh(expiresAt, provider)
++
++        if (isVikingR2(uri)) {
++            val short = runCatching { registerShortWorkerRoute(clean, workerBase) }.getOrNull()
++            if (!short.isNullOrBlank()) {
++                return Route(
++                    upstreamUrl = clean,
++                    bgftUrl = ensurePkgFragment(short),
++                    strategy = Strategy.VIKING_WORKER_SHORT,
++                    expiresAtEpochSeconds = expiresAt,
++                    viaWorker = true
++                )
++            }
++
++            val encoded = Base64.encodeToString(
++                clean.toByteArray(Charsets.UTF_8),
++                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
++            )
++            val inline = workerBase.trimEnd('/') + "/viking.pkg?u=" + encoded + "#" + FRAGMENT
++            require(inline.toByteArray(Charsets.UTF_8).size <= MAX_INLINE_BGFT_URL_BYTES) {
++                "A URL VikingFile ficou longa demais para o modo inline. Publique o Worker v5 com KV para usar rota curta."
++            }
++            return Route(
++                upstreamUrl = clean,
++                bgftUrl = inline,
++                strategy = Strategy.VIKING_WORKER_INLINE,
++                expiresAtEpochSeconds = expiresAt,
++                viaWorker = true
++            )
++        }
++
++        // Hardware-confirmed with Mocha: when the HTTP path is a .pkg but the
++        // signed/query URL no longer ends in .pkg, the local URI fragment makes
++        // BGFT accept the extension without changing the HTTP request sent to
++        // the origin. This generic rule also covers equivalent signed .pkg URLs.
++        if (pathEndsInPkg(uri) && !clean.lowercase().endsWith(".pkg")) {
++            return Route(
++                upstreamUrl = clean,
++                bgftUrl = ensurePkgFragment(clean),
++                strategy = Strategy.EXTENSION_FRAGMENT,
++                expiresAtEpochSeconds = expiresAt,
++                viaWorker = false
++            )
++        }
++
++        return Route(
++            upstreamUrl = upstreamUrl,
++            bgftUrl = upstreamUrl,
++            strategy = Strategy.DIRECT,
++            expiresAtEpochSeconds = expiresAt,
++            viaWorker = false
++        )
++    }
++
++    fun describe(strategy: Strategy): String = when (strategy) {
++        Strategy.DIRECT -> "Direta"
++        Strategy.EXTENSION_FRAGMENT -> "Compatibilidade BGFT (.pkg via fragmento)"
++        Strategy.VIKING_WORKER_SHORT -> "VikingFile via Worker (rota curta)"
++        Strategy.VIKING_WORKER_INLINE -> "VikingFile via Worker (inline)"
++    }
++
++    private fun registerShortWorkerRoute(upstreamUrl: String, workerBase: String): String? {
++        val endpoint = workerBase.trimEnd('/') + "/api/routes"
++        val body = JSONObject().put("url", upstreamUrl).toString()
++        val response = Http.postJson(endpoint, body, maxBytes = 16 * 1024)
++        if (response.code !in 200..299) return null
++        return runCatching {
++            JSONObject(response.body).optString("url").takeIf { it.isNotBlank() }
++        }.getOrNull()
++    }
++
++    private fun ensurePkgFragment(url: String): String =
++        stripFragment(url) + "#" + FRAGMENT
++
++    private fun stripFragment(url: String): String = url.substringBefore('#')
++
++    private fun parseHttpUri(url: String): URI {
++        val uri = try { URI(url) } catch (_: Exception) { throw IllegalArgumentException("URL inválida") }
++        val scheme = uri.scheme?.lowercase()
++        require(scheme == "http" || scheme == "https") { "Use somente URLs HTTP/HTTPS" }
++        require(!uri.host.isNullOrBlank()) { "URL sem host" }
++        return uri
++    }
++
++    private fun pathEndsInPkg(uri: URI): Boolean =
++        (uri.path ?: "").lowercase().endsWith(".pkg")
++
++    private fun isVikingR2(uri: URI): Boolean {
++        val host = uri.host?.lowercase().orEmpty()
++        return uri.scheme.equals("https", true) &&
++            host.startsWith("vikingfile.") &&
++            host.endsWith(".r2.cloudflarestorage.com") &&
++            queryValue(uri, "X-Amz-Algorithm") == "AWS4-HMAC-SHA256" &&
++            !queryValue(uri, "X-Amz-Signature").isNullOrBlank()
++    }
++
++    private fun expirationEpochSeconds(provider: Provider, uri: URI): Long? {
++        if (isVikingR2(uri)) {
++            val date = queryValue(uri, "X-Amz-Date") ?: return null
++            val duration = queryValue(uri, "X-Amz-Expires")?.toLongOrNull() ?: return null
++            return runCatching {
++                val formatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
++                LocalDateTime.parse(date, formatter).toEpochSecond(ZoneOffset.UTC) + duration
++            }.getOrNull()
++        }
++
++        val host = uri.host?.lowercase().orEmpty()
++        if (provider == Provider.MOCHA || host == "mocha.my" || host.endsWith(".mocha.my")) {
++            return queryValue(uri, "expires")?.toLongOrNull()
++        }
++        return null
++    }
++
++    private fun ensureFresh(expiresAt: Long?, provider: Provider) {
++        if (expiresAt == null) return
++        val remaining = expiresAt - Instant.now().epochSecond
++        require(remaining > EXPIRY_SAFETY_SECONDS) {
++            "A URL temporária de ${provider.label} expirou ou está prestes a expirar. Abra o fluxo oficial e capture um link novo."
++        }
++    }
++
++    private fun queryValue(uri: URI, name: String): String? {
++        val raw = uri.rawQuery ?: return null
++        return raw.split('&').asSequence().mapNotNull { part ->
++            val p = part.indexOf('=')
++            if (p < 0) null else part.substring(0, p) to part.substring(p + 1)
++        }.firstOrNull { it.first.equals(name, ignoreCase = true) }?.second
++    }
++}
+diff --git a/app/src/main/java/com/tayson/ps4linksender/net/Http.kt b/app/src/main/java/com/tayson/ps4linksender/net/Http.kt
+index e5e80f8..d878269 100644
+--- a/app/src/main/java/com/tayson/ps4linksender/net/Http.kt
++++ b/app/src/main/java/com/tayson/ps4linksender/net/Http.kt
+@@ -108,6 +108,41 @@ object Http {
+     fun getText(url: String, maxBytes: Int = 256 * 1024): String =
+         getSmall(url, maxBytes, userAgent = BROWSER_UA).bytes.toString(StandardCharsets.UTF_8)
+ 
++    data class TextResponse(val code: Int, val body: String)
++
++    fun postJson(url: String, json: String, maxBytes: Int = 128 * 1024): TextResponse {
++        require(maxBytes in 1..1024 * 1024) { "Resposta JSON deve ter entre 1 byte e 1 MiB" }
++        val endpoint = requireHttpUrl(url)
++        val body = json.toByteArray(StandardCharsets.UTF_8)
++        val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
++            instanceFollowRedirects = true
++            connectTimeout = 15000
++            readTimeout = 15000
++            requestMethod = "POST"
++            doOutput = true
++            setRequestProperty("User-Agent", DIRECT_UA)
++            setRequestProperty("Accept", "application/json")
++            setRequestProperty("Content-Type", "application/json; charset=utf-8")
++            setFixedLengthStreamingMode(body.size)
++        }
++        conn.outputStream.use { it.write(body) }
++        val code = conn.responseCode
++        val stream = try { conn.inputStream } catch (_: Exception) { conn.errorStream }
++        val out = ByteArrayOutputStream()
++        if (stream != null) {
++            val buf = ByteArray(4096)
++            stream.use {
++                while (out.size() < maxBytes) {
++                    val n = it.read(buf, 0, minOf(buf.size, maxBytes - out.size()))
++                    if (n <= 0) break
++                    out.write(buf, 0, n)
++                }
++            }
++        }
++        conn.disconnect()
++        return TextResponse(code, out.toString("UTF-8"))
++    }
++
+     fun postForm(url: String, fields: Map<String, String>, maxBytes: Int = 128 * 1024): String {
+         val endpoint = requireHttpUrl(url)
+         val body = fields.entries.joinToString("&") {
