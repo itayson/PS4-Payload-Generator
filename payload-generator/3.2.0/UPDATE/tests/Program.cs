@@ -121,11 +121,14 @@ await Reject(async()=>
     string mocha = "https://cdn.mocha.my/game.pkg?token=abc&expires=4070908800&node=sugar";
     Check(await router.PrepareAsync(mocha) == mocha, "Mocha transport stays direct before ELF fragment patch");
 }
-string expiredR2 = r2.Replace("20990101T000000Z", "20200101T000000Z");
-await Reject(async()=>{using var router=new BgftRoutePlanner(()=>new RouteHandler(HttpStatusCode.OK,"unused"));await router.PrepareAsync(expiredR2);},
-    "Expired VikingFile URL rejected before payload generation");
-await Reject(async()=>{using var router=new BgftRoutePlanner(()=>new RouteHandler(HttpStatusCode.OK,"unused"));await router.PrepareAsync("https://cdn.mocha.my/game.pkg?token=a&expires=1&node=sugar");},
-    "Expired Mocha URL rejected before payload generation");
+string badDateR2 = r2.Replace("20990101T000000Z", "2099-01-01T00Z");
+await Reject(async()=>{using var router=new BgftRoutePlanner(()=>new RouteHandler(HttpStatusCode.OK,"unused"));await router.PrepareAsync(badDateR2);},
+    "Malformed VikingFile date rejected before payload generation");
+string badTtlR2 = r2.Replace("X-Amz-Expires=21600", "X-Amz-Expires=0");
+await Reject(async()=>{using var router=new BgftRoutePlanner(()=>new RouteHandler(HttpStatusCode.OK,"unused"));await router.PrepareAsync(badTtlR2);},
+    "Invalid VikingFile TTL rejected before payload generation");
+await Reject(async()=>{using var router=new BgftRoutePlanner(()=>new RouteHandler(HttpStatusCode.OK,"unused"));await router.PrepareAsync("https://cdn.mocha.my/game.pkg?token=a&expires=not-a-number&node=sugar");},
+    "Malformed Mocha expiry rejected before payload generation");
 
 Console.WriteLine($"RESULT: {passed} checks passed");
 
