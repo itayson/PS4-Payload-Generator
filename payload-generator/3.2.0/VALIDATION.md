@@ -31,11 +31,11 @@ GitHub Actions concluiu o build do Payload Generator 3.2.0 com sucesso:
 - `classes.dex` e `classes2.dex` originais preservados;
 - template ELF final incluído no APK e validado.
 
-SHA-256 do APK produzido nesse build funcional:
+Os hashes do APK e dos demais arquivos são emitidos em `SHA256SUMS.txt` e `build-info.json` dentro de cada artifact do CI. Não é mantido um hash fixo neste documento, porque o workflow de teste atualmente cria uma chave de assinatura descartável quando não existe um keystore persistente no runner; isso altera os bytes e o certificado do APK entre builds sem mudança funcional no código.
 
-```text
-0deb061b66bd77ab71f299d02ed7679db7c542a7f99332b78fe613d65cd1baf2
-```
+### Assinatura de teste
+
+O artifact do CI é uma build de teste. Como o certificado pode mudar entre execuções, uma build recém-gerada pode não instalar como atualização sobre uma versão Tayson anterior assinada com outro certificado. Para atualização in-place, o pipeline precisa receber um keystore persistente de forma segura (por exemplo, via GitHub Actions secret) ou reutilizar explicitamente a chave de teste previamente adotada pelo projeto. A chave privada não deve ser adicionada ao repositório apenas para estabilizar o CI.
 
 ## Cobertura dos testes
 
