@@ -17,7 +17,7 @@ public static class ProviderBrowser
 (function(){
  if(!window.__taysonDownloads){
   var q=[];
-  function likely(u){try{return /\.pkg(?:[?#]|$)|\/(?:download|dl|d)(?:\/|$)|proxy-download|[?&](?:signature|token|expires|expiration)=/i.test(u.href);}catch(e){return false;}}
+  function likely(u){try{return /\.pkg(?:[?#]|$)|\/(?:download|dl|d)(?:\/|$)|proxy-download|[?&](?:access|signature|token|expires|expiration)=/i.test(u.href);}catch(e){return false;}}
   function add(v,force){try{if(!v)return;var u=new URL(String(v),location.href);if(!/^https?:$/.test(u.protocol))return;if(!force&&!likely(u))return;if(q.indexOf(u.href)<0){q.push(u.href);if(q.length>24)q.shift();}}catch(e){}}
   function attrs(el,force){if(!el||!el.getAttribute)return;['href','action','data-url','data-href','data-download','data-download-url','data-link'].forEach(function(n){var v=el.getAttribute(n);if(v)add(v,force);});}
   function scan(root){try{(root||document).querySelectorAll('a[href],form[action],[data-url],[data-href],[data-download],[data-download-url],[data-link]').forEach(function(el){attrs(el,false);});}catch(e){}}
@@ -66,7 +66,8 @@ public static class ProviderBrowser
             try
             {
                 Uri uri = LinkPolicy.Parse(text);
-                if (uri.AbsoluteUri == source.AbsoluteUri || pending.Count >= 24 || !seen.Add(uri.AbsoluteUri)) return;
+                bool sourceIsDownload = ProviderResolvers.IsAkiraDownloadCandidate(source) || LinkPolicy.DownloadHint(source);
+                if ((!sourceIsDownload && uri.AbsoluteUri == source.AbsoluteUri) || pending.Count >= 24 || !seen.Add(uri.AbsoluteUri)) return;
                 pending.Enqueue(uri.AbsoluteUri);
             }
             catch (InvalidDataException) { }
@@ -79,7 +80,10 @@ public static class ProviderBrowser
             {
                 if (finish.Task.IsCompleted) return;
                 status.Text = "Validando o arquivo para gerar o payload…";
-                DownloadInfo found = await client.ProbeAsync(text, 128, stopped.Token);
+                Uri candidate = LinkPolicy.Parse(text);
+                DownloadInfo found = ProviderResolvers.IsAkiraBox(candidate)
+                    ? await AkiraDownloadProbe.ProbeAsync(text, 128, stopped.Token)
+                    : await client.ProbeAsync(text, 128, stopped.Token);
                 finish.TrySetResult(found.Url.AbsoluteUri);
             }
             catch (OperationCanceledException) when (stopped.IsCancellationRequested) { }
@@ -96,11 +100,10 @@ public static class ProviderBrowser
             if (!Uri.TryCreate(e.Url, UriKind.Absolute, out Uri u) || (u.Scheme != "http" && u.Scheme != "https"))
             { e.Cancel = true; return; }
             address.Text = u.Host;
-            bool candidate = LinkPolicy.DownloadHint(u) || ProviderResolvers.IsAkiraSignedDownload(u) ||
+            bool candidate = LinkPolicy.DownloadHint(u) || ProviderResolvers.IsAkiraDownloadCandidate(u) ||
                 u.AbsolutePath.IndexOf("proxy-download", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 !u.Host.Equals(source.Host, StringComparison.OrdinalIgnoreCase);
             if (candidate) Queue(e.Url);
-            // Stop obvious file navigations before WebView tries to download them.
             if (u.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase)) e.Cancel = true;
         };
         browser.Navigated += (sender, e) =>
@@ -108,7 +111,7 @@ public static class ProviderBrowser
             if (e.Result != WebNavigationResult.Success)
                 status.Text = "A página não abriu. Recarregue ou cole o link direto liberado no seu navegador.";
             if (Uri.TryCreate(e.Url, UriKind.Absolute, out Uri u) &&
-                (LinkPolicy.DownloadHint(u) || ProviderResolvers.IsAkiraSignedDownload(u) ||
+                (LinkPolicy.DownloadHint(u) || ProviderResolvers.IsAkiraDownloadCandidate(u) ||
                  u.AbsolutePath.IndexOf("proxy-download", StringComparison.OrdinalIgnoreCase) >= 0 ||
                  !u.Host.Equals(source.Host, StringComparison.OrdinalIgnoreCase)))
                 Queue(e.Url);
@@ -149,7 +152,6 @@ public static class ProviderBrowser
         {
             await owner.Navigation.PushModalAsync(page);
             opened = true;
-            // Handler exists before the first page load, so early navigation events are observed.
             browser.Source = source.AbsoluteUri;
             poll = Poll();
             return await finish.Task;
@@ -167,8 +169,6 @@ public static class ProviderBrowser
                 await owner.Navigation.PopModalAsync();
             await poll;
             browser.Handler?.DisconnectHandler();
-            // A manual validation can still be unwinding; leave the lightweight
-            // semaphore to the GC instead of disposing it under that continuation.
         }
     }
 }
