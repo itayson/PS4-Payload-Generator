@@ -25,8 +25,8 @@ public static class ProviderResolvers
         if (!IsRootz(uri)) return null;
         Match match = RootzShort.Match(uri.AbsolutePath);
         if (!match.Success) return null;
-        string id = Uri.EscapeDataString(match.Groups[1].Value);
-        return "https://www.rootz.so/api/files/proxy-download/" + id;
+        // The regex already limits the short id to URL-safe ASCII.
+        return "https://www.rootz.so/api/files/proxy-download/" + match.Groups[1].Value;
     }
 
     public static bool IsAkiraSignedDownload(Uri uri)
