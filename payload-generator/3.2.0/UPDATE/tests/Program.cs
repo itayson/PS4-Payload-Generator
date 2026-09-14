@@ -43,7 +43,7 @@ foreach(string scenario in new[]{"html","json","badmagic","missingid","forbidden
 byte[] template=File.ReadAllBytes(args[0]);
 byte[] result=PayloadPatcher.Patch(template,signed,Fixture.Id,"Teste ação 🎮", "PS4GD",8589934592L);
 Check(result.Length==template.Length,"ELF size preserved");
-Check(Encoding.UTF8.GetString(result).Contains(signed+'\0'),"ELF embeds full signed URL and null terminator");
+Check(Encoding.UTF8.GetString(result).Contains(signed+"#tayson.pkg"+'\0'),"ELF embeds full signed URL, compatibility fragment and terminator");
 Check(template.SequenceEqual(File.ReadAllBytes(args[0])),"Original template remains unchanged");
 int urlOffset=Encoding.ASCII.GetString(template).IndexOf("###URL_PLACEHOLDER###",StringComparison.Ordinal);
 string exact="https://example.test/"+new string('a',2047-"https://example.test/".Length-4)+".pkg";
