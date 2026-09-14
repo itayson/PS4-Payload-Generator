@@ -72,10 +72,11 @@ Tayson Payload Generator VikingFile Worker v6: OK
 
 - a URL VikingFile real é validada antes da transformação;
 - somente hosts `vikingfile.<account-id>.r2.cloudflarestorage.com` são aceitos pelo Worker;
-- assinatura AWS, data e expiração são obrigatórias;
+- assinatura AWS, data e TTL são obrigatórios e validados estruturalmente no Android;
+- o Worker v6 aplica a verificação por relógio e recusa VikingFile expirado ou com menos de 90 segundos de validade;
+- no Mocha, o app valida a forma do parâmetro `expires`, mas o próprio provedor continua sendo a autoridade sobre a validade temporal do token;
 - o Worker não é um proxy HTTP genérico;
-- a URL SigV4 original é armazenada/encaminhada sem reconstruir a query;
-- URLs Mocha e VikingFile expiradas ou com menos de 90 segundos de validade são recusadas antes da geração do payload.
+- a URL SigV4 original é armazenada/encaminhada sem reconstruir a query.
 
 ## Arquitetura
 
