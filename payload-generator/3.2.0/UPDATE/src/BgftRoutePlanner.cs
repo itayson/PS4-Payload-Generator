@@ -59,10 +59,9 @@ public sealed class BgftRoutePlanner : IDisposable
             routeError = ex;
         }
 
-        // Worker v7 compatibility path. This does not require KV and still keeps
-        // the phone out of the PKG data path. It is safe only while the resulting
-        // ELF URL fits the template's 2,047-byte field.
-        string inline = workerBase + "/r2.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
+        // Keep the legacy /viking.pkg path for compatibility with already
+        // deployed Workers. Worker v7 accepts it for both VikingFile and Rootz.
+        string inline = workerBase + "/viking.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
         string registration = PayloadPatcher.RegistrationUrl(inline);
         if (Encoding.UTF8.GetByteCount(registration) > PayloadUrlLimit)
             throw new InvalidDataException(
