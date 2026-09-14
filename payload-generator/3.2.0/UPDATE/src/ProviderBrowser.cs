@@ -10,24 +10,27 @@ using Microsoft.Maui.Graphics;
 namespace Tayson.Providers;
 
 // Uses the MAUI WebView already present in V3. No new Java peer registrations,
-// JavaScript/native bridge, embedded credentials, or hardcoded download APIs.
+// embedded credentials, or hardcoded private download APIs.
 public static class ProviderBrowser
 {
     const string CaptureScript = @"
 (function(){
  if(!window.__taysonDownloads){
   var q=[];
-  function add(v){try{var u=new URL(String(v),location.href);if(/^https?:$/.test(u.protocol)&&q.indexOf(u.href)<0){q.push(u.href);if(q.length>16)q.shift();}}catch(e){}}
-  function data(v,d){if(!v||typeof v!=='object'||d>4)return;Object.keys(v).slice(0,40).forEach(function(k){var x=v[k];if(typeof x==='string'&&/^(url|link|download_?url|download_?link|direct_?url|direct_?link|file_?url)$/i.test(k))add(x);else if(x&&typeof x==='object')data(x,d+1);});}
-  document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href]');if(a)add(a.href);},true);
+  function add(v){try{if(!v)return;var u=new URL(String(v),location.href);if(/^https?:$/.test(u.protocol)&&q.indexOf(u.href)<0){q.push(u.href);if(q.length>24)q.shift();}}catch(e){}}
+  function attrs(el){if(!el||!el.getAttribute)return;['href','action','data-url','data-href','data-download','data-download-url','data-link'].forEach(function(n){var v=el.getAttribute(n);if(v)add(v);});}
+  function scan(root){try{(root||document).querySelectorAll('a[href],form[action],button,[data-url],[data-href],[data-download],[data-download-url],[data-link]').forEach(function(el){attrs(el);});}catch(e){}}
+  function data(v,d){if(!v||typeof v!=='object'||d>5)return;Object.keys(v).slice(0,60).forEach(function(k){var x=v[k];if(typeof x==='string'&&/^(url|href|link|location|redirect|download_?url|download_?link|direct_?url|direct_?link|file_?url|signed_?url)$/i.test(k))add(x);else if(x&&typeof x==='object')data(x,d+1);});}
+  document.addEventListener('click',function(e){var el=e.target.closest&&e.target.closest('a[href],button,form,[data-url],[data-href],[data-download],[data-download-url],[data-link]');if(el)attrs(el);},true);
+  document.addEventListener('submit',function(e){attrs(e.target);},true);
   var op=window.open;window.open=function(u){if(u)add(u);return op.apply(this,arguments);};
-  if(window.fetch){var ft=window.fetch;window.fetch=function(){return ft.apply(this,arguments).then(function(r){try{if((r.headers.get('content-type')||'').indexOf('application/json')>=0){var c=r.clone(),reader=c.body.getReader(),chunks=[],size=0;function read(){reader.read().then(function(p){if(p.done){try{var a=new Uint8Array(size),o=0;chunks.forEach(function(b){a.set(b,o);o+=b.length;});data(JSON.parse(new TextDecoder().decode(a)),0);}catch(e){}return;}size+=p.value.length;if(size>65536){reader.cancel();return;}chunks.push(p.value);read();}).catch(function(){});}read();}}catch(e){}return r;});};}
-  var send=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(){this.addEventListener('load',function(){try{if((this.getResponseHeader('content-type')||'').indexOf('application/json')>=0){if(this.responseType==='json')data(this.response,0);else if((!this.responseType||this.responseType==='text')&&this.responseText.length<65536)data(JSON.parse(this.responseText),0);}}catch(e){}});return send.apply(this,arguments);};
-  window.__taysonDownloads={q:q,add:add};
+  if(window.fetch){var ft=window.fetch;window.fetch=function(){return ft.apply(this,arguments).then(function(r){try{if(r.url)add(r.url);if((r.headers.get('content-type')||'').indexOf('application/json')>=0){var c=r.clone(),reader=c.body.getReader(),chunks=[],size=0;function read(){reader.read().then(function(p){if(p.done){try{var a=new Uint8Array(size),o=0;chunks.forEach(function(b){a.set(b,o);o+=b.length;});data(JSON.parse(new TextDecoder().decode(a)),0);}catch(e){}return;}size+=p.value.length;if(size>131072){reader.cancel();return;}chunks.push(p.value);read();}).catch(function(){});}read();}}catch(e){}return r;});};}
+  var send=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(){this.addEventListener('load',function(){try{if(this.responseURL)add(this.responseURL);if((this.getResponseHeader('content-type')||'').indexOf('application/json')>=0){if(this.responseType==='json')data(this.response,0);else if((!this.responseType||this.responseType==='text')&&this.responseText.length<131072)data(JSON.parse(this.responseText),0);}}catch(e){}});return send.apply(this,arguments);};
+  window.__taysonDownloads={q:q,add:add,scan:scan};
  }
- var s=window.__taysonDownloads;
- document.querySelectorAll('a[download],a#downloadButton,a[data-download],a[href]').forEach(function(a){if(a.hasAttribute('download')||a.id==='downloadButton'||a.hasAttribute('data-download')||/\.pkg(?:[?#]|$)/i.test(a.href))s.add(a.href);});
- var items=s.q.splice(0,16);return items.map(encodeURIComponent).join('|');
+ var s=window.__taysonDownloads;s.scan(document);
+ document.querySelectorAll('a[href],form[action]').forEach(function(el){try{var v=el.href||el.action||'';if(/\.pkg(?:[?#]|$)/i.test(v)||/\/download\//i.test(v)||/proxy-download/i.test(v))s.add(v);}catch(e){}});
+ var items=s.q.splice(0,24);return items.map(encodeURIComponent).join('|');
 })()";
 
     public static async Task<string> ResolveAsync(Page owner, Uri source, DownloadClient client)
@@ -53,16 +56,17 @@ public static class ProviderBrowser
             new RowDefinition { Height = GridLength.Star }, new RowDefinition { Height = GridLength.Auto } } };
         layout.Add(address, 0, 0); layout.Add(status, 0, 1); layout.Add(direct, 0, 2);
         layout.Add(use, 0, 3); layout.Add(browser, 0, 4); layout.Add(buttons, 0, 5);
-        var page = new ContentPage { Title = LinkPolicy.Detect(source).ToString(), Content = layout, BackgroundColor = Colors.White };
+        string title = ProviderResolvers.IsAkiraBox(source) ? "AkiraBox" : LinkPolicy.Detect(source).ToString();
+        var page = new ContentPage { Title = title, Content = layout, BackgroundColor = Colors.White };
         var validation = new SemaphoreSlim(1, 1);
 
         void Queue(string text)
         {
-            if (finish.Task.IsCompleted || seen.Count >= 256) return;
+            if (finish.Task.IsCompleted || seen.Count >= 384) return;
             try
             {
                 Uri uri = LinkPolicy.Parse(text);
-                if (uri.AbsoluteUri == source.AbsoluteUri || pending.Count >= 16 || !seen.Add(uri.AbsoluteUri)) return;
+                if (uri.AbsoluteUri == source.AbsoluteUri || pending.Count >= 24 || !seen.Add(uri.AbsoluteUri)) return;
                 pending.Enqueue(uri.AbsoluteUri);
             }
             catch (InvalidDataException) { }
@@ -92,7 +96,10 @@ public static class ProviderBrowser
             if (!Uri.TryCreate(e.Url, UriKind.Absolute, out Uri u) || (u.Scheme != "http" && u.Scheme != "https"))
             { e.Cancel = true; return; }
             address.Text = u.Host;
-            if (LinkPolicy.DownloadHint(u) || !u.Host.Equals(source.Host, StringComparison.OrdinalIgnoreCase)) Queue(e.Url);
+            bool candidate = LinkPolicy.DownloadHint(u) || ProviderResolvers.IsAkiraSignedDownload(u) ||
+                u.AbsolutePath.IndexOf("proxy-download", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                !u.Host.Equals(source.Host, StringComparison.OrdinalIgnoreCase);
+            if (candidate) Queue(e.Url);
             // Stop obvious file navigations before WebView tries to download them.
             if (u.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase)) e.Cancel = true;
         };
@@ -125,10 +132,10 @@ public static class ProviderBrowser
                         foreach (string item in encoded.Trim('"').Split('|'))
                             if (item.Length > 0 && item.Length <= 24576) Queue(Uri.UnescapeDataString(item));
                     if (pending.Count > 0) await Validate(pending.Dequeue(), false);
-                    await Task.Delay(800, stopped.Token);
+                    await Task.Delay(650, stopped.Token);
                 }
                 catch (OperationCanceledException) when (stopped.IsCancellationRequested) { break; }
-                catch { await Task.Delay(800); }
+                catch { await Task.Delay(650); }
             }
         }
 
@@ -138,7 +145,7 @@ public static class ProviderBrowser
         {
             await owner.Navigation.PushModalAsync(page);
             opened = true;
-            // Handler exists before the first page load, so early events are observed.
+            // Handler exists before the first page load, so early navigation events are observed.
             browser.Source = source.AbsoluteUri;
             poll = Poll();
             return await finish.Task;
