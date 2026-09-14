@@ -78,6 +78,14 @@ Tayson Payload Generator VikingFile Worker v6: OK
 - o Worker não é um proxy HTTP genérico;
 - a URL SigV4 original é armazenada/encaminhada sem reconstruir a query.
 
+### Assinatura do APK de CI
+
+O workflow gera uma **build de teste**. Sem um keystore persistente configurado no runner, ele cria uma chave de teste descartável. Por isso o certificado e o SHA-256 do APK podem mudar entre execuções, mesmo sem mudança funcional no aplicativo. Nesse caso, a nova build pode exigir desinstalar uma versão Tayson anterior antes de instalar.
+
+Para atualização in-place, configure um keystore persistente de forma segura (por exemplo, via GitHub Actions secret) ou reutilize explicitamente a chave de teste já adotada pelo projeto. Não adicione uma chave privada ao repositório somente para estabilizar o CI.
+
+Os hashes exatos de cada execução ficam em `SHA256SUMS.txt` e `build-info.json` dentro do artifact do GitHub Actions.
+
 ## Arquitetura
 
 ```text
