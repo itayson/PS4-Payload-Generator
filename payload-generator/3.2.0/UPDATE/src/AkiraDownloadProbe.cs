@@ -85,12 +85,14 @@ public static class AkiraDownloadProbe
 
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Range = new RangeHeaderValue(from, to);
-            request.Headers.TryAddWithoutValidation("Accept-Encoding", "identity");
-            request.Headers.TryAddWithoutValidation("User-Agent", BrowserUserAgent);
-            request.Headers.TryAddWithoutValidation("Accept", "*/*");
-            if (Uri.TryCreate(referer, UriKind.Absolute, out Uri refererUri)) request.Headers.Referrer = refererUri;
+            request.Headers.TryAddWithoutValidation("Accept-Encoding", new[] { "identity" });
+            request.Headers.TryAddWithoutValidation("User-Agent", new[] { BrowserUserAgent });
+            request.Headers.TryAddWithoutValidation("Accept", new[] { "*/*" });
+            if (Uri.TryCreate(referer, UriKind.Absolute, out Uri _))
+                request.Headers.TryAddWithoutValidation("Referer", new[] { referer });
             string cookie = Cookies(url);
-            if (!string.IsNullOrWhiteSpace(cookie)) request.Headers.TryAddWithoutValidation("Cookie", cookie);
+            if (!string.IsNullOrWhiteSpace(cookie))
+                request.Headers.TryAddWithoutValidation("Cookie", new[] { cookie });
 
             var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
             { Timeout = TimeSpan.FromSeconds(25) };
