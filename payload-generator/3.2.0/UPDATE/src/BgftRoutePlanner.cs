@@ -55,14 +55,14 @@ public sealed class BgftRoutePlanner : IDisposable
             string shortRoute = await CreateWorkerRouteAsync(exact, token).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(shortRoute)) return shortRoute;
         }
-        catch (Exception ex) when (ex is HttpRequestException || ex is OperationCanceledException || ex is InvalidDataException)
+        catch (Exception ex) when (ex is HttpRequestException || ex is OperationCanceledException)
         {
             if (ex is OperationCanceledException && token.IsCancellationRequested) throw;
             routeError = ex;
         }
 
-        // Worker compatibility path. This does not require KV and still keeps
-        // the phone out of the PKG data path. It is safe only while the
+        // Worker v4/v5 compatibility path. This does not require KV and still
+        // keeps the phone out of the PKG data path. It is safe only while the
         // resulting ELF URL fits the template's 2,047-byte field.
         string inline = workerBase + "/viking.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
         string registration = PayloadPatcher.RegistrationUrl(inline);
@@ -86,8 +86,12 @@ public sealed class BgftRoutePlanner : IDisposable
         if (!response.IsSuccessStatusCode)
         {
             int status = (int)response.StatusCode;
+            // 400/401/403/410 mean the Worker deliberately rejected this URL.
+            // Never bypass those policy/expiry decisions with the inline fallback.
             if (status == 400 || status == 401 || status == 403 || status == 410)
                 throw new InvalidDataException(string.IsNullOrWhiteSpace(text) ? "O Worker recusou a URL VikingFile (HTTP " + status + ")." : text.Trim());
+            // 404/405/5xx mean the optional route API is absent/unavailable; in
+            // those cases PrepareAsync may safely fall back to the v4 inline route.
             throw new HttpRequestException("Worker respondeu HTTP " + status + ".");
         }
 
@@ -99,6 +103,8 @@ public sealed class BgftRoutePlanner : IDisposable
             !result.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("O Worker retornou uma rota BGFT inválida.");
 
+        // Keep query text if the Worker selected inline mode; RegistrationUrl
+        // will append the local #tayson.pkg fragment later when needed.
         if (Encoding.UTF8.GetByteCount(PayloadPatcher.RegistrationUrl(route)) > PayloadUrlLimit)
             throw new InvalidDataException("A rota devolvida pelo Worker excede o espaço disponível no payload.");
         return route;
