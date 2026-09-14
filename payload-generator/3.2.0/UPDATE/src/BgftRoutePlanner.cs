@@ -43,7 +43,7 @@ public sealed class BgftRoutePlanner : IDisposable
         Uri uri = LinkPolicy.Parse(upstreamUrl);
         ValidateTemporalParameters(uri);
 
-        if (!IsVikingR2(uri))
+        if (!IsSupportedR2(uri))
             return upstreamUrl.Trim();
 
         string exact = upstreamUrl.Trim();
@@ -59,14 +59,14 @@ public sealed class BgftRoutePlanner : IDisposable
             routeError = ex;
         }
 
-        // Worker v4/v5 compatibility path. This does not require KV and still
-        // keeps the phone out of the PKG data path. It is safe only while the
-        // resulting ELF URL fits the template's 2,047-byte field.
-        string inline = workerBase + "/viking.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
+        // Worker v7 compatibility path. This does not require KV and still keeps
+        // the phone out of the PKG data path. It is safe only while the resulting
+        // ELF URL fits the template's 2,047-byte field.
+        string inline = workerBase + "/r2.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
         string registration = PayloadPatcher.RegistrationUrl(inline);
         if (Encoding.UTF8.GetByteCount(registration) > PayloadUrlLimit)
             throw new InvalidDataException(
-                "A URL assinada do VikingFile é longa demais para o payload. Configure o binding KV ROUTES no Worker para gerar uma rota curta." +
+                "A URL R2 assinada é longa demais para o payload. Configure o binding KV ROUTES no Worker para gerar uma rota curta." +
                 (routeError == null ? "" : " O registro de rota também falhou: " + routeError.Message));
         return inline;
     }
@@ -84,12 +84,11 @@ public sealed class BgftRoutePlanner : IDisposable
         if (!response.IsSuccessStatusCode)
         {
             int status = (int)response.StatusCode;
-            // 400/401/403/410 mean the Worker deliberately rejected this URL.
-            // Never bypass those policy/expiry decisions with the inline fallback.
             if (status == 400 || status == 401 || status == 403 || status == 410)
-                throw new InvalidDataException(string.IsNullOrWhiteSpace(text) ? "O Worker recusou a URL VikingFile (HTTP " + status + ")." : text.Trim());
+                throw new InvalidDataException(string.IsNullOrWhiteSpace(text)
+                    ? "O Worker recusou a URL R2 (HTTP " + status + ")."
+                    : text.Trim());
 
-            // 404/405/5xx mean the optional route API is absent/unavailable.
             if (status == 404 || status == 405 || status >= 500)
                 return null;
 
@@ -124,12 +123,17 @@ public sealed class BgftRoutePlanner : IDisposable
         return Encoding.UTF8.GetString(buffer, 0, total);
     }
 
-    public static bool IsVikingR2(Uri uri)
+    public static bool IsVikingR2(Uri uri) => IsR2WithPrefix(uri, "vikingfile.");
+
+    public static bool IsRootzR2(Uri uri) => IsR2WithPrefix(uri, "rootz-files.");
+
+    public static bool IsSupportedR2(Uri uri) => IsVikingR2(uri) || IsRootzR2(uri);
+
+    static bool IsR2WithPrefix(Uri uri, string prefix)
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
 
         string host = uri.IdnHost.TrimEnd('.');
-        const string prefix = "vikingfile.";
         const string suffix = ".r2.cloudflarestorage.com";
         if (!host.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
             !host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
@@ -154,19 +158,19 @@ public sealed class BgftRoutePlanner : IDisposable
     /// <summary>
     /// Performs format/range validation without using DateTimeOffset APIs that
     /// are absent from the trimmed Xamarin runtime embedded in the original V3.
-    /// Actual clock-expiry enforcement for VikingFile is performed by Worker v6;
-    /// Mocha itself remains authoritative for its direct token expiry.
+    /// Actual clock-expiry enforcement for R2 is performed by Worker v7; Mocha
+    /// itself remains authoritative for its direct token expiry.
     /// </summary>
     public static void ValidateTemporalParameters(Uri uri)
     {
-        if (IsVikingR2(uri))
+        if (IsSupportedR2(uri))
         {
             string date = Query(uri, "X-Amz-Date");
             string secondsText = Query(uri, "X-Amz-Expires");
             if (!LooksLikeAmzDate(date) ||
                 !long.TryParse(secondsText, NumberStyles.None, CultureInfo.InvariantCulture, out long seconds) ||
                 seconds <= 0 || seconds > 604800)
-                throw new InvalidDataException("A assinatura temporária do VikingFile contém parâmetros de validade inválidos.");
+                throw new InvalidDataException("A assinatura temporária R2 contém parâmetros de validade inválidos.");
             return;
         }
 
