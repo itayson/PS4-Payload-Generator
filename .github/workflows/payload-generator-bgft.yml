@@ -68,8 +68,7 @@ jobs:
           cp /tmp/payloadgen/assets/template.elf /tmp/payloadgen/UPDATE/base/original-template.elf
           cp /tmp/payloadgen/assemblies/assemblies.blob /tmp/payloadgen/UPDATE/base/original-assemblies.blob
           cp /tmp/payloadgen/AndroidManifest.xml /tmp/payloadgen/UPDATE/base/original-AndroidManifest.xml
-          cat payload-generator/3.2.0/source-chunks/chunk00 payload-generator/3.2.0/source-chunks/chunk01 payload-generator/3.2.0/source-chunks/chunk02 payload-generator/3.2.0/source-chunks/chunk03 payload-generator/3.2.0/source-chunks/chunk04 | base64 -d > /tmp/update-src.tar.gz
-          tar -xzf /tmp/update-src.tar.gz -C /tmp/payloadgen
+          cp -a payload-generator/3.2.0/UPDATE/. /tmp/payloadgen/UPDATE/
           python3 /tmp/payloadgen/UPDATE/scripts/patch_diagnostics.py
           sha256sum /tmp/payloadgen/UPDATE/base/original-template.elf /tmp/payloadgen/assets/template.elf
 
@@ -94,8 +93,8 @@ jobs:
           cp /tmp/payloadgen/UPDATE/build/aligned.apk /tmp/out/PS4-Payload-Generator-3.2.0-aligned-unsigned.apk
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
           cp /tmp/payloadgen/UPDATE/cloudflare/vikingfile_worker_v6.js /tmp/out/
-          cp /tmp/payloadgen/UPDATE/README-3.2.0.md /tmp/out/
-          cp /tmp/payloadgen/UPDATE/VALIDATION-3.2.0.md /tmp/out/
+          cp payload-generator/3.2.0/README.md /tmp/out/README-3.2.0.md
+          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.2.0.md
           sha256sum /tmp/out/PS4-Payload-Generator-3.2.0-Tayson.apk /tmp/out/PS4-Payload-Generator-3.2.0-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
 
       - name: Upload build
