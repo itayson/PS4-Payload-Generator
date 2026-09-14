@@ -1,0 +1,99 @@
+name: Universal BGFT Provider Routing
+
+on:
+  push:
+    branches:
+      - feature/universal-bgft-routing
+  pull_request:
+    paths:
+      - 'ci-universal-bgft/**'
+      - 'cloudflare/**'
+      - 'docs/UNIVERSAL_BGFT.md'
+      - '.github/workflows/universal-bgft-routing.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore validated Suite 1.4.2 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o /tmp/suite142.zip \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10298342960/zip"
+          rm -rf /tmp/suite142 /tmp/TaysonPS4Suite-universal-bgft
+          mkdir -p /tmp/suite142 /tmp/TaysonPS4Suite-universal-bgft
+          unzip -q /tmp/suite142.zip -d /tmp/suite142
+          test -s /tmp/suite142/TaysonPS4Suite-1.4.2-source.tar.gz
+          tar -xzf /tmp/suite142/TaysonPS4Suite-1.4.2-source.tar.gz \
+            -C /tmp/TaysonPS4Suite-universal-bgft --strip-components=1
+          test -f /tmp/TaysonPS4Suite-universal-bgft/app/src/main/java/com/tayson/ps4linksender/MainActivity.kt
+
+      - name: Apply universal BGFT routing patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-universal-bgft
+          patch --dry-run -p1 < "$GITHUB_WORKSPACE/ci-universal-bgft/universal-bgft.patch"
+          patch -p1 < "$GITHUB_WORKSPACE/ci-universal-bgft/universal-bgft.patch"
+          python3 "$GITHUB_WORKSPACE/ci-universal-bgft/validate_bgft.py" "$PWD"
+          node --check "$GITHUB_WORKSPACE/cloudflare/vikingfile_worker_v5.js"
+
+      - name: Lint and build Android
+        shell: bash
+        run: |
+          set -o pipefail
+          cd /tmp/TaysonPS4Suite-universal-bgft
+          gradle --no-daemon :app:lintUniversalDebug :app:assembleUniversalDebug \
+            2>&1 | tee android-build-universal-bgft.log
+          test -s app/build/outputs/apk/universal/debug/app-universal-debug.apk
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/TaysonPS4Suite-universal-bgft
+          mkdir -p dist
+          cp app/build/outputs/apk/universal/debug/app-universal-debug.apk \
+            dist/Tayson-PS4-Link-Sender-universal-bgft-debug.apk
+          cp "$GITHUB_WORKSPACE/cloudflare/vikingfile_worker_v5.js" dist/
+          cp "$GITHUB_WORKSPACE/docs/UNIVERSAL_BGFT.md" dist/
+          cp android-build-universal-bgft.log dist/
+          tar -czf dist/TaysonPS4Suite-universal-bgft-source.tar.gz \
+            --exclude='./dist' --exclude='./app/build' --exclude='./.gradle' .
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload universal BGFT build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tayson-PS4-Universal-BGFT
+          path: /tmp/TaysonPS4Suite-universal-bgft/dist/*
+          if-no-files-found: error
+          retention-days: 30
