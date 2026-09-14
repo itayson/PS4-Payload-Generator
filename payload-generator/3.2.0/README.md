@@ -46,6 +46,34 @@ https://drive.itaysondaniel.workers.dev/viking.pkg?u=<base64url>#tayson.pkg
 
 O telefone não retransmite o PKG. O PS4 baixa do Worker, que encaminha `GET`/`Range` ao R2. `HEAD` é atendido por uma sondagem `GET Range: bytes=0-0`, evitando a incompatibilidade observada com URLs R2 assinadas apenas para GET.
 
+### AkiraBox
+
+O app aceita tanto `akirabox.com` quanto o domínio atual `akirabox.to`. Links de página como:
+
+```text
+https://akirabox.to/<id>/file
+```
+
+abrem no WebView assistido. O capturador observa links, formulários, `fetch`, XHR e URLs assinadas `/download/...` geradas depois da verificação/Turnstile. O download só é aceito quando `DownloadClient.ProbeAsync` confirma que a resposta é realmente um PKG PS4 e suporta `Range`.
+
+Nenhum cookie ou token de navegador é gravado no ELF. O objetivo é capturar a URL final liberada pelo próprio site e validar se ela é utilizável diretamente pelo PS4.
+
+### Rootz
+
+Links públicos no formato:
+
+```text
+https://rootz.so/d/<shortId>
+```
+
+são tentados primeiro pelo endpoint público de proxy de download:
+
+```text
+https://www.rootz.so/api/files/proxy-download/<shortId>
+```
+
+Se esse caminho não estiver disponível para um arquivo específico, o app cai automaticamente para o WebView e captura o fluxo de download do site. Como a URL Rootz de proxy não precisa terminar em `.pkg`, o `PayloadPatcher` aplica o fragmento local `#tayson.pkg` quando necessário para a validação de extensão do BGFT.
+
 ## Worker v6
 
 Publique `UPDATE/cloudflare/vikingfile_worker_v6.js` em:
@@ -75,6 +103,7 @@ Tayson Payload Generator VikingFile Worker v6: OK
 - assinatura AWS, data e TTL são obrigatórios e validados estruturalmente no Android;
 - o Worker v6 aplica a verificação por relógio e recusa VikingFile expirado ou com menos de 90 segundos de validade;
 - no Mocha, o app valida a forma do parâmetro `expires`, mas o próprio provedor continua sendo a autoridade sobre a validade temporal do token;
+- AkiraBox e Rootz continuam sujeitos à mesma validação real de PKG, tamanho e `Range` antes de qualquer ELF ser gerado;
 - o Worker não é um proxy HTTP genérico;
 - a URL SigV4 original é armazenada/encaminhada sem reconstruir a query.
 
