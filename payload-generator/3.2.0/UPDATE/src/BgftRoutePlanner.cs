@@ -4,7 +4,6 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -90,9 +89,14 @@ public sealed class BgftRoutePlanner : IDisposable
             // Never bypass those policy/expiry decisions with the inline fallback.
             if (status == 400 || status == 401 || status == 403 || status == 410)
                 throw new InvalidDataException(string.IsNullOrWhiteSpace(text) ? "O Worker recusou a URL VikingFile (HTTP " + status + ")." : text.Trim());
-            // 404/405/5xx mean the optional route API is absent/unavailable; in
-            // those cases PrepareAsync may safely fall back to the v4 inline route.
-            throw new HttpRequestException("Worker respondeu HTTP " + status + ".");
+
+            // 404/405/5xx mean the optional route API is absent/unavailable. Return
+            // null instead of constructing HttpRequestException with an overload
+            // that is not present in the Xamarin/MAUI reference set used by V3.
+            if (status == 404 || status == 405 || status >= 500)
+                return null;
+
+            throw new InvalidDataException("O Worker respondeu com um status inesperado (HTTP " + status + ").");
         }
 
         string route = text.Trim();
@@ -128,9 +132,27 @@ public sealed class BgftRoutePlanner : IDisposable
     public static bool IsVikingR2(Uri uri)
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
+
+        // Avoid Regex API/version differences in the Xamarin/MAUI reference set.
+        // Required form: vikingfile.<32 hex>.r2.cloudflarestorage.com
         string host = uri.IdnHost.TrimEnd('.');
-        if (!Regex.IsMatch(host, @"\Avikingfile\.[a-f0-9]{32}\.r2\.cloudflarestorage\.com\z", RegexOptions.IgnoreCase))
+        const string prefix = "vikingfile.";
+        const string suffix = ".r2.cloudflarestorage.com";
+        if (!host.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            !host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
             return false;
+
+        int accountLength = host.Length - prefix.Length - suffix.Length;
+        if (accountLength != 32) return false;
+        for (int i = prefix.Length; i < prefix.Length + accountLength; i++)
+        {
+            char c = host[i];
+            bool hex = (c >= '0' && c <= '9') ||
+                       (c >= 'a' && c <= 'f') ||
+                       (c >= 'A' && c <= 'F');
+            if (!hex) return false;
+        }
+
         return Query(uri, "X-Amz-Algorithm").Equals("AWS4-HMAC-SHA256", StringComparison.Ordinal) &&
             Query(uri, "X-Amz-Signature").Length >= 32 &&
             Query(uri, "X-Amz-Date").Length > 0 && Query(uri, "X-Amz-Expires").Length > 0;
