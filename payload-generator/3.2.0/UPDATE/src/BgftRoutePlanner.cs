@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -38,19 +39,30 @@ public sealed class BgftRoutePlanner : IDisposable
 
     public void Dispose() { }
 
-    public async Task<string> PrepareAsync(string upstreamUrl, CancellationToken token = default)
+    public Task<string> PrepareAsync(string upstreamUrl, CancellationToken token = default) =>
+        PrepareAsync(upstreamUrl, "", "", "", token);
+
+    public async Task<string> PrepareAsync(
+        string upstreamUrl,
+        string cookie,
+        string referer,
+        string userAgent,
+        CancellationToken token = default)
     {
         Uri uri = LinkPolicy.Parse(upstreamUrl);
         ValidateTemporalParameters(uri);
+        string exact = upstreamUrl.Trim();
+
+        if (IsAkiraAccessUrl(uri))
+            return await CreateAkiraWorkerRouteAsync(exact, cookie, referer, userAgent, token).ConfigureAwait(false);
 
         if (!IsSupportedR2(uri))
-            return upstreamUrl.Trim();
+            return exact;
 
-        string exact = upstreamUrl.Trim();
         Exception routeError = null;
         try
         {
-            string shortRoute = await CreateWorkerRouteAsync(exact, token).ConfigureAwait(false);
+            string shortRoute = await CreateR2WorkerRouteAsync(exact, token).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(shortRoute)) return shortRoute;
         }
         catch (Exception ex) when (ex is HttpRequestException || ex is OperationCanceledException)
@@ -59,9 +71,7 @@ public sealed class BgftRoutePlanner : IDisposable
             routeError = ex;
         }
 
-        // Keep the legacy /viking.pkg path for compatibility with already
-        // deployed Workers. Worker v7 accepts it for both VikingFile and Rootz.
-        string inline = workerBase + "/viking.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
+        string inline = workerBase + "/r2.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
         string registration = PayloadPatcher.RegistrationUrl(inline);
         if (Encoding.UTF8.GetByteCount(registration) > PayloadUrlLimit)
             throw new InvalidDataException(
@@ -70,7 +80,7 @@ public sealed class BgftRoutePlanner : IDisposable
         return inline;
     }
 
-    async Task<string> CreateWorkerRouteAsync(string exactUpstream, CancellationToken token)
+    async Task<string> CreateR2WorkerRouteAsync(string exactUpstream, CancellationToken token)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(12));
@@ -78,8 +88,8 @@ public sealed class BgftRoutePlanner : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Post, workerBase + "/api/routes");
         request.Content = new StringContent(exactUpstream, Encoding.UTF8, "text/plain");
         using HttpResponseMessage response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
-
         string text = await ReadBoundedAsync(response.Content, RouteReplyLimit, timeout.Token).ConfigureAwait(false);
+
         if (!response.IsSuccessStatusCode)
         {
             int status = (int)response.StatusCode;
@@ -87,14 +97,55 @@ public sealed class BgftRoutePlanner : IDisposable
                 throw new InvalidDataException(string.IsNullOrWhiteSpace(text)
                     ? "O Worker recusou a URL R2 (HTTP " + status + ")."
                     : text.Trim());
-
-            if (status == 404 || status == 405 || status >= 500)
-                return null;
-
+            if (status == 404 || status == 405 || status >= 500) return null;
             throw new InvalidDataException("O Worker respondeu com um status inesperado (HTTP " + status + ").");
         }
 
-        string route = text.Trim();
+        return ValidateWorkerRoute(text);
+    }
+
+    async Task<string> CreateAkiraWorkerRouteAsync(
+        string exactUpstream,
+        string cookie,
+        string referer,
+        string userAgent,
+        CancellationToken token)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(12));
+        using var http = new HttpClient(factory()) { Timeout = TimeSpan.FromSeconds(15) };
+        using var request = new HttpRequestMessage(HttpMethod.Post, workerBase + "/api/akira-routes");
+        request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["url"] = exactUpstream,
+            ["cookie"] = cookie ?? "",
+            ["referer"] = string.IsNullOrWhiteSpace(referer) ? "https://akirabox.to/" : referer,
+            ["userAgent"] = string.IsNullOrWhiteSpace(userAgent)
+                ? "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36"
+                : userAgent
+        });
+
+        using HttpResponseMessage response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+        string text = await ReadBoundedAsync(response.Content, RouteReplyLimit, timeout.Token).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            int status = (int)response.StatusCode;
+            if (status == 404 || status == 405)
+                throw new InvalidDataException("O Worker publicado ainda não suporta AkiraBox. Publique o Universal Transport Worker v8.");
+            if (status == 400 || status == 401 || status == 403 || status == 410)
+                throw new InvalidDataException(string.IsNullOrWhiteSpace(text)
+                    ? "O Worker recusou a URL AkiraBox (HTTP " + status + ")."
+                    : text.Trim());
+            throw new InvalidDataException("O Worker AkiraBox respondeu HTTP " + status + ".");
+        }
+
+        return ValidateWorkerRoute(text);
+    }
+
+    string ValidateWorkerRoute(string text)
+    {
+        string route = (text ?? "").Trim();
         if (!Uri.TryCreate(route, UriKind.Absolute, out Uri result) ||
             result.Scheme != Uri.UriSchemeHttps ||
             !result.Host.Equals(new Uri(workerBase).Host, StringComparison.OrdinalIgnoreCase) ||
@@ -123,32 +174,43 @@ public sealed class BgftRoutePlanner : IDisposable
     }
 
     public static bool IsVikingR2(Uri uri) => IsR2WithPrefix(uri, "vikingfile.");
-
     public static bool IsRootzR2(Uri uri) => IsR2WithPrefix(uri, "rootz-files.");
-
     public static bool IsSupportedR2(Uri uri) => IsVikingR2(uri) || IsRootzR2(uri);
+
+    public static bool IsAkiraAccessUrl(Uri uri)
+    {
+        if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
+        if (!uri.IdnHost.TrimEnd('.').Equals("download.akirabox.com", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!uri.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase)) return false;
+        string access = Query(uri, "access");
+        int dot = access.IndexOf('.');
+        if (dot != 13 || access.Length <= dot + 16) return false;
+        if (!long.TryParse(access.Substring(0, dot), NumberStyles.None, CultureInfo.InvariantCulture, out long ms) || ms <= 0)
+            return false;
+        for (int i = dot + 1; i < access.Length; i++)
+        {
+            char c = access[i];
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                  (c >= '0' && c <= '9') || c == '_' || c == '-')) return false;
+        }
+        return true;
+    }
 
     static bool IsR2WithPrefix(Uri uri, string prefix)
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
-
         string host = uri.IdnHost.TrimEnd('.');
         const string suffix = ".r2.cloudflarestorage.com";
         if (!host.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
-            !host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-            return false;
-
+            !host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return false;
         int accountLength = host.Length - prefix.Length - suffix.Length;
         if (accountLength != 32) return false;
         for (int i = prefix.Length; i < prefix.Length + accountLength; i++)
         {
             char c = host[i];
-            bool hex = (c >= '0' && c <= '9') ||
-                       (c >= 'a' && c <= 'f') ||
-                       (c >= 'A' && c <= 'F');
+            bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
             if (!hex) return false;
         }
-
         return Query(uri, "X-Amz-Algorithm").Equals("AWS4-HMAC-SHA256", StringComparison.Ordinal) &&
             Query(uri, "X-Amz-Signature").Length >= 32 &&
             Query(uri, "X-Amz-Date").Length > 0 && Query(uri, "X-Amz-Expires").Length > 0;
@@ -157,8 +219,7 @@ public sealed class BgftRoutePlanner : IDisposable
     /// <summary>
     /// Performs format/range validation without using DateTimeOffset APIs that
     /// are absent from the trimmed Xamarin runtime embedded in the original V3.
-    /// Actual clock-expiry enforcement for R2 is performed by Worker v7; Mocha
-    /// itself remains authoritative for its direct token expiry.
+    /// Actual clock-expiry enforcement is performed by Worker v8.
     /// </summary>
     public static void ValidateTemporalParameters(Uri uri)
     {
@@ -170,6 +231,15 @@ public sealed class BgftRoutePlanner : IDisposable
                 !long.TryParse(secondsText, NumberStyles.None, CultureInfo.InvariantCulture, out long seconds) ||
                 seconds <= 0 || seconds > 604800)
                 throw new InvalidDataException("A assinatura temporária R2 contém parâmetros de validade inválidos.");
+            return;
+        }
+
+        if (IsAkiraAccessUrl(uri))
+        {
+            string access = Query(uri, "access");
+            int dot = access.IndexOf('.');
+            if (dot != 13 || !long.TryParse(access.Substring(0, dot), NumberStyles.None, CultureInfo.InvariantCulture, out long ms) || ms <= 0)
+                throw new InvalidDataException("O parâmetro access do AkiraBox é inválido.");
             return;
         }
 
