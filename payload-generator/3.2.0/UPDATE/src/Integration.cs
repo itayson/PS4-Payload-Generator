@@ -122,11 +122,26 @@ public static class Integration
         if (current.Length != meta.ContentLength || current.ContentId != meta.ContentId)
             throw new InvalidDataException("O arquivo mudou desde a análise. Analise o link novamente.");
 
-        // The real provider URL was validated above. Only now adapt its transport
-        // representation for PS4 BGFT. VikingFile and Rootz R2 signed URLs are
-        // converted to the universal Worker route; AkiraBox remains direct until
-        // hardware proves BGFT itself also needs a transport shim.
-        string bgftUrl = await Router.PrepareAsync(current.Url.AbsoluteUri);
+        string bgftUrl;
+        Uri currentUri = LinkPolicy.Parse(current.Url.AbsoluteUri);
+        if (BgftRoutePlanner.IsAkiraAccessUrl(currentUri))
+        {
+            // Hardware showed BGFT receives HTTP 403 when it accesses the signed
+            // AkiraBox URL directly. Register an ephemeral Worker route that can
+            // reproduce the browser-shaped GET/Range request. Cookies are kept
+            // off the ELF URL; Worker v8 stores them only in KV when available.
+            string cookie = AkiraDownloadProbe.GetCookieHeader(current.Url.AbsoluteUri);
+            bgftUrl = await Router.PrepareAsync(
+                current.Url.AbsoluteUri,
+                cookie,
+                AkiraDownloadProbe.DefaultReferer,
+                AkiraDownloadProbe.BrowserUserAgent);
+        }
+        else
+        {
+            bgftUrl = await Router.PrepareAsync(current.Url.AbsoluteUri);
+        }
+
         using Stream input = await FileSystem.OpenAppPackageFileAsync("template.elf");
         using var buffer = new MemoryStream();
         await input.CopyToAsync(buffer);
