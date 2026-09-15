@@ -94,6 +94,7 @@ jobs:
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
           cp /tmp/payloadgen/UPDATE/cloudflare/vikingfile_worker_v6.js /tmp/out/
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_r2_worker_v7.js /tmp/out/
+          cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
           cp payload-generator/3.2.0/README.md /tmp/out/README-3.2.0.md
           cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.2.0.md
           sha256sum /tmp/out/PS4-Payload-Generator-3.2.0-Tayson.apk /tmp/out/PS4-Payload-Generator-3.2.0-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
