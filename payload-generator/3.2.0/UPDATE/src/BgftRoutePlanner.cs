@@ -71,7 +71,7 @@ public sealed class BgftRoutePlanner : IDisposable
             routeError = ex;
         }
 
-        string inline = workerBase + "/r2.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
+        string inline = workerBase + "/viking.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
         string registration = PayloadPatcher.RegistrationUrl(inline);
         if (Encoding.UTF8.GetByteCount(registration) > PayloadUrlLimit)
             throw new InvalidDataException(
