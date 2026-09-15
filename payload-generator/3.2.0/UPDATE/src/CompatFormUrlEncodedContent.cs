@@ -33,8 +33,28 @@ public sealed class FormUrlEncodedContent : StringContent
 
     static string Encode(string value)
     {
-        // application/x-www-form-urlencoded accepts percent encoding; spaces as
-        // %20 are valid and avoid relying on HttpUtility in the Android runtime.
-        return Uri.EscapeDataString(value ?? "");
+        byte[] bytes = Encoding.UTF8.GetBytes(value ?? "");
+        var sb = new StringBuilder(bytes.Length * 3);
+        const string Hex = "0123456789ABCDEF";
+        foreach (byte b in bytes)
+        {
+            bool unreserved =
+                (b >= (byte)'A' && b <= (byte)'Z') ||
+                (b >= (byte)'a' && b <= (byte)'z') ||
+                (b >= (byte)'0' && b <= (byte)'9') ||
+                b == (byte)'-' || b == (byte)'.' ||
+                b == (byte)'_' || b == (byte)'~';
+            if (unreserved)
+            {
+                sb.Append((char)b);
+            }
+            else
+            {
+                sb.Append('%');
+                sb.Append(Hex[b >> 4]);
+                sb.Append(Hex[b & 15]);
+            }
+        }
+        return sb.ToString();
     }
 }
