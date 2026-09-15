@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/tayson-ps4-payload-generator-banner.png" alt="Tayson PS4 Payload Generator" width="100%">
+  <img src="assets/file_000000003724820e8f20792443e9ac67.png" alt="Tayson PS4 Payload Generator" width="100%">
 </p>
 
 <h1 align="center">Tayson PS4 Payload Generator</h1>
