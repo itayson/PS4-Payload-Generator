@@ -21,7 +21,8 @@ namespace Tayson.Providers;
 /// </summary>
 public static class AkiraDownloadProbe
 {
-    const string BrowserUserAgent = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36";
+    public const string BrowserUserAgent = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36";
+    public const string DefaultReferer = "https://akirabox.to/";
     static readonly Regex ContentId = new Regex(@"\A[A-Z]{2}[0-9]{4}-[A-Z]{4}[0-9]{5}_[0-9A-Z]{2}-[A-Z0-9_]{16}\z", RegexOptions.None);
 
     sealed class Transfer : IDisposable
@@ -70,10 +71,16 @@ public static class AkiraDownloadProbe
         catch { return ""; }
     }
 
+    public static string GetCookieHeader(string value)
+    {
+        Uri uri = LinkPolicy.Parse(value);
+        return ProviderResolvers.IsAkiraBox(uri) ? Cookies(uri) : "";
+    }
+
     static async Task<Transfer> GetAsync(Uri start, long from, long to, CancellationToken token)
     {
         Uri url = start;
-        string referer = "https://akirabox.to/";
+        string referer = DefaultReferer;
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
         for (int redirects = 0; redirects <= 8; redirects++)
