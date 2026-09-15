@@ -2,11 +2,36 @@
   <img src="assets/tayson-ps4-payload-generator-banner.jpg" alt="Tayson PS4 Payload Generator" width="100%">
 </p>
 
-# Tayson PS4 Payload Generator
+<h1 align="center">Tayson PS4 Payload Generator</h1>
 
-**Gerador universal de payloads ELF para PS4 desbloqueado, com resolução de links, validação de PKG e roteamento BGFT compatível com múltiplos provedores.**
+<p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/version-3.2.0-1f6feb?style=for-the-badge">
+  <img alt="Android" src="https://img.shields.io/badge/platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white">
+  <img alt="PS4" src="https://img.shields.io/badge/target-PS4-006FCD?style=for-the-badge">
+  <img alt="BGFT" src="https://img.shields.io/badge/BGFT-Universal-00AEEF?style=for-the-badge">
+</p>
 
-O projeto foi desenvolvido para simplificar um fluxo que normalmente exige várias etapas manuais: o aplicativo Android recebe o link do arquivo, resolve o provedor, valida o PKG, prepara a URL compatível com o BGFT, gera um ELF específico para aquela tarefa e envia o payload diretamente ao **GoldHEN BinLoader pela porta TCP 9090**.
+<p align="center">
+  <img alt="Worker" src="https://img.shields.io/badge/Worker-v8-FF8800?style=flat-square&logo=cloudflare&logoColor=white">
+  <img alt="Providers" src="https://img.shields.io/badge/providers-5%2F5%20validated-2ea44f?style=flat-square">
+  <img alt="Hardware" src="https://img.shields.io/badge/PS4%20hardware-validated-2ea44f?style=flat-square">
+  <img alt="BinLoader" src="https://img.shields.io/badge/BinLoader-TCP%209090-8250df?style=flat-square">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square">
+</p>
+
+<p align="center">
+  <strong>Mocha • VikingFile • FileKeeper • Rootz • AkiraBox</strong>
+</p>
+
+<p align="center">
+  Gerador universal de payloads ELF para PS4 desbloqueado, com resolução de links, validação de PKG e roteamento BGFT compatível com múltiplos provedores.
+</p>
+
+---
+
+## Visão geral
+
+O **Tayson PS4 Payload Generator** simplifica um fluxo que normalmente exige várias etapas manuais: o aplicativo Android recebe o link do arquivo, resolve o provedor, valida o PKG, prepara a URL compatível com o BGFT, gera um ELF específico para aquela tarefa e envia o payload diretamente ao **GoldHEN BinLoader pela porta TCP `9090`**.
 
 Não utiliza Receiver, Remote Package Installer ou retransmissão integral do PKG pelo celular. Depois que o payload é enviado, o próprio PS4 registra a tarefa no BGFT e baixa o arquivo pela rota adequada.
 
@@ -132,7 +157,7 @@ Ele pode:
 - manter contexto de sessão do AkiraBox;
 - impedir uso como proxy genérico através de validação de hosts e formatos aceitos.
 
-### Binding obrigatório/recomendado
+### Binding KV
 
 No Cloudflare Worker, configure um binding KV com o nome exato:
 
@@ -233,9 +258,9 @@ As rotas salvas em KV são temporárias e devem expirar junto com o acesso origi
 
 ## Desenvolvimento atual
 
-Versão em desenvolvimento: **3.2.0**
+Versão atual: **3.2.0**
 
-Branch principal de desenvolvimento da camada universal:
+Branch de desenvolvimento da camada universal:
 
 ```text
 feature/payload-generator-bgft-universal
