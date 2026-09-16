@@ -1,0 +1,109 @@
+name: Tayson PS4 Payload Generator 3.3.1
+
+on:
+  push:
+    branches:
+      - feature/payload-generator-bgft-universal
+      - feature/neon-ui-redesign
+  pull_request:
+    branches:
+      - main
+      - feature/payload-generator-bgft-universal
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq liblz4-1 unzip curl
+
+      - name: Download verified Phoenixx V3 base APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          PAGE='https://www.mediafire.com/file/hi4h13wzunr2bjm/phoenixx.ps4remotepkg_v3.0%2B%282%29.apk/file'
+          curl -fL --retry 3 -A 'Mozilla/5.0' "$PAGE" -o /tmp/mediafire.html
+          python3 - <<'PY' >/tmp/direct-url.txt
+          import html, re
+          text=open('/tmp/mediafire.html',encoding='utf-8',errors='ignore').read()
+          patterns=[
+              r'id=["\']downloadButton["\'][^>]*href=["\']([^"\']+)',
+              r'href=["\']([^"\']+)["\'][^>]*id=["\']downloadButton["\']'
+          ]
+          for pattern in patterns:
+              m=re.search(pattern,text,re.I)
+              if m:
+                  print(html.unescape(m.group(1)))
+                  break
+          else:
+              raise SystemExit('MediaFire direct download link not found')
+          PY
+          DIRECT="$(cat /tmp/direct-url.txt)"
+          test -n "$DIRECT"
+          curl -fL --retry 3 -A 'Mozilla/5.0' "$DIRECT" -o /tmp/original.apk
+          echo 'a441a8321edba13ebd2597863477c409004e7d4475b9221951bf2991e2feee81  /tmp/original.apk' | sha256sum -c -
+
+      - name: Reconstruct build tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/payloadgen /tmp/tools /tmp/out
+          mkdir -p /tmp/payloadgen /tmp/out
+          unzip -q /tmp/original.apk -d /tmp/payloadgen
+          mkdir -p /tmp/payloadgen/UPDATE/base
+          cp /tmp/payloadgen/assets/template.elf /tmp/payloadgen/UPDATE/base/original-template.elf
+          cp /tmp/payloadgen/assemblies/assemblies.blob /tmp/payloadgen/UPDATE/base/original-assemblies.blob
+          cp /tmp/payloadgen/AndroidManifest.xml /tmp/payloadgen/UPDATE/base/original-AndroidManifest.xml
+          cp -a payload-generator/3.2.0/UPDATE/. /tmp/payloadgen/UPDATE/
+          python3 /tmp/payloadgen/UPDATE/scripts/patch_diagnostics.py
+          sha256sum /tmp/payloadgen/UPDATE/base/original-template.elf /tmp/payloadgen/assets/template.elf
+
+      - name: Prepare compiler and Android build tools
+        run: |
+          python3 /tmp/payloadgen/UPDATE/scripts/prepare.py --base /tmp/payloadgen --tools /tmp/tools
+
+      - name: Run core tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          /tmp/tools/dotnet/dotnet run --project /tmp/payloadgen/UPDATE/tests/Tests.csproj -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
+          grep -q 'RESULT: 87 checks passed' /tmp/out/tests.log
+
+      - name: Build Tayson 3.3.1
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 /tmp/payloadgen/UPDATE/scripts/build.py --base /tmp/payloadgen --tools /tmp/tools --output /tmp/out | tee /tmp/out/build.log
+          test -s /tmp/out/PS4-Payload-Generator-3.3.1-TaySon.apk
+          test -s /tmp/payloadgen/UPDATE/build/aligned.apk
+          cp /tmp/payloadgen/UPDATE/build/aligned.apk /tmp/out/PS4-Payload-Generator-3.3.1-aligned-unsigned.apk
+          cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
+          cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
+          cp payload-generator/3.2.0/README.md /tmp/out/README-3.3.1.md
+          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.3.1.md
+          sha256sum /tmp/out/PS4-Payload-Generator-3.3.1-TaySon.apk /tmp/out/PS4-Payload-Generator-3.3.1-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
+          cat /tmp/out/build-info.json
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tayson-PS4-Payload-Generator-3.3.1
+          path: /tmp/out/*
+          if-no-files-found: error
+          retention-days: 30
