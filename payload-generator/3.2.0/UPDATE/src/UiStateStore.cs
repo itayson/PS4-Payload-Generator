@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using Microsoft.Maui.Storage;
 using PS4RemotePkgMobile;
@@ -70,13 +69,16 @@ public static class UiStateStore
             }
             catch { }
         }
-        return result.OrderByDescending(x => x.Timestamp).Take(MaxItems).ToArray();
+        result.Sort((a, b) => b.Timestamp.CompareTo(a.Timestamp));
+        if (result.Count > MaxItems) result.RemoveRange(MaxItems, result.Count - MaxItems);
+        return result;
     }
 
     public static void Record(PkgMetadata meta, string status, string ps4Ip)
     {
         if (meta == null) return;
-        var items = ReadHistory().ToList();
+        var items = new List<UiHistoryItem>();
+        foreach (UiHistoryItem item in ReadHistory()) items.Add(item);
         string key = PackageKey(meta);
         items.RemoveAll(x => x.Key == key);
         items.Insert(0, new UiHistoryItem
@@ -91,26 +93,31 @@ public static class UiStateStore
             Size = meta.ContentLength,
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
         });
-        Write(items.Take(MaxItems));
+        if (items.Count > MaxItems) items.RemoveRange(MaxItems, items.Count - MaxItems);
+        Write(items);
     }
 
-    public static void ClearHistory() => Preferences.Default.Remove(HistoryKey);
+    public static void ClearHistory() => Preferences.Default.Set(HistoryKey, "");
 
     static void Write(IEnumerable<UiHistoryItem> items)
     {
-        string raw = string.Join("\n", items.Select(x => string.Join("|", new[]
+        var text = new StringBuilder();
+        bool first = true;
+        foreach (UiHistoryItem x in items)
         {
-            x.Timestamp.ToString(),
-            x.Size.ToString(),
-            Encode(x.Key),
-            Encode(x.Title),
-            Encode(x.TitleId),
-            Encode(x.Provider),
-            Encode(x.Kind),
-            Encode(x.Status),
-            Encode(x.Ps4Ip)
-        })));
-        Preferences.Default.Set(HistoryKey, raw);
+            if (!first) text.Append('\n');
+            first = false;
+            text.Append(x.Timestamp).Append('|')
+                .Append(x.Size).Append('|')
+                .Append(Encode(x.Key)).Append('|')
+                .Append(Encode(x.Title)).Append('|')
+                .Append(Encode(x.TitleId)).Append('|')
+                .Append(Encode(x.Provider)).Append('|')
+                .Append(Encode(x.Kind)).Append('|')
+                .Append(Encode(x.Status)).Append('|')
+                .Append(Encode(x.Ps4Ip));
+        }
+        Preferences.Default.Set(HistoryKey, text.ToString());
     }
 
     static string PackageKey(PkgMetadata meta)
