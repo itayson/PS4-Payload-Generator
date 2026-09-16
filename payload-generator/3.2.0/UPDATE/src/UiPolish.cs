@@ -30,7 +30,21 @@ public static class UiPolish
         if (view == null) return;
 
         if (view is Label label)
+        {
             PolishLabel(label);
+            label.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == "Text") PolishLabel(label);
+            };
+        }
+        else if (view is Button button)
+        {
+            PolishButton(button);
+            button.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == "Text") PolishButton(button);
+            };
+        }
         else if (view is Entry entry)
             PolishEntry(entry);
 
@@ -83,6 +97,64 @@ public static class UiPolish
         }
     }
 
+    static void PolishButton(Button button)
+    {
+        string value = (button.Text ?? "").Trim();
+        if (value.Length == 0) return;
+
+        if (value.Equals("Scan PKG", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Analyze PKG", StringComparison.OrdinalIgnoreCase))
+        {
+            button.Text = "Validar PKG";
+            return;
+        }
+
+        if (value.Equals("Scanning...", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Scanning…", StringComparison.OrdinalIgnoreCase))
+        {
+            button.Text = "Validando…";
+            return;
+        }
+
+        if (value.Equals("Generate ELF", StringComparison.OrdinalIgnoreCase))
+        {
+            button.Text = "Gerar ELF";
+            return;
+        }
+
+        if (value.Equals("Generating...", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Generating…", StringComparison.OrdinalIgnoreCase))
+        {
+            button.Text = "Gerando…";
+            return;
+        }
+
+        if (value.Equals("Inject Directly to PS4", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Send to PS4", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Inject to PS4", StringComparison.OrdinalIgnoreCase))
+        {
+            button.Text = "Enviar ao PS4";
+            return;
+        }
+
+        if (value.Equals("Sending...", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Sending…", StringComparison.OrdinalIgnoreCase))
+        {
+            button.Text = "Enviando…";
+            return;
+        }
+
+        if (value.Equals("Clear", StringComparison.OrdinalIgnoreCase))
+        {
+            button.Text = "Limpar";
+            return;
+        }
+
+        if (value.Equals("Local file", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Local File", StringComparison.OrdinalIgnoreCase))
+            button.Text = "Arquivo local";
+    }
+
     static void PolishLabel(Label label)
     {
         string value = (label.Text ?? "").Trim();
@@ -108,10 +180,31 @@ public static class UiPolish
             return;
         }
 
-        if (value.Equals("Waiting for link...", StringComparison.OrdinalIgnoreCase))
+        if (value.Equals("Waiting for link...", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Waiting for link…", StringComparison.OrdinalIgnoreCase))
         {
             label.Text = "Aguardando link…";
             label.TextColor = Text;
+            return;
+        }
+
+        if (value.Equals("Reading metadata...", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Reading metadata…", StringComparison.OrdinalIgnoreCase))
+        {
+            label.Text = "Lendo metadados…";
+            label.TextColor = Text;
+            return;
+        }
+
+        if (value.Equals("Scan completed successfully!", StringComparison.OrdinalIgnoreCase))
+        {
+            label.Text = "PKG validado com sucesso.";
+            return;
+        }
+
+        if (value.Equals("Payload sent; confirm download starts on TV.", StringComparison.OrdinalIgnoreCase))
+        {
+            label.Text = "Payload enviado; confirme o início do download na TV.";
             return;
         }
 
