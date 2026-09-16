@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - feature/payload-generator-bgft-universal
+      - feature/neon-ui-redesign
   pull_request:
     branches:
       - main
+      - feature/payload-generator-bgft-universal
   workflow_dispatch:
 
 permissions:
