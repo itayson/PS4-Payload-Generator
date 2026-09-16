@@ -2,6 +2,7 @@ using System;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
+using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
@@ -34,7 +35,7 @@ public static class UiSettingsScreen
 
         body.Children.Add(Hero("Ajustes", "Conexão e transporte BGFT"));
 
-        var ip = Entry(UiStateStore.LoadPs4Ip(realIp?.Text ?? ""), "192.168.0.10");
+        var ip = Input(UiStateStore.LoadPs4Ip(realIp?.Text ?? ""), "192.168.0.10");
         var ps4Status = new Label { Text = "Não testado", TextColor = Muted, FontSize = 11, FontAttributes = FontAttributes.Bold };
         var testPs4 = Action("Testar BinLoader 9090", Blue);
         testPs4.Clicked += async (_, _) =>
@@ -85,7 +86,7 @@ public static class UiSettingsScreen
         };
         body.Children.Add(ps4);
 
-        var worker = Entry(UiStateStore.LoadWorkerUrl(), BgftRoutePlanner.DefaultWorkerBase);
+        var worker = Input(UiStateStore.LoadWorkerUrl(), BgftRoutePlanner.DefaultWorkerBase);
         var workerHint = new Label
         {
             Text = "HTTPS sem query string. É usado para VikingFile/Rootz R2 e AkiraBox quando o BGFT precisa da camada de transporte.",
@@ -176,7 +177,7 @@ public static class UiSettingsScreen
         FontAttributes = FontAttributes.Bold
     };
 
-    static Entry Entry(string value, string placeholder) => new Entry
+    static Entry Input(string value, string placeholder) => new Entry
     {
         Text = value,
         Placeholder = placeholder,
