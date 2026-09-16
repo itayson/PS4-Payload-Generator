@@ -57,7 +57,10 @@ Replace("AnalyzeUrlAsync", "Tayson.Providers.Integration", "AnalyzeAsync", new[]
 Replace("GeneratePatchedElfAsync", "Tayson.Providers.Integration", "GenerateAsync", new[] { 0 });
 Replace("PatchElf", "Tayson.Providers.PayloadPatcher", "Patch", new[] { 1, 2, 3, 4, 5, 6 });
 Replace("IsUnsupportedUrl", "Tayson.Providers.LinkPolicy", "Unsupported", new[] { 1 });
-// These properties serve every locale; report socket delivery honestly.
+
+// These resource getters are consumed by the original MainPage handlers at
+// runtime. Patch them at IL level so transient states cannot fall back to the
+// Phoenixx/English strings after the neon UI has already been rendered.
 void SetMessage(string property, string text)
 {
     var method = Target("PS4RemotePkgMobile.Idiomas.AppStrings", "get_" + property);
@@ -66,15 +69,32 @@ void SetMessage(string property, string text)
     il.Emit(OpCodes.Ldstr, text);
     il.Emit(OpCodes.Ret);
 }
-SetMessage("AlertInjected", "Payload enviado ao PS4. Isso confirma apenas o envio. Confira na TV se o download iniciou; se aparecer Registro: 0x..., fotografe o código completo. Versão Tayson 3.2.0.");
+SetMessage("AlertSuccess", "Sucesso");
+SetMessage("AlertError", "Erro");
+SetMessage("AlertNetError", "Erro de rede");
+SetMessage("AlertInjected", "Payload enviado ao PS4. Isso confirma apenas o envio. Confira na TV se o download iniciou; se aparecer Registro: 0x..., fotografe o código completo. Versão Tayson 3.3.1.");
+SetMessage("BtnScan", "Validar PKG");
+SetMessage("BtnInject", "Enviar ao PS4");
+SetMessage("BtnSending", "Enviando…");
+SetMessage("MsgScanning", "Validando PKG…");
+SetMessage("MsgScanSuccess", "PKG analisado com sucesso.");
+SetMessage("WaitingLink", "Aguardando link…");
+SetMessage("StatusInjecting", "Enviando ELF ao PS4…");
 SetMessage("StatusSentToPS4", "Payload enviado; confirme o início do download na TV.");
+SetMessage("StatusPayloadSaved", "Payload salvo no celular.");
+SetMessage("StatusSendingLocal", "Enviando arquivo local…");
+SetMessage("StatusFailInject", "Falha ao enviar o payload.");
+SetMessage("StatusFailPayload", "Falha ao gerar o payload.");
+SetMessage("StatusFailScan", "Falha ao validar o PKG.");
+SetMessage("LblErrorPrefix", "Erro: ");
+
 int titleChanges = 0;
 foreach (var type in module.GetTypes())
 foreach (var method in type.Methods.Where(m => m.HasBody))
 foreach (var instruction in method.Body.Instructions)
     if (instruction.OpCode == OpCodes.Ldstr && (string)instruction.Operand == "PS4 Payload Generator")
     {
-        instruction.Operand = "PS4 Payload Generator · Tayson 3.2.0";
+        instruction.Operand = "Tayson PS4 Payload Generator 3.3.1";
         titleChanges++;
     }
 if (titleChanges == 0) throw new InvalidOperationException("Application title was not located");
