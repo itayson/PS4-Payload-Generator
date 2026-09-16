@@ -29,6 +29,11 @@ public static class Integration
         {
             if (e.PropertyName == "IsEnabled") Field<Button>(page, "btnLimpar").IsEnabled = scan.IsEnabled;
         };
+
+        // Rebuild only the visual shell. Existing controls and handlers stay
+        // wired to the original MainPage implementation, so the proven PKG,
+        // ELF, BGFT and BinLoader flows are preserved.
+        UiRedesign.Apply(page);
     }
 
     public static void Invalidate(MainPage page)
