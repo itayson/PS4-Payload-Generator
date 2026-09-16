@@ -10,11 +10,6 @@ namespace Tayson.Providers;
 
 /// <summary>
 /// Runtime UI shell for the original MAUI MainPage.
-///
-/// The payload generator is distributed as a prebuilt MAUI APK and the project
-/// intentionally preserves its original Android resources/JNI metadata. This
-/// layer restyles and wraps the already-wired MainPage at runtime instead of
-/// replacing native resources or reimplementing the working event handlers.
 /// Provider resolution, PKG validation, ELF generation and BinLoader delivery
 /// remain owned by the original page + Integration hooks.
 /// </summary>
@@ -122,7 +117,7 @@ public static class UiRedesign
         if (h.Clear != null) h.Clear.Text = "Limpar";
         if (h.LocalFile != null) h.LocalFile.Text = "Arquivo local";
         if (h.BottomStatus != null)
-            h.BottomStatus.Text = "Tayson 3.2.0 • BGFT universal • BinLoader 9090";
+            h.BottomStatus.Text = "Tayson 3.3.1 • BGFT universal • BinLoader 9090";
 
         StyleAction(h.Scan, Green, Color.FromArgb("#031A16"));
         StyleAction(h.Generate, Blue, Text);
