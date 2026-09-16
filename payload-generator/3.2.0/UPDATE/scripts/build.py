@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Rebuild the V3 delta with the user's extracted app and a local .NET toolchain."""
+"""Rebuild the Tayson delta with the user's extracted app and a local .NET toolchain."""
 import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile
 from pathlib import Path
+
+APP_VERSION = '3.3.0'
+APP_VERSION_CODE = 35
+APP_LABEL = 'Tayson PS4 Payload Generator'
+APK_NAME = 'PS4-Payload-Generator-3.3.0-TaySon.apk'
 
 def manifest_patch(data):
     chunks = []
@@ -29,7 +34,9 @@ def manifest_patch(data):
         else:s=pool[p:p+n*2].decode('utf-16-le')
         strings.append(s)
     assert '3.0' in strings
-    strings[strings.index('3.0')]='3.2.0-tayson-test'
+    strings[strings.index('3.0')] = APP_VERSION
+    if 'PS4 Payload Generator' in strings:
+        strings[strings.index('PS4 Payload Generator')] = APP_LABEL
     strings.append('usesCleartextTraffic');newidx=len(strings)-1
     offsets=[];blob=bytearray()
     for s in strings:
@@ -54,7 +61,7 @@ def manifest_patch(data):
             attrs=[bytearray(chunk[first+i*attrsize:first+(i+1)*attrsize]) for i in range(attrcount)]
             if strings[name]=='manifest':
                 for a in attrs:
-                    if ids[struct.unpack_from('<I',a,4)[0]]==0x0101021b:struct.pack_into('<I',a,16,34)
+                    if ids[struct.unpack_from('<I',a,4)[0]]==0x0101021b:struct.pack_into('<I',a,16,APP_VERSION_CODE)
             if strings[name]=='application':
                 attrs.append(bytearray(struct.pack('<IIIHBBI',android,newidx,0xffffffff,8,0,0x12,0xffffffff)))
                 attrs.sort(key=lambda a:ids[struct.unpack_from('<I',a,4)[0]])
@@ -64,6 +71,29 @@ def manifest_patch(data):
         output.append(chunk)
     body=b''.join(output)
     return struct.pack('<HHI',3,8,len(body)+8)+body
+
+def patch_managed_ui_strings(data):
+    """Patch only exact managed resource strings, never metadata/method names."""
+    replacements = [
+        (b'\x01\x0dNetwork Error\x01', b'\x01\x0dErro de rede!\x01'),
+        (b'\x01\x07Success\x01', b'\x01\x07Sucesso\x01'),
+        (b'\x01\x0fSending file...\x01', b'\x01\x0fEnviando ELF...\x01'),
+        (b'\x01\x19Successfully sent to PS4!\x01', b'\x01\x19Enviado ao PS4 - sucesso!\x01'),
+        (b'\x01\x0dPayload sent!\x01', b'\x01\x0dEnvio ao PS4!\x01'),
+        (b'\x01\x1cScan completed successfully!\x01', b'\x01\x1cPKG analisado com sucesso!!!\x01'),
+        (b'\x01\x1bPayload saved on the device\x01', b'\x01\x1bPayload salvo no celular!!!\x01'),
+        (b'\x01\x0eStatus: Ready.\x01', b'\x01\x0eStatus: Pronto\x01'),
+    ]
+    patched = 0
+    for old, new in replacements:
+        assert len(old) == len(new)
+        count = data.count(old)
+        if count:
+            data = data.replace(old, new)
+            patched += count
+    if patched < 5:
+        raise RuntimeError('Managed PT-BR resource patch matched too few strings: %d' % patched)
+    return data, patched
 
 def main():
     parser=argparse.ArgumentParser()
@@ -85,6 +115,7 @@ def main():
     run(tool/'bin/ilrepack','/out:'+str(work/'merged.dll'),'/lib:'+str(refs),'/noRepackRes','/ndebug',refs/'PS4RemotePkgMobile.dll',work/'Tayson.Providers.dll')
     run(sdk/'dotnet',patcher,'patch',refs/'PS4RemotePkgMobile.dll',work/'merged.dll',work/'PS4RemotePkgMobile.dll',refs)
     dll=(work/'PS4RemotePkgMobile.dll').read_bytes()
+    dll, ui_patch_count = patch_managed_ui_strings(dll)
     backup=base/'UPDATE/base'
     store=bytearray(((backup/'original-assemblies.blob') if (backup/'original-assemblies.blob').exists() else base/'assemblies/assemblies.blob').read_bytes())
     assert struct.unpack_from('<5I',store)==(0x41424158,1,114,118,0)
@@ -100,7 +131,6 @@ def main():
             if name.startswith('UPDATE/') or name.endswith('libaot-PS4RemotePkgMobile.dll.so'):continue
             if name.startswith('META-INF/') and (name.upper().endswith(('.RSA','.SF','.DSA','.EC')) or name=='META-INF/MANIFEST.MF'):continue
             data=store if name=='assemblies/assemblies.blob' else manifest if name=='AndroidManifest.xml' else p.read_bytes()
-            # Mono mmaps assembly stores; keep them uncompressed and aligned.
             compression=zipfile.ZIP_STORED if (name.startswith('assemblies/') or name=='resources.arsc') else zipfile.ZIP_DEFLATED
             z.writestr(name,data,compress_type=compression)
     android=tool/'android/android-15'
@@ -109,8 +139,8 @@ def main():
     signing=project/'signing';signing.mkdir(exist_ok=True);key=signing/'tayson-test.jks'
     if not key.exists():
         run('keytool','-genkeypair','-keystore',key,'-storepass','android','-keypass','android','-alias','tayson-test',
-            '-dname','CN=Tayson PS4 Test Build','-keyalg','RSA','-keysize','2048','-validity','10000')
-    apk=out/'PS4-Payload-Generator-3.2.0-Tayson.apk'
+            '-dname','CN=TaySon PS4 Payload Generator','-keyalg','RSA','-keysize','2048','-validity','10000')
+    apk=out/APK_NAME
     run('java','-jar',android/'lib/apksigner.jar','sign','--ks',key,'--ks-key-alias','tayson-test','--ks-pass','pass:android','--key-pass','pass:android','--out',apk,aligned)
     run('java','-jar',android/'lib/apksigner.jar','verify','--verbose',apk)
     with zipfile.ZipFile(apk) as z:
@@ -121,7 +151,9 @@ def main():
     details={'apk':apk.name,'bytes':apk.stat().st_size,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),
         'embedded_template_sha256':hashlib.sha256((base/'assets/template.elf').read_bytes()).hexdigest(),
         'original_template_sha256':hashlib.sha256((backup/'original-template.elf').read_bytes()).hexdigest(),
-        'package':'com.phoenixx.ps4remotepkg','versionCode':34,'versionName':'3.2.0-tayson-test',
+        'package':'com.phoenixx.ps4remotepkg','applicationLabel':APP_LABEL,
+        'versionCode':APP_VERSION_CODE,'versionName':APP_VERSION,
+        'managed_ptbr_resource_patches':ui_patch_count,
         'original_interface_and_dex_preserved':True,'removed_stale_main_aot_libraries':4}
     (out/'build-info.json').write_text(json.dumps(details,indent=2)+'\n')
     print(json.dumps(details))
