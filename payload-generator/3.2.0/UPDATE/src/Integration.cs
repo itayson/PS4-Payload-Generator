@@ -21,13 +21,33 @@ public static class Integration
     public static void Initialize(MainPage page)
     {
         var entry = Field<Entry>(page, "txtUrl");
+        var ip = Field<Entry>(page, "txtIp");
+        var bottom = Field<Label>(page, "lblBottomStatus");
+
         entry.Placeholder = "VikingFile, AkiraBox, Rootz, Mocha ou link direto";
-        Field<Label>(page, "lblBottomStatus").Text = "V3.2.0 Tayson • BGFT universal • BinLoader 9090";
+        bottom.Text = "V3.2.0 Tayson • BGFT universal • BinLoader 9090";
+
+        string savedIp = UiStateStore.LoadPs4Ip();
+        if (!string.IsNullOrWhiteSpace(savedIp)) ip.Text = savedIp;
+        ip.TextChanged += (_, _) => UiStateStore.SavePs4Ip(ip.Text);
+
         entry.TextChanged += (sender, e) => Invalidate(page);
         var scan = Field<Button>(page, "btnScan");
         scan.PropertyChanged += (sender, e) =>
         {
             if (e.PropertyName == "IsEnabled") Field<Button>(page, "btnLimpar").IsEnabled = scan.IsEnabled;
+        };
+
+        // The original page reports successful socket delivery through this
+        // status label. Persist that event without claiming the BGFT download
+        // itself has completed on the console.
+        bottom.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(Label.Text)) return;
+            string text = bottom.Text ?? "";
+            if (text.IndexOf("Payload enviado", StringComparison.OrdinalIgnoreCase) < 0) return;
+            var meta = Field<PkgMetadata>(page, "_currentMeta");
+            if (meta != null) UiStateStore.Record(meta, "PAYLOAD ENVIADO", ip.Text);
         };
 
         // Rebuild only the visual shell. Existing controls and handlers stay
@@ -113,9 +133,20 @@ public static class Integration
         int a = Find(info.Prefix, begin, 0), b = a < 0 ? -1 : Find(info.Prefix, end, a + 8);
         if (a >= 0 && b >= a && b + 8 - a <= 1048576)
         { icon = new byte[b + 8 - a]; Array.Copy(info.Prefix, a, icon, 0, icon.Length); }
-        return new PkgMetadata { Url = info.Url.AbsoluteUri, ContentLength = info.Length, ContentId = info.ContentId,
-            TitleId = info.ContentId.Substring(7, 9), PkgType = kind, DisplayName = title,
-            CleanName = DownloadClient.CleanFilename(title + " " + suffix), IconBytes = icon };
+
+        var meta = new PkgMetadata
+        {
+            Url = info.Url.AbsoluteUri,
+            ContentLength = info.Length,
+            ContentId = info.ContentId,
+            TitleId = info.ContentId.Substring(7, 9),
+            PkgType = kind,
+            DisplayName = title,
+            CleanName = DownloadClient.CleanFilename(title + " " + suffix),
+            IconBytes = icon
+        };
+        UiStateStore.Record(meta, "VALIDADO", Field<Entry>(page, "txtIp").Text);
+        return meta;
     }
 
     public static async Task<byte[]> GenerateAsync(MainPage page)
@@ -151,7 +182,15 @@ public static class Integration
         using Stream input = await FileSystem.OpenAppPackageFileAsync("template.elf");
         using var buffer = new MemoryStream();
         await input.CopyToAsync(buffer);
-        return PayloadPatcher.Patch(buffer.ToArray(), bgftUrl, meta.ContentId, meta.DisplayName, meta.PkgType, meta.ContentLength);
+        byte[] payload = PayloadPatcher.Patch(
+            buffer.ToArray(),
+            bgftUrl,
+            meta.ContentId,
+            meta.DisplayName,
+            meta.PkgType,
+            meta.ContentLength);
+        UiStateStore.Record(meta, "ELF GERADO", Field<Entry>(page, "txtIp").Text);
+        return payload;
     }
 
     static int Find(byte[] data, byte[] needle, int start)
