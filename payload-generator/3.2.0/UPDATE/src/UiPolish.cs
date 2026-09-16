@@ -229,9 +229,7 @@ public static class UiPolish
         if (value.IndexOf("Tayson 3.2.0", StringComparison.OrdinalIgnoreCase) >= 0 ||
             value.IndexOf("Tayson 3.3.0", StringComparison.OrdinalIgnoreCase) >= 0)
         {
-            label.Text = value
-                .Replace("Tayson 3.2.0", "Tayson 3.3.1", StringComparison.OrdinalIgnoreCase)
-                .Replace("Tayson 3.3.0", "Tayson 3.3.1", StringComparison.OrdinalIgnoreCase);
+            label.Text = value.Replace("Tayson 3.2.0", "Tayson 3.3.1").Replace("Tayson 3.3.0", "Tayson 3.3.1");
             value = label.Text.Trim();
         }
 
