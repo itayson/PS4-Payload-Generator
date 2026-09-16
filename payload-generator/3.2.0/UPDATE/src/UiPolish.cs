@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
@@ -15,11 +16,13 @@ public static class UiPolish
     static readonly Color Text = Color.FromArgb("#F4F8FF");
     static readonly Color Muted = Color.FromArgb("#8FAFCD");
     static readonly Color Cyan = Color.FromArgb("#00D9FF");
+    static readonly BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
 
     public static void Apply(MainPage page)
     {
         if (page?.Content == null) return;
         Visit(page.Content);
+        AttachPersistentHistory(page);
     }
 
     static void Visit(View view)
@@ -40,6 +43,33 @@ public static class UiPolish
         else if (view is Layout layout)
             foreach (var child in layout.Children)
                 if (child is View childView) Visit(childView);
+    }
+
+    static void AttachPersistentHistory(MainPage page)
+    {
+        if (page.Content is not Grid root) return;
+
+        ContentView host = null;
+        Grid navigation = null;
+        foreach (var child in root.Children)
+        {
+            if (child is ContentView content && Grid.GetRow(content) == 1) host = content;
+            else if (child is Grid grid && Grid.GetRow(grid) == 2) navigation = grid;
+        }
+        if (host == null || navigation == null) return;
+
+        Button history = null;
+        foreach (var child in navigation.Children)
+            if (child is Button button && button.Text == "Histórico") history = button;
+        if (history == null) return;
+
+        // UiRedesign's handler runs first and keeps the selected-tab styling.
+        // This second handler swaps only the content for the persistent view.
+        history.Clicked += (_, _) =>
+        {
+            var ip = typeof(MainPage).GetField("txtIp", PrivateInstance)?.GetValue(page) as Entry;
+            host.Content = UiHistoryScreen.Build(page, ip?.Text ?? "");
+        };
     }
 
     static void PolishEntry(Entry entry)
