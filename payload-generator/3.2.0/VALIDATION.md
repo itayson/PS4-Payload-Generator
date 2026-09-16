@@ -1,62 +1,113 @@
-# Validação 3.2.0 — BGFT universal
+# Validação 3.3.0 — Tayson PS4 Payload Generator
 
-## Evidência física usada
+## Evidência em hardware
 
-- Mocha: URL `...pkg?token=...` retornava `0x80990033`; mantendo toda a query e acrescentando `#tayson.pkg`, o PS4 retornou `Registro: Já instalado`.
-- VikingFile/R2: acesso direto retornava `0x80991403` (HTTP 403). A mesma URL atrás do Worker criou uma tarefa real de download de *Ancestors: The Humankind Odyssey* no PS4.
+Os cinco provedores principais já tiveram o fluxo funcional validado em PS4 real antes da finalização visual da 3.3.0:
 
-## Regras implementadas
+- **Mocha:** a query autenticada é preservada e `#tayson.pkg` corrige a validação de extensão do BGFT sem alterar a requisição HTTP;
+- **VikingFile:** URL R2 direta retornou `0x80991403`/HTTP 403 no BGFT; Worker normalizou o transporte e criou download real no PS4;
+- **FileKeeper:** fluxo direto validado quando o endpoint final já é compatível com Range/BGFT;
+- **Rootz:** final R2/SigV4 validado via Universal Transport Worker;
+- **AkiraBox:** acesso BGFT direto retornou HTTP 403; Worker v8 + KV `ROUTES` permitiu download real, inclusive com progresso observado no console.
 
-- análise e revalidação continuam usando a URL real do provedor;
-- transformação BGFT ocorre somente depois da segunda validação do PKG;
-- query de Mocha não é removida nem reordenada;
-- final R2 VikingFile é detectado por host + parâmetros SigV4;
-- Android valida formato da data/TTL VikingFile e formato numérico de `expires` no Mocha sem depender de APIs de relógio removidas pelo runtime Xamarin original;
-- Worker v6 é a autoridade de expiração por relógio do VikingFile e rejeita URLs expiradas/quase expiradas;
-- o próprio Mocha é a autoridade final sobre expiração do token direto;
-- Worker recebe a URL R2 exata, gera rota curta com KV quando disponível e fallback inline caso contrário;
-- rejeições explícitas de política/expiração do Worker não são contornadas pelo fallback inline;
-- o ELF continua sendo enviado pelo fluxo do Payload Generator para o BinLoader TCP 9090;
-- nenhum Receiver/RPI foi adicionado.
+## Invariantes funcionais
 
-## CI concluído
+A atualização de interface não substitui o núcleo comprovado. Permanecem:
 
-GitHub Actions concluiu o build do Payload Generator 3.2.0 com sucesso:
+- validação do PKG usando a URL real do provedor;
+- segunda verificação antes da geração do ELF;
+- preservação byte a byte das queries autenticadas quando necessário;
+- detecção estrutural de Cloudflare R2/AWS SigV4;
+- `BgftRoutePlanner` separado da URL original;
+- Worker v8 somente quando o BGFT necessita da camada de transporte;
+- PayloadPatcher baseado no template ELF existente;
+- envio ao GoldHEN BinLoader TCP 9090;
+- nenhum Receiver/RPI.
 
-- **87 checks aprovados** em `UPDATE/tests/Program.cs`;
-- auditoria de dependências: **0 missing/trimmed members**;
-- ILRepack concluído preservando MVID e TypeDef tokens JNI críticos;
-- APK alinhado e assinatura verificada em v1/v2/v3;
+## Worker v8
+
+Endpoint padrão:
+
+```text
+https://drive.itaysondaniel.workers.dev
+```
+
+Binding esperado:
+
+```text
+ROUTES
+```
+
+O Worker v8 trata:
+
+- VikingFile R2;
+- Rootz R2;
+- AkiraBox com contexto de sessão;
+- `HEAD` do BGFT quando o upstream aceita somente o padrão de GET/Range necessário ao download.
+
+Na 3.3.0 o endpoint é configurável em Ajustes e o valor salvo é usado pelo `BgftRoutePlanner` durante a geração real do ELF.
+
+## Validação da interface 3.3.0
+
+A camada nova preserva os controles reais da `MainPage` e os reposiciona. Isso significa que os handlers originais continuam associados aos mesmos objetos de UI.
+
+Cobertura visual/funcional implementada:
+
+- Home Tayson própria, sem a composição Phoenixx antiga visível;
+- status do PS4/IP/BinLoader;
+- entrada de link e detecção visual do provedor;
+- pacote, capa/metadados e estágio do fluxo;
+- ações reais `Validar PKG`, `Gerar ELF`, `Enviar ao PS4` e `Arquivo local`;
+- Histórico persistente;
+- Worker com `/health` real;
+- Ajustes com Worker persistente e teste TCP real do BinLoader 9090;
+- textos principais e diálogos gerenciados localizados em PT-BR;
+- crédito `Dev. By TaySon`.
+
+## Identidade da release
+
+```text
+application label: Tayson PS4 Payload Generator
+versionName: 3.3.0
+versionCode: 35
+package: com.phoenixx.ps4remotepkg
+```
+
+O package ID é mantido propositalmente para preservar compatibilidade de instalação e dados do aplicativo. A mudança de identidade é feita pelo label, interface e versão.
+
+## CI
+
+O workflow exige:
+
+- **87 checks** do núcleo aprovados;
+- dependency audit sem membros ausentes do runtime empacotado;
+- ILRepack/patch concluídos;
+- APK alinhado;
+- assinatura verificada;
 - integridade ZIP aprovada;
-- `classes.dex` e `classes2.dex` originais preservados;
-- template ELF final incluído no APK e validado.
+- `classes.dex` e `classes2.dex` preservados;
+- template ELF final preservado;
+- artifact com `SHA256SUMS.txt` e `build-info.json`.
 
-Os hashes do APK e dos demais arquivos são emitidos em `SHA256SUMS.txt` e `build-info.json` dentro de cada artifact do CI. Não é mantido um hash fixo neste documento, porque o workflow de teste atualmente cria uma chave de assinatura descartável quando não existe um keystore persistente no runner; isso altera os bytes e o certificado do APK entre builds sem mudança funcional no código.
+## Assinatura de teste
 
-### Assinatura de teste
+O CI ainda utiliza uma chave de teste descartável quando não recebe um keystore persistente. Consequentemente, APKs de execuções diferentes podem ter certificados distintos e exigir desinstalação da build anterior.
 
-O artifact do CI é uma build de teste. Como o certificado pode mudar entre execuções, uma build recém-gerada pode não instalar como atualização sobre uma versão Tayson anterior assinada com outro certificado. Para atualização in-place, o pipeline precisa receber um keystore persistente de forma segura (por exemplo, via GitHub Actions secret) ou reutilizar explicitamente a chave de teste previamente adotada pelo projeto. A chave privada não deve ser adicionada ao repositório apenas para estabilizar o CI.
+Uma release distribuída para atualização in-place no futuro deve usar um keystore persistente fornecido de forma segura ao workflow. A chave privada não deve ser adicionada ao repositório.
 
-## Cobertura dos testes
+## Smoke test final recomendado
 
-`UPDATE/tests/Program.cs` cobre:
+Antes de mesclar a 3.3.0 na branch universal:
 
-- detecção de provedores e URL policy;
-- preservação de query assinada;
-- validação Range/PKG;
-- `#tayson.pkg` em URLs `.pkg` com query;
-- detecção R2 e validação estrutural dos parâmetros temporais;
-- criação de rota curta no Worker;
-- fallback inline somente quando a API opcional de rota está indisponível;
-- rejeição de fallback quando o Worker recusa explicitamente a URL;
-- bypass do Worker para links diretos e Mocha;
-- limites do campo URL do template.
+1. instalar o APK final;
+2. confirmar label **Tayson PS4 Payload Generator** e Home nova;
+3. abrir Histórico, Worker e Ajustes;
+4. testar `/health` do Worker;
+5. testar a conexão do BinLoader 9090;
+6. validar um PKG real;
+7. gerar o ELF;
+8. enviar ao PS4;
+9. confirmar o registro/download no BGFT;
+10. fechar e abrir o app para confirmar persistência do Histórico, IP e Worker.
 
-## Teste físico recomendado
-
-1. publicar o Worker v6;
-2. confirmar `/health`;
-3. instalar o APK 3.2.0;
-4. testar um link Mocha novo;
-5. testar um link VikingFile novo;
-6. conferir no PS4 a criação e o avanço real da tarefa em Downloads.
+Como o núcleo dos provedores não foi reescrito, esse smoke test final é focado em regressão de integração e na nova composição da interface.
