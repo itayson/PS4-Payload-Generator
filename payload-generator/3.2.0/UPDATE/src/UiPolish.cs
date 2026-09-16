@@ -7,9 +7,7 @@ using PS4RemotePkgMobile;
 namespace Tayson.Providers;
 
 /// <summary>
-/// Small post-processing pass for text/resources that belong to the original
-/// prebuilt MainPage. Keeping this separate from UiRedesign avoids touching the
-/// proven event handlers while removing legacy branding and untranslated copy.
+/// Final polish and runtime shell overrides for the prebuilt MainPage.
 /// </summary>
 public static class UiPolish
 {
@@ -22,7 +20,7 @@ public static class UiPolish
     {
         if (page?.Content == null) return;
         Visit(page.Content);
-        AttachPersistentHistory(page);
+        AttachShellOverrides(page);
     }
 
     static void Visit(View view)
@@ -59,7 +57,7 @@ public static class UiPolish
                 if (child is View childView) Visit(childView);
     }
 
-    static void AttachPersistentHistory(MainPage page)
+    static void AttachShellOverrides(MainPage page)
     {
         if (page.Content is not Grid root) return;
 
@@ -72,18 +70,33 @@ public static class UiPolish
         }
         if (host == null || navigation == null) return;
 
+        Button home = null;
         Button history = null;
         foreach (var child in navigation.Children)
-            if (child is Button button && button.Text == "Histórico") history = button;
-        if (history == null) return;
-
-        // UiRedesign's handler runs first and keeps the selected-tab styling.
-        // This second handler swaps only the content for the persistent view.
-        history.Clicked += (_, _) =>
         {
-            var ip = typeof(MainPage).GetField("txtIp", PrivateInstance)?.GetValue(page) as Entry;
-            host.Content = UiHistoryScreen.Build(page, ip?.Text ?? "");
-        };
+            if (child is not Button button) continue;
+            if (button.Text == "Início") home = button;
+            else if (button.Text == "Histórico") history = button;
+        }
+
+        // Build once. UiHomeScreen re-parents the real MainPage controls, so all
+        // existing handlers remain intact without rendering the legacy layout.
+        View modernHome = UiHomeScreen.Build(page);
+        host.Content = modernHome;
+
+        // UiRedesign's handlers run first and keep selected-tab styling. These
+        // second handlers only replace the content with the final screens.
+        if (home != null)
+            home.Clicked += (_, _) => host.Content = modernHome;
+
+        if (history != null)
+        {
+            history.Clicked += (_, _) =>
+            {
+                var ip = typeof(MainPage).GetField("txtIp", PrivateInstance)?.GetValue(page) as Entry;
+                host.Content = UiHistoryScreen.Build(page, ip?.Text ?? "");
+            };
+        }
     }
 
     static void PolishEntry(Entry entry)
@@ -160,7 +173,6 @@ public static class UiPolish
         string value = (label.Text ?? "").Trim();
         if (value.Length == 0) return;
 
-        // Replace the legacy developer credit with the current project credit.
         if (value.IndexOf("Dev. by Phoenixx", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             label.Text = "Dev. By TaySon";
@@ -168,8 +180,6 @@ public static class UiPolish
             return;
         }
 
-        // The neon shell already owns the main app branding, so keep the old
-        // duplicated version header hidden while preserving the developer credit.
         if (value.IndexOf("PS4 Payload Generator", StringComparison.OrdinalIgnoreCase) >= 0 &&
             value.IndexOf("Tayson 3.2.0", StringComparison.OrdinalIgnoreCase) >= 0)
         {
