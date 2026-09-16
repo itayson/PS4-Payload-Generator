@@ -25,7 +25,7 @@ public static class Integration
         var bottom = Field<Label>(page, "lblBottomStatus");
 
         entry.Placeholder = "Mocha, VikingFile, FileKeeper, Rootz, AkiraBox ou link direto";
-        bottom.Text = "Tayson 3.3.0 • BGFT universal • BinLoader 9090";
+        bottom.Text = "Tayson 3.3.1 • BGFT universal • BinLoader 9090";
 
         string savedIp = UiStateStore.LoadPs4Ip();
         if (!string.IsNullOrWhiteSpace(savedIp)) ip.Text = savedIp;
@@ -38,8 +38,6 @@ public static class Integration
             if (e.PropertyName == "IsEnabled") Field<Button>(page, "btnLimpar").IsEnabled = scan.IsEnabled;
         };
 
-        // Persist successful socket delivery without claiming the BGFT task has
-        // completed on the console.
         bottom.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName != nameof(Label.Text)) return;
