@@ -72,20 +72,22 @@ public static class UiPolish
 
         Button home = null;
         Button history = null;
+        Button worker = null;
+        Button settings = null;
         foreach (var child in navigation.Children)
         {
             if (child is not Button button) continue;
             if (button.Text == "Início") home = button;
             else if (button.Text == "Histórico") history = button;
+            else if (button.Text == "Worker") worker = button;
+            else if (button.Text == "Ajustes") settings = button;
         }
 
-        // Build once. UiHomeScreen re-parents the real MainPage controls, so all
-        // existing handlers remain intact without rendering the legacy layout.
         View modernHome = UiHomeScreen.Build(page);
         host.Content = modernHome;
 
         // UiRedesign's handlers run first and keep selected-tab styling. These
-        // second handlers only replace the content with the final screens.
+        // handlers replace only the page content with the final implementation.
         if (home != null)
             home.Clicked += (_, _) => host.Content = modernHome;
 
@@ -97,6 +99,12 @@ public static class UiPolish
                 host.Content = UiHistoryScreen.Build(page, ip?.Text ?? "");
             };
         }
+
+        if (worker != null)
+            worker.Clicked += (_, _) => host.Content = UiWorkerScreen.Build();
+
+        if (settings != null)
+            settings.Clicked += (_, _) => host.Content = UiSettingsScreen.Build(page);
     }
 
     static void PolishEntry(Entry entry)
