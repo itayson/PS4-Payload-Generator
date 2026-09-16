@@ -160,11 +160,18 @@ public static class UiPolish
         string value = (label.Text ?? "").Trim();
         if (value.Length == 0) return;
 
-        // The new shell already owns app branding. Remove duplicated legacy
-        // header/credit from the embedded Phoenixx page.
-        if (value.IndexOf("Dev. by Phoenixx", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            (value.IndexOf("PS4 Payload Generator", StringComparison.OrdinalIgnoreCase) >= 0 &&
-             value.IndexOf("Tayson 3.2.0", StringComparison.OrdinalIgnoreCase) >= 0))
+        // Replace the legacy developer credit with the current project credit.
+        if (value.IndexOf("Dev. by Phoenixx", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            label.Text = "Dev. By TaySon";
+            label.TextColor = Text;
+            return;
+        }
+
+        // The neon shell already owns the main app branding, so keep the old
+        // duplicated version header hidden while preserving the developer credit.
+        if (value.IndexOf("PS4 Payload Generator", StringComparison.OrdinalIgnoreCase) >= 0 &&
+            value.IndexOf("Tayson 3.2.0", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             label.IsVisible = false;
             label.HeightRequest = 0;
