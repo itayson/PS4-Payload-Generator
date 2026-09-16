@@ -9,10 +9,9 @@ namespace Tayson.Providers;
 
 /// <summary>
 /// Home dashboard assembled from the original MainPage controls.
-///
-/// The controls themselves are re-parented instead of recreated, which keeps
-/// every proven Phoenixx/MainPage event handler wired while removing the old
-/// page composition from the visible interface.
+/// The controls are re-parented instead of recreated so the original, tested
+/// MainPage handlers remain authoritative for validation, ELF generation and
+/// BinLoader delivery.
 /// </summary>
 public static class UiHomeScreen
 {
@@ -281,7 +280,7 @@ public static class UiHomeScreen
 
         body.Children.Add(new Label
         {
-            Text = "Dev. By TaySon  •  Tayson 3.3.0  •  BGFT universal",
+            Text = "Dev. By TaySon  •  Tayson 3.3.1  •  BGFT universal",
             TextColor = Muted,
             FontSize = 10,
             HorizontalTextAlignment = TextAlignment.Center,
@@ -404,7 +403,7 @@ public static class UiHomeScreen
         string url = (value ?? "").ToLowerInvariant();
         if (url.Length == 0) return "Aguardando link";
         if (url.Contains("akirabox")) return "AkiraBox";
-        if (url.Contains("vikingfile") || url.Contains("r2.cloudflarestorage.com")) return "VikingFile / R2";
+        if (url.Contains("vikingfile")) return "VikingFile";
         if (url.Contains("rootz")) return "Rootz";
         if (url.Contains("mocha")) return "Mocha";
         if (url.Contains("filekeeper")) return "FileKeeper";
@@ -418,7 +417,7 @@ public static class UiHomeScreen
         entry.BackgroundColor = Surface2;
         entry.TextColor = Text;
         entry.PlaceholderColor = Muted;
-        entry.FontSize = 14;
+        entry.FontSize = Math.Max(entry.FontSize, 14);
     }
 
     static void StyleAction(Button button, Color background, Color foreground)
@@ -430,7 +429,7 @@ public static class UiHomeScreen
         button.BorderWidth = 1;
         button.CornerRadius = 14;
         button.FontAttributes = FontAttributes.Bold;
-        button.HeightRequest = 52;
+        button.HeightRequest = Math.Max(button.HeightRequest, 50);
     }
 
     static void StyleOutline(Button button)
@@ -442,6 +441,5 @@ public static class UiHomeScreen
         button.BorderWidth = 1;
         button.CornerRadius = 14;
         button.FontAttributes = FontAttributes.Bold;
-        button.HeightRequest = 50;
     }
 }
