@@ -7,12 +7,10 @@ using PS4RemotePkgMobile;
 namespace Tayson.Providers;
 
 /// <summary>
-/// Lightweight persistent UI state for the redesign.
+/// Lightweight persistent state for the Tayson interface.
 ///
 /// Only non-sensitive package metadata is stored. Signed provider URLs,
 /// cookies and tokens are intentionally excluded from history.
-/// The order in storage is newest-first, avoiding DateTime/parse APIs that are
-/// trimmed from the original MAUI application.
 /// </summary>
 public sealed class UiHistoryItem
 {
@@ -30,6 +28,7 @@ public static class UiStateStore
 {
     const string HistoryKey = "tayson.ui.history.v2";
     const string Ps4IpKey = "tayson.ui.ps4ip.v1";
+    const string WorkerUrlKey = "tayson.ui.worker.v1";
     const int MaxItems = 20;
 
     public static string LoadPs4Ip(string fallback = "")
@@ -38,8 +37,24 @@ public static class UiStateStore
     public static void SavePs4Ip(string value)
     {
         value = (value ?? "").Trim();
-        if (value.Length > 0) Preferences.Default.Set(Ps4IpKey, value);
+        Preferences.Default.Set(Ps4IpKey, value);
     }
+
+    public static string LoadWorkerUrl(string fallback = BgftRoutePlanner.DefaultWorkerBase)
+    {
+        string value = Preferences.Default.Get(WorkerUrlKey, fallback ?? BgftRoutePlanner.DefaultWorkerBase);
+        return string.IsNullOrWhiteSpace(value) ? BgftRoutePlanner.DefaultWorkerBase : value.TrimEnd('/');
+    }
+
+    public static void SaveWorkerUrl(string value)
+    {
+        value = (value ?? "").Trim().TrimEnd('/');
+        if (value.Length == 0) value = BgftRoutePlanner.DefaultWorkerBase;
+        Preferences.Default.Set(WorkerUrlKey, value);
+    }
+
+    public static void ResetWorkerUrl()
+        => Preferences.Default.Set(WorkerUrlKey, BgftRoutePlanner.DefaultWorkerBase);
 
     public static IReadOnlyList<UiHistoryItem> ReadHistory()
     {
