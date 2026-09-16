@@ -3,10 +3,10 @@
 import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile
 from pathlib import Path
 
-APP_VERSION = '3.3.0'
-APP_VERSION_CODE = 35
+APP_VERSION = '3.3.1'
+APP_VERSION_CODE = 36
 APP_LABEL = 'Tayson PS4 Payload Generator'
-APK_NAME = 'PS4-Payload-Generator-3.3.0-TaySon.apk'
+APK_NAME = 'PS4-Payload-Generator-3.3.1-TaySon.apk'
 
 def manifest_patch(data):
     chunks = []
