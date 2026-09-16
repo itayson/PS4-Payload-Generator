@@ -11,6 +11,8 @@ namespace Tayson.Providers;
 ///
 /// Only non-sensitive package metadata is stored. Signed provider URLs,
 /// cookies and tokens are intentionally excluded from history.
+/// The order in storage is newest-first, avoiding DateTime/parse APIs that are
+/// trimmed from the original MAUI application.
 /// </summary>
 public sealed class UiHistoryItem
 {
@@ -21,13 +23,12 @@ public sealed class UiHistoryItem
     public string Kind { get; set; } = "";
     public string Status { get; set; } = "";
     public string Ps4Ip { get; set; } = "";
-    public long Size { get; set; }
-    public long Timestamp { get; set; }
+    public string SizeText { get; set; } = "";
 }
 
 public static class UiStateStore
 {
-    const string HistoryKey = "tayson.ui.history.v1";
+    const string HistoryKey = "tayson.ui.history.v2";
     const string Ps4IpKey = "tayson.ui.ps4ip.v1";
     const int MaxItems = 20;
 
@@ -51,26 +52,22 @@ public static class UiStateStore
             try
             {
                 string[] p = line.Split('|');
-                if (p.Length != 9) continue;
-                if (!long.TryParse(p[0], out long timestamp)) continue;
-                if (!long.TryParse(p[1], out long size)) continue;
+                if (p.Length != 8) continue;
                 result.Add(new UiHistoryItem
                 {
-                    Timestamp = timestamp,
-                    Size = size,
-                    Key = Decode(p[2]),
-                    Title = Decode(p[3]),
-                    TitleId = Decode(p[4]),
-                    Provider = Decode(p[5]),
-                    Kind = Decode(p[6]),
-                    Status = Decode(p[7]),
-                    Ps4Ip = Decode(p[8])
+                    Key = Decode(p[0]),
+                    Title = Decode(p[1]),
+                    TitleId = Decode(p[2]),
+                    Provider = Decode(p[3]),
+                    Kind = Decode(p[4]),
+                    Status = Decode(p[5]),
+                    Ps4Ip = Decode(p[6]),
+                    SizeText = Decode(p[7])
                 });
             }
             catch { }
+            if (result.Count >= MaxItems) break;
         }
-        result.Sort((a, b) => b.Timestamp.CompareTo(a.Timestamp));
-        if (result.Count > MaxItems) result.RemoveRange(MaxItems, result.Count - MaxItems);
         return result;
     }
 
@@ -90,8 +87,7 @@ public static class UiStateStore
             Kind = PackageKind(meta.PkgType),
             Status = string.IsNullOrWhiteSpace(status) ? "VALIDADO" : status,
             Ps4Ip = (ps4Ip ?? "").Trim(),
-            Size = meta.ContentLength,
-            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            SizeText = HumanSize(meta.ContentLength)
         });
         if (items.Count > MaxItems) items.RemoveRange(MaxItems, items.Count - MaxItems);
         Write(items);
@@ -101,27 +97,26 @@ public static class UiStateStore
 
     static void Write(IEnumerable<UiHistoryItem> items)
     {
-        var text = new StringBuilder();
-        bool first = true;
+        var lines = new List<string>();
         foreach (UiHistoryItem x in items)
         {
-            if (!first) text.Append('\n');
-            first = false;
-            text.Append(x.Timestamp).Append('|')
-                .Append(x.Size).Append('|')
-                .Append(Encode(x.Key)).Append('|')
-                .Append(Encode(x.Title)).Append('|')
-                .Append(Encode(x.TitleId)).Append('|')
-                .Append(Encode(x.Provider)).Append('|')
-                .Append(Encode(x.Kind)).Append('|')
-                .Append(Encode(x.Status)).Append('|')
-                .Append(Encode(x.Ps4Ip));
+            lines.Add(string.Join("|", new[]
+            {
+                Encode(x.Key),
+                Encode(x.Title),
+                Encode(x.TitleId),
+                Encode(x.Provider),
+                Encode(x.Kind),
+                Encode(x.Status),
+                Encode(x.Ps4Ip),
+                Encode(x.SizeText)
+            }));
         }
-        Preferences.Default.Set(HistoryKey, text.ToString());
+        Preferences.Default.Set(HistoryKey, string.Join("\n", lines));
     }
 
     static string PackageKey(PkgMetadata meta)
-        => (meta.ContentId ?? meta.TitleId ?? meta.DisplayName ?? "pkg") + ":" + meta.ContentLength;
+        => meta.ContentId ?? meta.TitleId ?? meta.DisplayName ?? "pkg";
 
     static string ProviderName(string url)
     {
@@ -136,6 +131,13 @@ public static class UiStateStore
 
     static string PackageKind(string type)
         => type == "PS4PATCH" ? "Atualização" : type == "PS4AC" ? "DLC" : "Jogo";
+
+    static string HumanSize(long bytes)
+    {
+        if (bytes <= 0) return "—";
+        double gb = bytes / 1024d / 1024d / 1024d;
+        return gb >= 1 ? gb.ToString("0.00") + " GB" : (bytes / 1024d / 1024d).ToString("0.0") + " MB";
+    }
 
     static string Encode(string value)
         => Convert.ToBase64String(Encoding.UTF8.GetBytes(value ?? ""));
