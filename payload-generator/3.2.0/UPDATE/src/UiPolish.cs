@@ -32,7 +32,8 @@ public static class UiPolish
             PolishLabel(label);
             label.PropertyChanged += (_, e) =>
             {
-                if (e.PropertyName == "Text") PolishLabel(label);
+                if (e.PropertyName != "Text") return;
+                label.Dispatcher.Dispatch(() => PolishLabel(label));
             };
         }
         else if (view is Button button)
@@ -40,7 +41,11 @@ public static class UiPolish
             PolishButton(button);
             button.PropertyChanged += (_, e) =>
             {
-                if (e.PropertyName == "Text") PolishButton(button);
+                if (e.PropertyName != "Text") return;
+                // Run after the original MainPage handler finishes its current
+                // state transition. This prevents transient English text from
+                // winning simply because the legacy handler writes it last.
+                button.Dispatcher.Dispatch(() => PolishButton(button));
             };
         }
         else if (view is Entry entry)
@@ -85,9 +90,10 @@ public static class UiPolish
 
         var bottom = typeof(MainPage).GetField("lblBottomStatus", PrivateInstance)?.GetValue(page) as Label;
         if (bottom != null)
-            bottom.Text = "Tayson 3.3.0 • BGFT universal • BinLoader 9090";
+            bottom.Text = "Tayson 3.3.1 • BGFT universal • BinLoader 9090";
 
         View modernHome = UiHomeScreen.Build(page);
+        Visit(modernHome);
         host.Content = modernHome;
 
         if (home != null)
@@ -98,15 +104,31 @@ public static class UiPolish
             history.Clicked += (_, _) =>
             {
                 var ip = typeof(MainPage).GetField("txtIp", PrivateInstance)?.GetValue(page) as Entry;
-                host.Content = UiHistoryScreen.Build(page, ip?.Text ?? "");
+                var view = UiHistoryScreen.Build(page, ip?.Text ?? "");
+                Visit(view);
+                host.Content = view;
             };
         }
 
         if (worker != null)
-            worker.Clicked += (_, _) => host.Content = UiWorkerScreen.Build();
+        {
+            worker.Clicked += (_, _) =>
+            {
+                var view = UiWorkerScreen.Build();
+                Visit(view);
+                host.Content = view;
+            };
+        }
 
         if (settings != null)
-            settings.Clicked += (_, _) => host.Content = UiSettingsScreen.Build(page);
+        {
+            settings.Clicked += (_, _) =>
+            {
+                var view = UiSettingsScreen.Build(page);
+                Visit(view);
+                host.Content = view;
+            };
+        }
     }
 
     static void PolishEntry(Entry entry)
@@ -133,7 +155,8 @@ public static class UiPolish
         }
 
         if (value.Equals("Scanning...", StringComparison.OrdinalIgnoreCase) ||
-            value.Equals("Scanning…", StringComparison.OrdinalIgnoreCase))
+            value.Equals("Scanning…", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Scanning", StringComparison.OrdinalIgnoreCase))
         {
             button.Text = "Validando…";
             return;
@@ -146,7 +169,8 @@ public static class UiPolish
         }
 
         if (value.Equals("Generating...", StringComparison.OrdinalIgnoreCase) ||
-            value.Equals("Generating…", StringComparison.OrdinalIgnoreCase))
+            value.Equals("Generating…", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Generating", StringComparison.OrdinalIgnoreCase))
         {
             button.Text = "Gerando…";
             return;
@@ -161,7 +185,8 @@ public static class UiPolish
         }
 
         if (value.Equals("Sending...", StringComparison.OrdinalIgnoreCase) ||
-            value.Equals("Sending…", StringComparison.OrdinalIgnoreCase))
+            value.Equals("Sending…", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Sending", StringComparison.OrdinalIgnoreCase))
         {
             button.Text = "Enviando…";
             return;
@@ -191,12 +216,23 @@ public static class UiPolish
         }
 
         if (value.IndexOf("PS4 Payload Generator", StringComparison.OrdinalIgnoreCase) >= 0 &&
-            value.IndexOf("Tayson 3.2.0", StringComparison.OrdinalIgnoreCase) >= 0)
+            (value.IndexOf("Tayson 3.2.0", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             value.IndexOf("Tayson 3.3.0", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             value.IndexOf("Tayson PS4 Payload Generator 3.3.1", StringComparison.OrdinalIgnoreCase) >= 0))
         {
             label.IsVisible = false;
             label.HeightRequest = 0;
             label.Margin = 0;
             return;
+        }
+
+        if (value.IndexOf("Tayson 3.2.0", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            value.IndexOf("Tayson 3.3.0", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            label.Text = value
+                .Replace("Tayson 3.2.0", "Tayson 3.3.1", StringComparison.OrdinalIgnoreCase)
+                .Replace("Tayson 3.3.0", "Tayson 3.3.1", StringComparison.OrdinalIgnoreCase);
+            value = label.Text.Trim();
         }
 
         if (value.Equals("PKG File Link:", StringComparison.OrdinalIgnoreCase))
@@ -208,7 +244,8 @@ public static class UiPolish
         }
 
         if (value.Equals("Waiting for link...", StringComparison.OrdinalIgnoreCase) ||
-            value.Equals("Waiting for link…", StringComparison.OrdinalIgnoreCase))
+            value.Equals("Waiting for link…", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Waiting for link", StringComparison.OrdinalIgnoreCase))
         {
             label.Text = "Aguardando link…";
             label.TextColor = Text;
