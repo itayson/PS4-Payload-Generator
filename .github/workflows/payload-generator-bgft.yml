@@ -1,4 +1,4 @@
-name: PS4 Payload Generator 3.2.0 Universal BGFT
+name: Tayson PS4 Payload Generator 3.3.0
 
 on:
   push:
@@ -20,10 +20,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -59,7 +59,7 @@ jobs:
           curl -fL --retry 3 -A 'Mozilla/5.0' "$DIRECT" -o /tmp/original.apk
           echo 'a441a8321edba13ebd2597863477c409004e7d4475b9221951bf2991e2feee81  /tmp/original.apk' | sha256sum -c -
 
-      - name: Reconstruct 3.2.0 build tree
+      - name: Reconstruct build tree
         shell: bash
         run: |
           set -euxo pipefail
@@ -83,28 +83,27 @@ jobs:
         run: |
           set -euxo pipefail
           /tmp/tools/dotnet/dotnet run --project /tmp/payloadgen/UPDATE/tests/Tests.csproj -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
-          grep -q 'RESULT:' /tmp/out/tests.log
+          grep -q 'RESULT: 87 checks passed' /tmp/out/tests.log
 
-      - name: Build Payload Generator 3.2.0
+      - name: Build Tayson 3.3.0
         shell: bash
         run: |
           set -euxo pipefail
           python3 /tmp/payloadgen/UPDATE/scripts/build.py --base /tmp/payloadgen --tools /tmp/tools --output /tmp/out | tee /tmp/out/build.log
-          test -s /tmp/out/PS4-Payload-Generator-3.2.0-Tayson.apk
+          test -s /tmp/out/PS4-Payload-Generator-3.3.0-TaySon.apk
           test -s /tmp/payloadgen/UPDATE/build/aligned.apk
-          cp /tmp/payloadgen/UPDATE/build/aligned.apk /tmp/out/PS4-Payload-Generator-3.2.0-aligned-unsigned.apk
+          cp /tmp/payloadgen/UPDATE/build/aligned.apk /tmp/out/PS4-Payload-Generator-3.3.0-aligned-unsigned.apk
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
-          cp /tmp/payloadgen/UPDATE/cloudflare/vikingfile_worker_v6.js /tmp/out/
-          cp /tmp/payloadgen/UPDATE/cloudflare/universal_r2_worker_v7.js /tmp/out/
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
-          cp payload-generator/3.2.0/README.md /tmp/out/README-3.2.0.md
-          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.2.0.md
-          sha256sum /tmp/out/PS4-Payload-Generator-3.2.0-Tayson.apk /tmp/out/PS4-Payload-Generator-3.2.0-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
+          cp payload-generator/3.2.0/README.md /tmp/out/README-3.3.0.md
+          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.3.0.md
+          sha256sum /tmp/out/PS4-Payload-Generator-3.3.0-TaySon.apk /tmp/out/PS4-Payload-Generator-3.3.0-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
+          cat /tmp/out/build-info.json
 
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: PS4-Payload-Generator-3.2.0-Universal-BGFT
+          name: Tayson-PS4-Payload-Generator-3.3.0
           path: /tmp/out/*
           if-no-files-found: error
           retention-days: 30
