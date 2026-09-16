@@ -1,12 +1,12 @@
-# Tayson PS4 Payload Generator 3.3.0
+# Tayson PS4 Payload Generator 3.3.1
 
 Aplicativo Android para validar PKGs de PS4, gerar um ELF específico para a tarefa e enviá-lo diretamente ao **GoldHEN BinLoader TCP 9090**. O ELF registra o download no BGFT do próprio PS4.
 
 **Não usa Receiver, Remote Package Installer nem retransmite o PKG inteiro pelo celular.**
 
-## 3.3.0 — atualização de interface
+## 3.3.1 — atualização Tayson
 
-A versão 3.3.0 introduz a interface Tayson completa em tema escuro/neon, preservando os handlers e o fluxo funcional já testados:
+A versão 3.3.1 consolida a interface Tayson completa em tema escuro/neon e aplica um hotfix final de localização observado durante o smoke test em hardware:
 
 - Home reconstruída com cards de conexão, link, provedor, pacote, progresso e payload;
 - navegação inferior **Início · Histórico · Worker · Ajustes**;
@@ -14,10 +14,11 @@ A versão 3.3.0 introduz a interface Tayson completa em tema escuro/neon, preser
 - tela Worker com teste real de `/health`;
 - Ajustes com IP do PS4, teste real do BinLoader 9090 e Worker configurável;
 - Worker salvo passa a ser usado de fato pelo `BgftRoutePlanner` na geração do ELF;
-- textos de execução e diálogos principais localizados para PT-BR;
+- estados transitórios do fluxo localizados em PT-BR (`Validando…`, `Enviando…`, `Enviar ao PS4`);
+- diálogo de envio atualizado para a versão Tayson 3.3.1;
 - crédito exibido como **Dev. By TaySon**;
 - nome do aplicativo no manifesto: **Tayson PS4 Payload Generator**;
-- versionName `3.3.0` e versionCode `35`.
+- versionName `3.3.1` e versionCode `36`.
 
 A interface reaproveita os controles reais da `MainPage` e os reposiciona em um dashboard novo. Isso mantém os eventos originais de validar PKG, gerar ELF, selecionar arquivo local e enviar ao PS4, evitando uma reimplementação desnecessária da lógica comprovada.
 
@@ -56,6 +57,8 @@ Download do PKG
 | FileKeeper | Direto quando compatível | Validado |
 | Rootz | R2/SigV4 via Worker v8 | Validado |
 | AkiraBox | rota temporária Worker v8 com contexto de sessão no KV | Validado |
+
+O smoke test da interface Tayson também confirmou em hardware o fluxo completo com AkiraBox: PKG validado no Android, ELF enviado ao GoldHEN, notificação de payload recebido no PS4 e tarefa adicionada à tela **Downloads**.
 
 ### Mocha
 
@@ -101,7 +104,7 @@ ROUTES
 
 O namespace do KV pode ter qualquer nome; o binding exposto ao Worker deve se chamar exatamente `ROUTES`.
 
-Na versão 3.3.0 o endpoint pode ser alterado em **Ajustes**. O valor é persistido localmente e utilizado pelo fluxo real de geração do ELF. O app aceita apenas Worker HTTPS sem query string.
+Na versão 3.3.1 o endpoint pode ser alterado em **Ajustes**. O valor é persistido localmente e utilizado pelo fluxo real de geração do ELF. O app aceita apenas Worker HTTPS sem query string.
 
 ## Histórico e privacidade
 
