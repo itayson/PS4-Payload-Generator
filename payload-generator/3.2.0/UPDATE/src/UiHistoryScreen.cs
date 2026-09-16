@@ -1,0 +1,255 @@
+using System;
+using System.Linq;
+using Microsoft.Maui;
+using Microsoft.Maui.Controls;
+using Microsoft.Maui.Graphics;
+using PS4RemotePkgMobile;
+
+namespace Tayson.Providers;
+
+/// <summary>
+/// Persistent history screen used by the neon shell.
+/// </summary>
+public static class UiHistoryScreen
+{
+    static readonly Color Background = Color.FromArgb("#030B14");
+    static readonly Color Surface = Color.FromArgb("#071827");
+    static readonly Color Surface2 = Color.FromArgb("#0A2238");
+    static readonly Color Blue = Color.FromArgb("#008CFF");
+    static readonly Color Cyan = Color.FromArgb("#00D9FF");
+    static readonly Color Green = Color.FromArgb("#00E6A7");
+    static readonly Color Purple = Color.FromArgb("#8D4DFF");
+    static readonly Color Text = Color.FromArgb("#F4F8FF");
+    static readonly Color Muted = Color.FromArgb("#8FAFCD");
+    static readonly Color Stroke = Color.FromArgb("#135982");
+    static readonly Color StrokeBright = Color.FromArgb("#078EE3");
+
+    public static View Build(MainPage page, string ps4Ip)
+    {
+        var history = UiStateStore.ReadHistory();
+        var body = new VerticalStackLayout
+        {
+            Spacing = 12,
+            Padding = new Thickness(14, 14, 14, 22),
+            BackgroundColor = Background
+        };
+
+        var hero = Card();
+        hero.BorderColor = StrokeBright;
+        hero.Content = new VerticalStackLayout
+        {
+            Spacing = 2,
+            Children =
+            {
+                new Label { Text = "Histórico", TextColor = Text, FontSize = 25, FontAttributes = FontAttributes.Bold },
+                new Label { Text = "Validações, payloads e envios recentes", TextColor = Cyan, FontSize = 12 }
+            }
+        };
+        body.Children.Add(hero);
+
+        string latest = history.Count == 0 ? "—" : ShortStatus(history[0].Status);
+        body.Children.Add(KpiRow(
+            ("REGISTROS", history.Count.ToString(), Cyan),
+            ("ÚLTIMO", latest, Green),
+            ("PS4", string.IsNullOrWhiteSpace(ps4Ip) ? "—" : ps4Ip, Blue)));
+
+        if (history.Count == 0)
+        {
+            body.Children.Add(InfoCard(
+                "Nenhum histórico ainda",
+                "Valide um PKG na tela Início. As próximas validações, gerações de ELF e confirmações de envio aparecerão aqui mesmo depois de fechar o aplicativo."));
+        }
+        else
+        {
+            body.Children.Add(new Label
+            {
+                Text = "ATIVIDADE RECENTE",
+                TextColor = Muted,
+                FontSize = 10,
+                FontAttributes = FontAttributes.Bold,
+                CharacterSpacing = 1.2,
+                Margin = new Thickness(3, 4, 0, 0)
+            });
+
+            foreach (UiHistoryItem item in history.Take(10))
+                body.Children.Add(HistoryCard(item));
+
+            var clear = new Button
+            {
+                Text = "Limpar histórico",
+                BackgroundColor = Surface2,
+                TextColor = Muted,
+                BorderColor = Stroke,
+                BorderWidth = 1,
+                CornerRadius = 14,
+                HeightRequest = 48,
+                FontAttributes = FontAttributes.Bold
+            };
+            clear.Clicked += async (_, _) =>
+            {
+                bool yes = await page.DisplayAlert(
+                    "Histórico",
+                    "Apagar os registros salvos neste aparelho?",
+                    "Apagar",
+                    "Cancelar");
+                if (!yes) return;
+                UiStateStore.ClearHistory();
+                clear.Text = "Histórico apagado";
+                clear.IsEnabled = false;
+            };
+            body.Children.Add(clear);
+        }
+
+        body.Children.Add(InfoCard(
+            "Privacidade",
+            "O histórico guarda apenas nome, Title ID, tamanho, provedor, etapa e IP do PS4. URLs assinadas, cookies e tokens não são gravados."));
+
+        return new ScrollView { BackgroundColor = Background, Content = body };
+    }
+
+    static View HistoryCard(UiHistoryItem item)
+    {
+        var frame = Card();
+        var grid = new Grid { ColumnSpacing = 10, RowSpacing = 4 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var title = new Label
+        {
+            Text = string.IsNullOrWhiteSpace(item.Title) ? "Pacote PS4" : item.Title,
+            TextColor = Text,
+            FontSize = 16,
+            FontAttributes = FontAttributes.Bold,
+            LineBreakMode = LineBreakMode.TailTruncation
+        };
+        grid.Children.Add(title);
+
+        var status = StatusPill(item.Status, StatusColor(item.Status));
+        Grid.SetColumn(status, 1);
+        grid.Children.Add(status);
+
+        var metadata = new Label
+        {
+            Text = string.Join("  •  ", new[]
+            {
+                string.IsNullOrWhiteSpace(item.TitleId) ? "PKG" : item.TitleId,
+                HumanSize(item.Size),
+                item.Kind
+            }.Where(x => !string.IsNullOrWhiteSpace(x))),
+            TextColor = Muted,
+            FontSize = 11
+        };
+        Grid.SetRow(metadata, 1);
+        Grid.SetColumnSpan(metadata, 2);
+        grid.Children.Add(metadata);
+
+        DateTimeOffset time = DateTimeOffset.FromUnixTimeSeconds(item.Timestamp).ToLocalTime();
+        string footerText = item.Provider + "  •  " + time.ToString("dd/MM HH:mm");
+        if (!string.IsNullOrWhiteSpace(item.Ps4Ip)) footerText += "  •  " + item.Ps4Ip;
+        var footer = new Label { Text = footerText, TextColor = Cyan, FontSize = 10 };
+        Grid.SetRow(footer, 2);
+        Grid.SetColumnSpan(footer, 2);
+        grid.Children.Add(footer);
+
+        frame.Content = grid;
+        return frame;
+    }
+
+    static Frame Card() => new Frame
+    {
+        Padding = new Thickness(14),
+        CornerRadius = 18,
+        BorderColor = Stroke,
+        BackgroundColor = Surface,
+        HasShadow = false,
+        HorizontalOptions = LayoutOptions.Fill
+    };
+
+    static View InfoCard(string title, string text)
+    {
+        var frame = Card();
+        frame.Content = new VerticalStackLayout
+        {
+            Spacing = 5,
+            Children =
+            {
+                new Label { Text = title, TextColor = Cyan, FontSize = 15, FontAttributes = FontAttributes.Bold },
+                new Label { Text = text, TextColor = Muted, FontSize = 12, LineBreakMode = LineBreakMode.WordWrap }
+            }
+        };
+        return frame;
+    }
+
+    static View KpiRow(params (string Title, string Value, Color Color)[] items)
+    {
+        var grid = new Grid { ColumnSpacing = 8 };
+        for (int i = 0; i < items.Length; i++)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var frame = Card();
+            frame.Padding = new Thickness(10, 11);
+            frame.Content = new VerticalStackLayout
+            {
+                Spacing = 3,
+                Children =
+                {
+                    new Label { Text = items[i].Title, TextColor = Muted, FontSize = 9, FontAttributes = FontAttributes.Bold },
+                    new Label { Text = items[i].Value, TextColor = items[i].Color, FontSize = 13, FontAttributes = FontAttributes.Bold, LineBreakMode = LineBreakMode.TailTruncation }
+                }
+            };
+            Grid.SetColumn(frame, i);
+            grid.Children.Add(frame);
+        }
+        return grid;
+    }
+
+    static View StatusPill(string text, Color color)
+    {
+        var frame = new Frame
+        {
+            Padding = new Thickness(8, 5),
+            CornerRadius = 11,
+            BorderColor = color,
+            BackgroundColor = Surface2,
+            HasShadow = false,
+            HorizontalOptions = LayoutOptions.End
+        };
+        frame.Content = new Label
+        {
+            Text = ShortStatus(text),
+            TextColor = color,
+            FontSize = 9,
+            FontAttributes = FontAttributes.Bold
+        };
+        return frame;
+    }
+
+    static Color StatusColor(string status)
+    {
+        string value = (status ?? "").ToUpperInvariant();
+        if (value.Contains("ENVIADO")) return Purple;
+        if (value.Contains("GERADO")) return Blue;
+        if (value.Contains("VALIDADO")) return Green;
+        return Cyan;
+    }
+
+    static string ShortStatus(string status)
+    {
+        string value = (status ?? "").Trim().ToUpperInvariant();
+        if (value.Length == 0) return "—";
+        if (value.Contains("PAYLOAD ENVIADO")) return "ENVIADO";
+        if (value.Contains("ELF GERADO")) return "ELF";
+        if (value.Contains("VALIDADO")) return "VALIDADO";
+        return value.Length > 12 ? value.Substring(0, 12) : value;
+    }
+
+    static string HumanSize(long bytes)
+    {
+        if (bytes <= 0) return "—";
+        double gb = bytes / 1024d / 1024d / 1024d;
+        return gb >= 1 ? gb.ToString("0.00") + " GB" : (bytes / 1024d / 1024d).ToString("0.0") + " MB";
+    }
+}
