@@ -5,7 +5,7 @@
 <h1 align="center">Tayson PS4 Payload Generator</h1>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-3.2.0-1f6feb?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-3.3.1-1f6feb?style=for-the-badge">
   <img alt="Android" src="https://img.shields.io/badge/platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white">
   <img alt="PS4" src="https://img.shields.io/badge/target-PS4-006FCD?style=for-the-badge">
   <img alt="BGFT" src="https://img.shields.io/badge/BGFT-Universal-00AEEF?style=for-the-badge">
@@ -51,8 +51,9 @@ Não utiliza Receiver, Remote Package Installer ou retransmissão integral do PK
 | Registro BGFT | ✅ Funcional |
 | Cloudflare Worker universal | ✅ v8 |
 | Cloudflare KV `ROUTES` | ✅ Suportado |
+| Interface Tayson / PT-BR | ✅ 3.3.1 |
 
-A compatibilidade acima foi validada com downloads reais iniciados pelo PS4, incluindo provedores com URLs temporárias, links assinados e restrições de sessão.
+A compatibilidade acima foi validada com downloads reais iniciados pelo PS4, incluindo provedores com URLs temporárias, links assinados e restrições de sessão. O smoke test mais recente confirmou em hardware o caminho **Android → ELF → GoldHEN BinLoader → BGFT → Downloads** usando AkiraBox.
 
 ---
 
@@ -112,6 +113,10 @@ O aplicativo mantém separadas a **URL real do provedor** e a **URL de transport
 - compatibilidade BGFT com URLs cuja extensão `.pkg` não aparece no final da string original;
 - Cloudflare Worker universal para normalizar `HEAD`, `GET` e `Range` quando necessário;
 - rotas curtas temporárias usando Cloudflare KV;
+- histórico persistente de validações, ELF gerados e payloads enviados;
+- Worker e IP do PS4 configuráveis e persistentes;
+- teste de `/health` do Worker e teste TCP do BinLoader `9090`;
+- interface Tayson em tema escuro/neon com estados principais e transitórios em PT-BR;
 - sem Receiver;
 - sem RPI;
 - sem relay do PKG pelo Android;
@@ -256,27 +261,20 @@ As rotas salvas em KV são temporárias e devem expirar junto com o acesso origi
 
 ---
 
-## Desenvolvimento atual
+## Release atual
 
-Versão atual: **3.2.0**
-
-Branch de desenvolvimento da camada universal:
+Versão atual: **3.3.1**
 
 ```text
-feature/payload-generator-bgft-universal
+Application label: Tayson PS4 Payload Generator
+Version name: 3.3.1
+Version code: 36
+Package: com.phoenixx.ps4remotepkg
+Worker: Universal Transport Worker v8
+BinLoader: TCP 9090
 ```
 
-Fluxo atual do projeto:
-
-```text
-Android
-→ resolve e valida o PKG
-→ prepara a rota BGFT
-→ gera o ELF
-→ envia para GoldHEN BinLoader :9090
-→ ELF registra no BGFT
-→ PS4 baixa o PKG
-```
+A versão 3.3.1 inclui o hotfix final de localização identificado no smoke test: estados como validação e envio não devem mais retornar às strings inglesas herdadas da aplicação-base durante operações assíncronas.
 
 ---
 
