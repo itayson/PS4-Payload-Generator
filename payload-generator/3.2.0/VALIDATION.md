@@ -1,62 +1,116 @@
-# Validação 3.2.0 — BGFT universal
+# Validação 3.3.1 — Tayson PS4 Payload Generator
 
-## Evidência física usada
+## Evidência em hardware
 
-- Mocha: URL `...pkg?token=...` retornava `0x80990033`; mantendo toda a query e acrescentando `#tayson.pkg`, o PS4 retornou `Registro: Já instalado`.
-- VikingFile/R2: acesso direto retornava `0x80991403` (HTTP 403). A mesma URL atrás do Worker criou uma tarefa real de download de *Ancestors: The Humankind Odyssey* no PS4.
+Os cinco provedores principais já tiveram o fluxo funcional validado em PS4 real:
 
-## Regras implementadas
+- **Mocha:** a query autenticada é preservada e `#tayson.pkg` corrige a validação de extensão do BGFT sem alterar a requisição HTTP;
+- **VikingFile:** URL R2 direta retornou `0x80991403`/HTTP 403 no BGFT; Worker normalizou o transporte e criou download real no PS4;
+- **FileKeeper:** fluxo direto validado quando o endpoint final já é compatível com Range/BGFT;
+- **Rootz:** final R2/SigV4 validado via Universal Transport Worker;
+- **AkiraBox:** acesso BGFT direto retornou HTTP 403; Worker v8 + KV `ROUTES` permitiu download real.
 
-- análise e revalidação continuam usando a URL real do provedor;
-- transformação BGFT ocorre somente depois da segunda validação do PKG;
-- query de Mocha não é removida nem reordenada;
-- final R2 VikingFile é detectado por host + parâmetros SigV4;
-- Android valida formato da data/TTL VikingFile e formato numérico de `expires` no Mocha sem depender de APIs de relógio removidas pelo runtime Xamarin original;
-- Worker v6 é a autoridade de expiração por relógio do VikingFile e rejeita URLs expiradas/quase expiradas;
-- o próprio Mocha é a autoridade final sobre expiração do token direto;
-- Worker recebe a URL R2 exata, gera rota curta com KV quando disponível e fallback inline caso contrário;
-- rejeições explícitas de política/expiração do Worker não são contornadas pelo fallback inline;
-- o ELF continua sendo enviado pelo fluxo do Payload Generator para o BinLoader TCP 9090;
-- nenhum Receiver/RPI foi adicionado.
+O smoke test gravado da interface Tayson confirmou novamente o caminho completo com **AkiraBox**: o Android validou o PKG, o ELF foi enviado ao GoldHEN, o PS4 exibiu a notificação de payload recebido e a nova tarefa apareceu em **Downloads**.
 
-## CI concluído
+## Ajustes derivados do smoke test
 
-GitHub Actions concluiu o build do Payload Generator 3.2.0 com sucesso:
+O teste físico mostrou que o núcleo funcional estava correto, mas revelou três resíduos visuais da base original:
 
-- **87 checks aprovados** em `UPDATE/tests/Program.cs`;
-- auditoria de dependências: **0 missing/trimmed members**;
-- ILRepack concluído preservando MVID e TypeDef tokens JNI críticos;
-- APK alinhado e assinatura verificada em v1/v2/v3;
+- estado `Scanning...` durante a validação;
+- estado/botão `Sending...` / `Inject Directly to PS4` durante e após o envio;
+- diálogo de sucesso ainda identificando `Tayson 3.2.0`.
+
+A 3.3.1 corrige esses pontos em duas camadas:
+
+1. getters `AppStrings` usados pelos handlers originais são sobrescritos no IL para PT-BR;
+2. a camada `UiPolish` normaliza novamente qualquer estado transitório que a `MainPage` tente escrever em inglês após um evento assíncrono.
+
+## Invariantes funcionais
+
+O hotfix 3.3.1 não altera o núcleo comprovado. Permanecem:
+
+- validação do PKG usando a URL real do provedor;
+- segunda verificação antes da geração do ELF;
+- preservação byte a byte das queries autenticadas quando necessário;
+- detecção estrutural de Cloudflare R2/AWS SigV4;
+- `BgftRoutePlanner` separado da URL original;
+- Worker v8 somente quando o BGFT necessita da camada de transporte;
+- PayloadPatcher baseado no template ELF existente;
+- envio ao GoldHEN BinLoader TCP 9090;
+- nenhum Receiver/RPI.
+
+## Worker v8
+
+Endpoint padrão:
+
+```text
+https://drive.itaysondaniel.workers.dev
+```
+
+Binding esperado:
+
+```text
+ROUTES
+```
+
+O Worker v8 trata:
+
+- VikingFile R2;
+- Rootz R2;
+- AkiraBox com contexto de sessão;
+- `HEAD` do BGFT quando o upstream aceita somente o padrão de GET/Range necessário ao download.
+
+Na 3.3.1 o endpoint é configurável em Ajustes e o valor salvo é usado pelo `BgftRoutePlanner` durante a geração real do ELF.
+
+## Interface 3.3.1
+
+A camada nova preserva os controles reais da `MainPage` e os reposiciona. Isso significa que os handlers originais continuam associados aos mesmos objetos de UI.
+
+Cobertura visual/funcional:
+
+- Home Tayson própria, sem a composição Phoenixx antiga visível;
+- status do PS4/IP/BinLoader;
+- entrada de link e detecção visual do provedor;
+- pacote, capa/metadados e estágio do fluxo;
+- ações reais `Validar PKG`, `Gerar ELF`, `Enviar ao PS4` e `Arquivo local`;
+- Histórico persistente;
+- Worker com `/health` real;
+- Ajustes com Worker persistente e teste TCP real do BinLoader 9090;
+- estados principais e transitórios localizados em PT-BR;
+- crédito `Dev. By TaySon`.
+
+## Identidade da release
+
+```text
+application label: Tayson PS4 Payload Generator
+versionName: 3.3.1
+versionCode: 36
+package: com.phoenixx.ps4remotepkg
+```
+
+O package ID é mantido propositalmente para preservar compatibilidade de instalação e dados do aplicativo. A mudança de identidade é feita pelo label, interface e versão.
+
+## CI 3.3.1
+
+GitHub Actions run **#136** concluiu com sucesso:
+
+- **87 checks** do núcleo aprovados;
+- dependency audit sem membros ausentes do runtime empacotado;
+- ILRepack/patch concluídos;
+- APK alinhado;
+- assinatura verificada;
 - integridade ZIP aprovada;
-- `classes.dex` e `classes2.dex` originais preservados;
-- template ELF final incluído no APK e validado.
+- `classes.dex` e `classes2.dex` preservados;
+- template ELF final preservado;
+- artifact `Tayson-PS4-Payload-Generator-3.3.1` criado;
+- `versionName 3.3.1` / `versionCode 36` confirmados em `build-info.json`.
 
-Os hashes do APK e dos demais arquivos são emitidos em `SHA256SUMS.txt` e `build-info.json` dentro de cada artifact do CI. Não é mantido um hash fixo neste documento, porque o workflow de teste atualmente cria uma chave de assinatura descartável quando não existe um keystore persistente no runner; isso altera os bytes e o certificado do APK entre builds sem mudança funcional no código.
+## Assinatura de teste
 
-### Assinatura de teste
+O CI ainda utiliza uma chave de teste descartável quando não recebe um keystore persistente. Consequentemente, APKs de execuções diferentes podem ter certificados distintos e exigir desinstalação da build anterior.
 
-O artifact do CI é uma build de teste. Como o certificado pode mudar entre execuções, uma build recém-gerada pode não instalar como atualização sobre uma versão Tayson anterior assinada com outro certificado. Para atualização in-place, o pipeline precisa receber um keystore persistente de forma segura (por exemplo, via GitHub Actions secret) ou reutilizar explicitamente a chave de teste previamente adotada pelo projeto. A chave privada não deve ser adicionada ao repositório apenas para estabilizar o CI.
+Uma release distribuída para atualização in-place no futuro deve usar um keystore persistente fornecido de forma segura ao workflow. A chave privada não deve ser adicionada ao repositório.
 
-## Cobertura dos testes
+## Estado de validação
 
-`UPDATE/tests/Program.cs` cobre:
-
-- detecção de provedores e URL policy;
-- preservação de query assinada;
-- validação Range/PKG;
-- `#tayson.pkg` em URLs `.pkg` com query;
-- detecção R2 e validação estrutural dos parâmetros temporais;
-- criação de rota curta no Worker;
-- fallback inline somente quando a API opcional de rota está indisponível;
-- rejeição de fallback quando o Worker recusa explicitamente a URL;
-- bypass do Worker para links diretos e Mocha;
-- limites do campo URL do template.
-
-## Teste físico recomendado
-
-1. publicar o Worker v6;
-2. confirmar `/health`;
-3. instalar o APK 3.2.0;
-4. testar um link Mocha novo;
-5. testar um link VikingFile novo;
-6. conferir no PS4 a criação e o avanço real da tarefa em Downloads.
+O vídeo de hardware confirma o fluxo funcional Android → ELF → BinLoader → BGFT. A 3.3.1 é um hotfix de identidade/localização sobre esse mesmo núcleo e passou novamente por toda a validação automatizada. O próximo teste físico pode ser tratado como confirmação visual da correção das strings, não como revalidação do transporte dos provedores.
