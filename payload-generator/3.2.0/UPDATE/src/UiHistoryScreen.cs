@@ -73,7 +73,7 @@ public static class UiHistoryScreen
 
             int shown = history.Count < 10 ? history.Count : 10;
             for (int i = 0; i < shown; i++)
-                body.Children.Add(HistoryCard(history[i]));
+                body.Children.Add(HistoryCard(history[i], i));
 
             var clear = new Button
             {
@@ -108,7 +108,7 @@ public static class UiHistoryScreen
         return new ScrollView { BackgroundColor = Background, Content = body };
     }
 
-    static View HistoryCard(UiHistoryItem item)
+    static View HistoryCard(UiHistoryItem item, int index)
     {
         var frame = Card();
         var grid = new Grid { ColumnSpacing = 10, RowSpacing = 4 };
@@ -134,7 +134,7 @@ public static class UiHistoryScreen
 
         var parts = new List<string>();
         parts.Add(string.IsNullOrWhiteSpace(item.TitleId) ? "PKG" : item.TitleId);
-        parts.Add(HumanSize(item.Size));
+        parts.Add(string.IsNullOrWhiteSpace(item.SizeText) ? "—" : item.SizeText);
         if (!string.IsNullOrWhiteSpace(item.Kind)) parts.Add(item.Kind);
         var metadata = new Label
         {
@@ -146,8 +146,7 @@ public static class UiHistoryScreen
         Grid.SetColumnSpan(metadata, 2);
         grid.Children.Add(metadata);
 
-        DateTimeOffset time = DateTimeOffset.FromUnixTimeSeconds(item.Timestamp).ToLocalTime();
-        string footerText = item.Provider + "  •  " + time.ToString("dd/MM HH:mm");
+        string footerText = (index == 0 ? "Mais recente  •  " : "") + item.Provider;
         if (!string.IsNullOrWhiteSpace(item.Ps4Ip)) footerText += "  •  " + item.Ps4Ip;
         var footer = new Label { Text = footerText, TextColor = Cyan, FontSize = 10 };
         Grid.SetRow(footer, 2);
@@ -244,12 +243,5 @@ public static class UiHistoryScreen
         if (value.Contains("ELF GERADO")) return "ELF";
         if (value.Contains("VALIDADO")) return "VALIDADO";
         return value.Length > 12 ? value.Substring(0, 12) : value;
-    }
-
-    static string HumanSize(long bytes)
-    {
-        if (bytes <= 0) return "—";
-        double gb = bytes / 1024d / 1024d / 1024d;
-        return gb >= 1 ? gb.ToString("0.00") + " GB" : (bytes / 1024d / 1024d).ToString("0.0") + " MB";
     }
 }
