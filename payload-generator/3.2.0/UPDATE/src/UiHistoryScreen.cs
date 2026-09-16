@@ -1,5 +1,5 @@
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -71,8 +71,9 @@ public static class UiHistoryScreen
                 Margin = new Thickness(3, 4, 0, 0)
             });
 
-            foreach (UiHistoryItem item in history.Take(10))
-                body.Children.Add(HistoryCard(item));
+            int shown = history.Count < 10 ? history.Count : 10;
+            for (int i = 0; i < shown; i++)
+                body.Children.Add(HistoryCard(history[i]));
 
             var clear = new Button
             {
@@ -131,14 +132,13 @@ public static class UiHistoryScreen
         Grid.SetColumn(status, 1);
         grid.Children.Add(status);
 
+        var parts = new List<string>();
+        parts.Add(string.IsNullOrWhiteSpace(item.TitleId) ? "PKG" : item.TitleId);
+        parts.Add(HumanSize(item.Size));
+        if (!string.IsNullOrWhiteSpace(item.Kind)) parts.Add(item.Kind);
         var metadata = new Label
         {
-            Text = string.Join("  •  ", new[]
-            {
-                string.IsNullOrWhiteSpace(item.TitleId) ? "PKG" : item.TitleId,
-                HumanSize(item.Size),
-                item.Kind
-            }.Where(x => !string.IsNullOrWhiteSpace(x))),
+            Text = string.Join("  •  ", parts),
             TextColor = Muted,
             FontSize = 11
         };
