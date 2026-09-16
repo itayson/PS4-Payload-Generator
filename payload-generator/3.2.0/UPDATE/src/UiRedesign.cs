@@ -1,8 +1,7 @@
 using System;
-using System.Linq;
 using System.Net.Http;
 using System.Reflection;
-using System.Threading.Tasks;
+using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
@@ -13,11 +12,11 @@ namespace Tayson.Providers;
 /// Runtime UI shell for the original MAUI MainPage.
 ///
 /// The payload generator is distributed as a prebuilt MAUI APK and the project
-/// intentionally preserves its original Android resources/JNI metadata.  This
-/// layer therefore restyles and wraps the already-wired MainPage at runtime
-/// instead of replacing native resources or reimplementing the working event
-/// handlers.  Provider resolution, PKG validation, ELF generation and BinLoader
-/// delivery remain owned by the original page + Integration hooks.
+/// intentionally preserves its original Android resources/JNI metadata. This
+/// layer restyles and wraps the already-wired MainPage at runtime instead of
+/// replacing native resources or reimplementing the working event handlers.
+/// Provider resolution, PKG validation, ELF generation and BinLoader delivery
+/// remain owned by the original page + Integration hooks.
 /// </summary>
 public static class UiRedesign
 {
@@ -81,9 +80,6 @@ public static class UiRedesign
         ApplyVisualTree(page.Content);
         page.BackgroundColor = Background;
 
-        // Detach only the original root from ContentPage.  Its descendants stay
-        // intact with all original click handlers/bindings and are hosted as the
-        // Home screen inside the new shell.
         View home = page.Content;
         page.Content = null;
 
@@ -144,7 +140,7 @@ public static class UiRedesign
         if (h.BottomStatus != null) h.BottomStatus.TextColor = Cyan;
         if (h.Icon != null)
         {
-            h.Icon.MaximumHeightRequest = 96;
+            h.Icon.HeightRequest = 96;
             h.Icon.Aspect = Aspect.AspectFit;
         }
     }
@@ -187,7 +183,7 @@ public static class UiRedesign
                     label.TextColor = label.FontSize > 0 && label.FontSize <= 12 ? Muted : Text;
                 break;
             case Layout layout:
-                foreach (var child in layout.Children.ToArray())
+                foreach (var child in layout.Children)
                     if (child is View childView) ApplyVisualTree(childView);
                 break;
             case ContentView content:
