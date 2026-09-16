@@ -1,18 +1,33 @@
-# Validação 3.3.0 — Tayson PS4 Payload Generator
+# Validação 3.3.1 — Tayson PS4 Payload Generator
 
 ## Evidência em hardware
 
-Os cinco provedores principais já tiveram o fluxo funcional validado em PS4 real antes da finalização visual da 3.3.0:
+Os cinco provedores principais já tiveram o fluxo funcional validado em PS4 real:
 
 - **Mocha:** a query autenticada é preservada e `#tayson.pkg` corrige a validação de extensão do BGFT sem alterar a requisição HTTP;
 - **VikingFile:** URL R2 direta retornou `0x80991403`/HTTP 403 no BGFT; Worker normalizou o transporte e criou download real no PS4;
 - **FileKeeper:** fluxo direto validado quando o endpoint final já é compatível com Range/BGFT;
 - **Rootz:** final R2/SigV4 validado via Universal Transport Worker;
-- **AkiraBox:** acesso BGFT direto retornou HTTP 403; Worker v8 + KV `ROUTES` permitiu download real, inclusive com progresso observado no console.
+- **AkiraBox:** acesso BGFT direto retornou HTTP 403; Worker v8 + KV `ROUTES` permitiu download real.
+
+O smoke test gravado da interface Tayson confirmou novamente o caminho completo com **AkiraBox**: o Android validou o PKG, o ELF foi enviado ao GoldHEN, o PS4 exibiu a notificação de payload recebido e a nova tarefa apareceu em **Downloads**.
+
+## Ajustes derivados do smoke test
+
+O teste físico mostrou que o núcleo funcional estava correto, mas revelou três resíduos visuais da base original:
+
+- estado `Scanning...` durante a validação;
+- estado/botão `Sending...` / `Inject Directly to PS4` durante e após o envio;
+- diálogo de sucesso ainda identificando `Tayson 3.2.0`.
+
+A 3.3.1 corrige esses pontos em duas camadas:
+
+1. getters `AppStrings` usados pelos handlers originais são sobrescritos no IL para PT-BR;
+2. a camada `UiPolish` normaliza novamente qualquer estado transitório que a `MainPage` tente escrever em inglês após um evento assíncrono.
 
 ## Invariantes funcionais
 
-A atualização de interface não substitui o núcleo comprovado. Permanecem:
+O hotfix 3.3.1 não altera o núcleo comprovado. Permanecem:
 
 - validação do PKG usando a URL real do provedor;
 - segunda verificação antes da geração do ELF;
@@ -45,13 +60,13 @@ O Worker v8 trata:
 - AkiraBox com contexto de sessão;
 - `HEAD` do BGFT quando o upstream aceita somente o padrão de GET/Range necessário ao download.
 
-Na 3.3.0 o endpoint é configurável em Ajustes e o valor salvo é usado pelo `BgftRoutePlanner` durante a geração real do ELF.
+Na 3.3.1 o endpoint é configurável em Ajustes e o valor salvo é usado pelo `BgftRoutePlanner` durante a geração real do ELF.
 
-## Validação da interface 3.3.0
+## Interface 3.3.1
 
 A camada nova preserva os controles reais da `MainPage` e os reposiciona. Isso significa que os handlers originais continuam associados aos mesmos objetos de UI.
 
-Cobertura visual/funcional implementada:
+Cobertura visual/funcional:
 
 - Home Tayson própria, sem a composição Phoenixx antiga visível;
 - status do PS4/IP/BinLoader;
@@ -61,23 +76,23 @@ Cobertura visual/funcional implementada:
 - Histórico persistente;
 - Worker com `/health` real;
 - Ajustes com Worker persistente e teste TCP real do BinLoader 9090;
-- textos principais e diálogos gerenciados localizados em PT-BR;
+- estados principais e transitórios localizados em PT-BR;
 - crédito `Dev. By TaySon`.
 
 ## Identidade da release
 
 ```text
 application label: Tayson PS4 Payload Generator
-versionName: 3.3.0
-versionCode: 35
+versionName: 3.3.1
+versionCode: 36
 package: com.phoenixx.ps4remotepkg
 ```
 
 O package ID é mantido propositalmente para preservar compatibilidade de instalação e dados do aplicativo. A mudança de identidade é feita pelo label, interface e versão.
 
-## CI
+## CI 3.3.1
 
-O workflow exige:
+GitHub Actions run **#136** concluiu com sucesso:
 
 - **87 checks** do núcleo aprovados;
 - dependency audit sem membros ausentes do runtime empacotado;
@@ -87,7 +102,8 @@ O workflow exige:
 - integridade ZIP aprovada;
 - `classes.dex` e `classes2.dex` preservados;
 - template ELF final preservado;
-- artifact com `SHA256SUMS.txt` e `build-info.json`.
+- artifact `Tayson-PS4-Payload-Generator-3.3.1` criado;
+- `versionName 3.3.1` / `versionCode 36` confirmados em `build-info.json`.
 
 ## Assinatura de teste
 
@@ -95,19 +111,6 @@ O CI ainda utiliza uma chave de teste descartável quando não recebe um keystor
 
 Uma release distribuída para atualização in-place no futuro deve usar um keystore persistente fornecido de forma segura ao workflow. A chave privada não deve ser adicionada ao repositório.
 
-## Smoke test final recomendado
+## Estado de validação
 
-Antes de mesclar a 3.3.0 na branch universal:
-
-1. instalar o APK final;
-2. confirmar label **Tayson PS4 Payload Generator** e Home nova;
-3. abrir Histórico, Worker e Ajustes;
-4. testar `/health` do Worker;
-5. testar a conexão do BinLoader 9090;
-6. validar um PKG real;
-7. gerar o ELF;
-8. enviar ao PS4;
-9. confirmar o registro/download no BGFT;
-10. fechar e abrir o app para confirmar persistência do Histórico, IP e Worker.
-
-Como o núcleo dos provedores não foi reescrito, esse smoke test final é focado em regressão de integração e na nova composição da interface.
+O vídeo de hardware confirma o fluxo funcional Android → ELF → BinLoader → BGFT. A 3.3.1 é um hotfix de identidade/localização sobre esse mesmo núcleo e passou novamente por toda a validação automatizada. O próximo teste físico pode ser tratado como confirmação visual da correção das strings, não como revalidação do transporte dos provedores.
