@@ -83,11 +83,13 @@ public static class UiPolish
             else if (button.Text == "Ajustes") settings = button;
         }
 
+        var bottom = typeof(MainPage).GetField("lblBottomStatus", PrivateInstance)?.GetValue(page) as Label;
+        if (bottom != null)
+            bottom.Text = "Tayson 3.3.0 • BGFT universal • BinLoader 9090";
+
         View modernHome = UiHomeScreen.Build(page);
         host.Content = modernHome;
 
-        // UiRedesign's handlers run first and keep selected-tab styling. These
-        // handlers replace only the page content with the final implementation.
         if (home != null)
             home.Clicked += (_, _) => host.Content = modernHome;
 
