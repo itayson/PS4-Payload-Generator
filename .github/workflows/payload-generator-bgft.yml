@@ -3,6 +3,7 @@ name: Tayson PS4 Payload Generator 3.3.1
 on:
   push:
     branches:
+      - main
       - feature/payload-generator-bgft-universal
       - feature/neon-ui-redesign
   pull_request:
