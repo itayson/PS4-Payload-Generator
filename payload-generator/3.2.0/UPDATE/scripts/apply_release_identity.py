@@ -196,6 +196,7 @@ public final class TaysonIconBuilder {
 
 
 def build_icon_resources(source, root):
+    root.mkdir(parents=True, exist_ok=True)
     java_file = root / "TaysonIconBuilder.java"
     java_file.write_text(JAVA_ICON_BUILDER)
     subprocess.run(["javac", str(java_file)], check=True, cwd=root)
