@@ -170,7 +170,7 @@ public static class UiRuntimeHotfixes
         if (page == null) return false;
         BatchCompleted++;
 
-        if (!UiSendQueue.TryTakeNext(out string next, out int remaining))
+        if (!UiSendQueue.TryPeekNext(out string next, out int remainingAfterCurrent))
         {
             if (BatchTotal > 1)
             {
@@ -198,24 +198,40 @@ public static class UiRuntimeHotfixes
         url.CursorPosition = next.Length;
         url.SelectionLength = 0;
         url.Unfocus();
-        UiAutoPipeline.ArmExternal(next);
-        UiDiagnostics.Add("FILA", "Iniciando item " + current + "/" + BatchTotal + "; pendentes após este: " + remaining + ".");
 
         if (bottom != null)
-            bottom.Text = "Fila " + current + "/" + BatchTotal + ": validando próximo PKG...";
+            bottom.Text = "Fila " + current + "/" + BatchTotal + ": preparando próximo PKG...";
 
-        await Task.Delay(180);
+        // The original validation button may still be unwinding after the
+        // previous item. Wait briefly instead of consuming the queued URL.
+        for (int attempt = 0; attempt < 5 && !scan.IsEnabled; attempt++)
+            await Task.Delay(180);
+
         if (!scan.IsEnabled)
         {
-            if (bottom != null) bottom.Text = "Fila pausada: a validação anterior ainda está ocupada.";
+            if (bottom != null) bottom.Text = "Fila pausada: a validação anterior ainda está ocupada. O próximo link foi preservado.";
+            UiDiagnostics.Add("FILA", "Próximo item preservado porque a validação permaneceu ocupada.");
             return false;
         }
 
         if (!TriggerOriginalButton(scan))
         {
-            if (bottom != null) bottom.Text = "Fila pausada: não foi possível iniciar a próxima validação.";
+            if (bottom != null) bottom.Text = "Fila pausada: não foi possível iniciar a próxima validação. O link foi preservado.";
+            UiDiagnostics.Add("FILA", "Próximo item preservado porque o botão de validação não pôde ser acionado.");
             return false;
         }
+
+        if (!UiSendQueue.CommitNext(next, out int remaining))
+        {
+            if (bottom != null) bottom.Text = "Fila pausada: o estado interno da fila mudou durante a validação.";
+            UiDiagnostics.Add("FILA", "Falha ao confirmar avanço transacional da fila.");
+            return false;
+        }
+
+        UiAutoPipeline.ArmExternal(next);
+        UiDiagnostics.Add("FILA", "Iniciando item " + current + "/" + BatchTotal + "; pendentes após este: " + remaining + ".");
+        if (bottom != null)
+            bottom.Text = "Fila " + current + "/" + BatchTotal + ": validando próximo PKG...";
         return true;
     }
 
