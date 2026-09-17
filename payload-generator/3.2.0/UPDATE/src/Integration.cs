@@ -25,7 +25,7 @@ public static class Integration
         var bottom = Field<Label>(page, "lblBottomStatus");
 
         entry.Placeholder = "Mocha, VikingFile, FileKeeper, Rootz, AkiraBox ou link direto";
-        bottom.Text = "Tayson 3.3.1 • BGFT universal • BinLoader 9090";
+        bottom.Text = "Tayson 3.4.0 • BGFT universal • BinLoader 9090";
 
         string savedIp = UiStateStore.LoadPs4Ip();
         if (!string.IsNullOrWhiteSpace(savedIp)) ip.Text = savedIp;
@@ -54,6 +54,8 @@ public static class Integration
 
     public static void Invalidate(MainPage page)
     {
+        var current = Field<PkgMetadata>(page, "_currentMeta");
+        if (current != null) UiArtworkStore.Clear(current.ContentId);
         typeof(MainPage).GetField("_currentMeta", PrivateInstance).SetValue(page, null);
         Field<Button>(page, "btnGerar").IsEnabled = false;
         Field<Button>(page, "btnInjetar").IsEnabled = false;
@@ -114,7 +116,10 @@ public static class Integration
 
     public static async Task<PkgMetadata> AnalyzeAsync(MainPage page, string url, int limit)
     {
-        DownloadInfo info = await ProbeForProviderAsync(url, Math.Min(2097152, Math.Max(128, limit)));
+        // 3.4.0 keeps validation bounded while reading enough of the metadata
+        // area to discover ICON/PIC artwork when the package exposes it early.
+        int metadataLimit = Math.Min(2097152, Math.Max(1048576, limit));
+        DownloadInfo info = await ProbeForProviderAsync(url, metadataLimit);
         var sfo = ((string Title, string Category))typeof(MainPage).GetMethod("ExtractMetadataFromSfo", PrivateInstance)
             .Invoke(page, new object[] { info.Prefix });
         string title = sfo.Title;
@@ -123,11 +128,10 @@ public static class Integration
         string category = (sfo.Category ?? "").Trim().ToLowerInvariant();
         string kind = category == "gp" ? "PS4PATCH" : category == "ac" ? "PS4AC" : "PS4GD";
         string suffix = kind == "PS4PATCH" ? "Update" : kind == "PS4AC" ? "DLC" : "Game";
-        byte[] icon = null;
-        byte[] begin = { 137, 80, 78, 71, 13, 10, 26, 10 }, end = { 73, 69, 78, 68, 174, 66, 96, 130 };
-        int a = Find(info.Prefix, begin, 0), b = a < 0 ? -1 : Find(info.Prefix, end, a + 8);
-        if (a >= 0 && b >= a && b + 8 - a <= 1048576)
-        { icon = new byte[b + 8 - a]; Array.Copy(info.Prefix, a, icon, 0, icon.Length); }
+
+        byte[][] artworks = UiArtworkStore.Extract(info.Prefix);
+        UiArtworkStore.Set(info.ContentId, artworks);
+        byte[] icon = artworks.Length > 0 ? artworks[0] : null;
 
         var meta = new PkgMetadata
         {
@@ -187,16 +191,5 @@ public static class Integration
             meta.ContentLength);
         UiStateStore.Record(meta, "ELF GERADO", Field<Entry>(page, "txtIp").Text);
         return payload;
-    }
-
-    static int Find(byte[] data, byte[] needle, int start)
-    {
-        for (int i = start; i <= data.Length - needle.Length; i++)
-        {
-            int n = 0;
-            while (n < needle.Length && data[i + n] == needle[n]) n++;
-            if (n == needle.Length) return i;
-        }
-        return -1;
     }
 }
