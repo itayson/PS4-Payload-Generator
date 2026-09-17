@@ -17,6 +17,7 @@ namespace Tayson.Providers;
 public static class TmdbArtworkClient
 {
     const int MaxImageBytes = 4194304;
+    const int MaxJsonBytes = 524288;
     const string TmdbKeyHex = "F5DE66D2680E255B2DF79E74F890EBF349262F618BCAE2A9ACCDEE5156CE8DF2CDF2D48C71173CDC2594465B87405D197CF1AED3B7E9671EEB56CA6753C2E6B0";
     static readonly byte[] TmdbKey = Hex(TmdbKeyHex);
     static readonly Regex TitleId = new Regex("^[A-Z]{4}[0-9]{5}$", RegexOptions.None);
@@ -41,8 +42,6 @@ public static class TmdbArtworkClient
 
     static uint Rol(uint value, int count) => (value << count) | (value >> (32 - count));
 
-    // Compact SHA-1 implementation used only to derive the documented PS4 TMDB
-    // path. We keep it local because HMACSHA1 is trimmed from the base APK runtime.
     static byte[] Sha1(byte[] source)
     {
         ulong bits = (ulong)source.Length * 8UL;
@@ -50,16 +49,10 @@ public static class TmdbArtworkClient
         byte[] message = new byte[padded];
         Array.Copy(source, message, source.Length);
         message[source.Length] = 0x80;
-        for (int i = 0; i < 8; i++)
-            message[padded - 1 - i] = (byte)(bits >> (i * 8));
+        for (int i = 0; i < 8; i++) message[padded - 1 - i] = (byte)(bits >> (i * 8));
 
-        uint h0 = 0x67452301;
-        uint h1 = 0xEFCDAB89;
-        uint h2 = 0x98BADCFE;
-        uint h3 = 0x10325476;
-        uint h4 = 0xC3D2E1F0;
+        uint h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0;
         uint[] w = new uint[80];
-
         for (int block = 0; block < padded; block += 64)
         {
             for (int i = 0; i < 16; i++)
@@ -68,8 +61,7 @@ public static class TmdbArtworkClient
                 w[i] = ((uint)message[p] << 24) | ((uint)message[p + 1] << 16) |
                        ((uint)message[p + 2] << 8) | message[p + 3];
             }
-            for (int i = 16; i < 80; i++)
-                w[i] = Rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+            for (int i = 16; i < 80; i++) w[i] = Rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
 
             uint a = h0, b = h1, c = h2, d = h3, e = h4;
             for (int i = 0; i < 80; i++)
@@ -146,11 +138,9 @@ public static class TmdbArtworkClient
     static void AddUrl(List<string> urls, string value)
     {
         value = UnescapeUrl(value);
-        if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-            value = "https://" + value.Substring(7);
+        if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) value = "https://" + value.Substring(7);
         if (!Uri.TryCreate(value, UriKind.Absolute, out Uri uri) || uri.Scheme != Uri.UriSchemeHttps || !AllowedImageHost(uri)) return;
-        foreach (string existing in urls)
-            if (existing.Equals(uri.AbsoluteUri, StringComparison.Ordinal)) return;
+        foreach (string existing in urls) if (existing.Equals(uri.AbsoluteUri, StringComparison.Ordinal)) return;
         urls.Add(uri.AbsoluteUri);
     }
 
@@ -169,11 +159,27 @@ public static class TmdbArtworkClient
         return await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
     }
 
+    static async Task<byte[]> ReadBoundedAsync(HttpContent content, int limit)
+    {
+        using Stream stream = await content.ReadAsStreamAsync().ConfigureAwait(false);
+        using var buffer = new MemoryStream();
+        byte[] chunk = new byte[16384];
+        while (buffer.Length <= limit)
+        {
+            int n = await stream.ReadAsync(chunk, 0, chunk.Length).ConfigureAwait(false);
+            if (n == 0) break;
+            if (buffer.Length + n > limit) return null;
+            buffer.Write(chunk, 0, n);
+        }
+        return buffer.ToArray();
+    }
+
     static async Task<string> DownloadTextAsync(HttpClient http, string url)
     {
         using HttpResponseMessage response = await SendAsync(http, url).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) return "";
-        return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        byte[] data = await ReadBoundedAsync(response.Content, MaxJsonBytes).ConfigureAwait(false);
+        return data == null ? "" : Encoding.UTF8.GetString(data);
     }
 
     static async Task<byte[]> DownloadBoundedAsync(HttpClient http, string url)
@@ -182,17 +188,7 @@ public static class TmdbArtworkClient
         if (!response.IsSuccessStatusCode) return null;
         long declared = response.Content.Headers.ContentLength.GetValueOrDefault();
         if (declared > MaxImageBytes) return null;
-        using Stream stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-        using var buffer = new MemoryStream();
-        byte[] chunk = new byte[16384];
-        while (buffer.Length <= MaxImageBytes)
-        {
-            int n = await stream.ReadAsync(chunk, 0, chunk.Length).ConfigureAwait(false);
-            if (n == 0) break;
-            if (buffer.Length + n > MaxImageBytes) return null;
-            buffer.Write(chunk, 0, n);
-        }
-        byte[] data = buffer.ToArray();
+        byte[] data = await ReadBoundedAsync(response.Content, MaxImageBytes).ConfigureAwait(false);
         return IsImage(data) ? data : null;
     }
 
@@ -200,11 +196,9 @@ public static class TmdbArtworkClient
     {
         string metadataUrl = JsonUrl(titleId);
         if (metadataUrl.Length == 0) return Array.Empty<byte[]>();
-
         try
         {
-            using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true })
-            { Timeout = TimeSpan.FromSeconds(12) };
+            using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(12) };
             http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", new[] { "PS4TitleMetadata/1.00" });
             string json = await DownloadTextAsync(http, metadataUrl).ConfigureAwait(false);
             if (json.Length == 0) return Array.Empty<byte[]>();
