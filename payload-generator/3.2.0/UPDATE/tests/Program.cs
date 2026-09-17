@@ -130,6 +130,41 @@ await Reject(async()=>{using var router=new BgftRoutePlanner(()=>new RouteHandle
 await Reject(async()=>{using var router=new BgftRoutePlanner(()=>new RouteHandler(HttpStatusCode.OK,"unused"));await router.PrepareAsync("https://cdn.mocha.my/game.pkg?token=a&expires=not-a-number&node=sugar");},
     "Malformed Mocha expiry rejected before payload generation");
 
+// 3.4.0: validate PS4 PKG artwork-table parsing. The header/table are
+// big-endian; icon0/pic0/pic1 point to optional small range reads.
+{
+    byte[] prefix = new byte[0x100];
+    void Be32(int offset, uint value)
+    {
+        prefix[offset] = (byte)(value >> 24);
+        prefix[offset + 1] = (byte)(value >> 16);
+        prefix[offset + 2] = (byte)(value >> 8);
+        prefix[offset + 3] = (byte)value;
+    }
+    Be32(0x10, 3);
+    Be32(0x18, 0x40);
+    void Entry(int p, uint id, uint offset, uint size)
+    {
+        Be32(p, id); Be32(p + 0x10, offset); Be32(p + 0x14, size);
+    }
+    byte[] FakePng(byte marker)
+    {
+        byte[] data = new byte[64];
+        byte[] sig = { 137,80,78,71,13,10,26,10 };
+        Array.Copy(sig, data, sig.Length);
+        data[8] = marker;
+        return data;
+    }
+    byte[] icon0 = FakePng(1), pic0 = FakePng(2), pic1 = FakePng(3);
+    Entry(0x40, 0x1200, 0x300, (uint)icon0.Length);
+    Entry(0x60, 0x1220, 0x400, (uint)pic0.Length);
+    Entry(0x80, 0x1006, 0x500, (uint)pic1.Length);
+    byte[] Range(long offset) => offset == 0x300 ? icon0 : offset == 0x400 ? pic0 : pic1;
+    byte[][] gallery = await UiArtworkStore.ExtractExtendedAsync(prefix, (offset, size) => Task.FromResult(Range(offset)));
+    Check(gallery.Length == 3, "Artwork table loads icon0 pic0 pic1");
+    Check(gallery[0][8] == 1 && gallery[1][8] == 2 && gallery[2][8] == 3, "Artwork gallery preserves preferred PS4 image order");
+}
+
 Console.WriteLine($"RESULT: {passed} checks passed");
 
 sealed class Fixture(string mode)
