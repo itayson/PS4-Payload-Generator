@@ -25,7 +25,8 @@ public static class Integration
         var bottom = Field<Label>(page, "lblBottomStatus");
 
         entry.Placeholder = "Mocha, VikingFile, FileKeeper, Rootz, AkiraBox ou link direto";
-        bottom.Text = "Tayson 3.4.0 • BGFT universal • BinLoader 9090";
+        bottom.Text = "Tayson 3.5.0 • BGFT universal • BinLoader 9090";
+        UiDiagnostics.Add("APP", "Tayson 3.5.0 iniciado.");
 
         string savedIp = UiStateStore.LoadPs4Ip();
         if (!string.IsNullOrWhiteSpace(savedIp)) ip.Text = savedIp;
@@ -77,6 +78,7 @@ public static class Integration
         Uri uri = LinkPolicy.Parse(value);
         Provider provider = LinkPolicy.Detect(uri);
         bool knownProviderPage = provider != Provider.Direct || ProviderResolvers.IsAkiraBox(uri);
+        UiDiagnostics.Add("RESOLVE", "Resolvendo provedor " + provider + ".");
 
         try { return (await ProbeForProviderAsync(uri.AbsoluteUri)).Url.AbsoluteUri; }
         catch (Exception ex) when (ex is InvalidDataException || ex is HttpRequestException || ex is OperationCanceledException)
@@ -118,6 +120,7 @@ public static class Integration
 
     public static async Task<PkgMetadata> AnalyzeAsync(MainPage page, string url, int limit)
     {
+        UiDiagnostics.Add("PKG", "Iniciando leitura e validação de metadados.");
         int metadataLimit = Math.Min(2097152, Math.Max(1048576, limit));
         DownloadInfo info = await ProbeForProviderAsync(url, metadataLimit);
         var sfo = ((string Title, string Category))typeof(MainPage).GetMethod("ExtractMetadataFromSfo", PrivateInstance)
@@ -147,6 +150,7 @@ public static class Integration
             IconBytes = icon
         };
         UiStateStore.Record(meta, "VALIDADO", Field<Entry>(page, "txtIp").Text);
+        UiDiagnostics.Add("PKG", "Validado " + meta.TitleId + " como " + suffix + "; artwork nativo: " + artworks.Length + ".");
         return meta;
     }
 
@@ -154,6 +158,8 @@ public static class Integration
     {
         PkgMetadata meta = Field<PkgMetadata>(page, "_currentMeta");
         if (meta == null) throw new InvalidDataException("Analise um link válido antes de gerar o payload.");
+        UiDiagnostics.Add("ELF", "Revalidando origem antes de gerar o payload.");
+
         DownloadInfo current = await ProbeForProviderAsync(meta.Url);
         if (!ReferenceEquals(meta, Field<PkgMetadata>(page, "_currentMeta")))
             throw new InvalidDataException("O link foi alterado durante a verificação. Analise o novo link antes de enviar.");
@@ -192,6 +198,7 @@ public static class Integration
             meta.PkgType,
             meta.ContentLength);
         UiStateStore.Record(meta, "ELF GERADO", Field<Entry>(page, "txtIp").Text);
+        UiDiagnostics.Add("ELF", "Payload gerado em memória com " + payload.Length + " bytes.");
         return payload;
     }
 }
