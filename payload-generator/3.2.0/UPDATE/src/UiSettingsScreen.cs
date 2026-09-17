@@ -1,7 +1,6 @@
 using System;
-using System.Net.Sockets;
+using System.Net;
 using System.Reflection;
-using System.Threading.Tasks;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -36,38 +35,29 @@ public static class UiSettingsScreen
         body.Children.Add(Hero("Ajustes", "Conexão e transporte BGFT"));
 
         var ip = Input(UiStateStore.LoadPs4Ip(realIp?.Text ?? ""), "192.168.0.10");
-        var ps4Status = new Label { Text = "Não testado", TextColor = Muted, FontSize = 11, FontAttributes = FontAttributes.Bold };
-        var testPs4 = Action("Testar BinLoader 9090", Blue);
-        testPs4.Clicked += async (_, _) =>
+        var ps4Status = new Label
+        {
+            Text = "A porta 9090 será aberta somente no envio, para não consumir o listener do GoldHEN.",
+            TextColor = Muted,
+            FontSize = 11,
+            FontAttributes = FontAttributes.Bold,
+            LineBreakMode = LineBreakMode.WordWrap
+        };
+        var preparePs4 = Action("Usar este PS4", Blue);
+        preparePs4.Clicked += (_, _) =>
         {
             string host = (ip.Text ?? "").Trim();
-            if (host.Length == 0)
+            if (!IPAddress.TryParse(host, out _))
             {
-                ps4Status.Text = "Informe o IP do PS4.";
+                ps4Status.Text = "Informe um endereço IP válido do PS4.";
                 ps4Status.TextColor = Red;
                 return;
             }
 
-            testPs4.IsEnabled = false;
-            ps4Status.Text = "Testando conexão…";
-            ps4Status.TextColor = Cyan;
-            try
-            {
-                using var client = new TcpClient();
-                Task connect = client.ConnectAsync(host, 9090);
-                Task winner = await Task.WhenAny(connect, Task.Delay(3500));
-                if (!ReferenceEquals(winner, connect))
-                    throw new TimeoutException("Tempo limite excedido");
-                await connect;
-                ps4Status.Text = "● BinLoader acessível na porta 9090";
-                ps4Status.TextColor = Green;
-            }
-            catch (Exception ex)
-            {
-                ps4Status.Text = "● Sem conexão: " + ex.GetType().Name;
-                ps4Status.TextColor = Red;
-            }
-            finally { testPs4.IsEnabled = true; }
+            UiStateStore.SavePs4Ip(host);
+            if (realIp != null) realIp.Text = host;
+            ps4Status.Text = "✓ PS4 configurado. O BinLoader 9090 será usado apenas no envio do payload.";
+            ps4Status.TextColor = Green;
         };
 
         var ps4 = Card();
@@ -79,8 +69,8 @@ public static class UiSettingsScreen
                 Title("Conexão com PS4", Cyan),
                 new Label { Text = "IP do console", TextColor = Muted, FontSize = 10 },
                 ip,
-                new Label { Text = "GoldHEN BinLoader • TCP 9090", TextColor = Cyan, FontSize = 11 },
-                testPs4,
+                new Label { Text = "GoldHEN PayLoader/BinLoader • TCP 9090", TextColor = Cyan, FontSize = 11 },
+                preparePs4,
                 ps4Status
             }
         };
@@ -132,6 +122,13 @@ public static class UiSettingsScreen
             }
 
             string ipValue = (ip.Text ?? "").Trim();
+            if (!IPAddress.TryParse(ipValue, out _))
+            {
+                saveStatus.Text = "IP do PS4 inválido.";
+                saveStatus.TextColor = Red;
+                return;
+            }
+
             UiStateStore.SavePs4Ip(ipValue);
             UiStateStore.SaveWorkerUrl(workerValue);
             if (realIp != null) realIp.Text = ipValue;
