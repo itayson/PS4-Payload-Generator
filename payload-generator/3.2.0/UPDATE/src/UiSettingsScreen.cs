@@ -2,7 +2,6 @@ using System;
 using System.Net;
 using System.Reflection;
 using Microsoft.Maui;
-using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
@@ -141,11 +140,11 @@ public static class UiSettingsScreen
 
         var diagStatus = new Label { Text = "O relatório remove query strings e credenciais antes de copiar.", TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap };
         var copyDiag = Action("Copiar diagnóstico", Blue);
-        copyDiag.Clicked += async (_, _) =>
+        copyDiag.Clicked += (_, _) =>
         {
             try
             {
-                await Clipboard.Default.SetTextAsync(UiDiagnostics.BuildReport());
+                CopyToAndroidClipboard(UiDiagnostics.BuildReport());
                 diagStatus.Text = "✓ Diagnóstico copiado para a área de transferência.";
                 diagStatus.TextColor = Green;
             }
@@ -208,6 +207,14 @@ public static class UiSettingsScreen
         body.Children.Add(saveStatus);
 
         return new ScrollView { BackgroundColor = Background, Content = body };
+    }
+
+    static void CopyToAndroidClipboard(string text)
+    {
+        var context = Android.App.Application.Context;
+        var manager = context.GetSystemService(Android.Content.Context.ClipboardService) as Android.Content.ClipboardManager;
+        if (manager == null) throw new InvalidOperationException("ClipboardManager indisponível");
+        manager.PrimaryClip = Android.Content.ClipData.NewPlainText("Tayson diagnóstico", text ?? "");
     }
 
     static View Hero(string title, string subtitle)
