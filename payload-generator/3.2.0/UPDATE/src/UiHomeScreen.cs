@@ -155,25 +155,21 @@ public static class UiHomeScreen
         {
             try
             {
-                var clipboard = Android.App.Application.Context.GetSystemService(Android.Content.Context.ClipboardService) as Android.Content.ClipboardManager;
-                var clip = clipboard?.PrimaryClip;
-                if (clip == null || clip.ItemCount == 0)
+                if (url == null || url.Handler?.PlatformView == null)
                 {
-                    if (bottom != null) bottom.Text = "Área de transferência vazia.";
+                    if (bottom != null) bottom.Text = "Campo de link indisponível.";
                     return;
                 }
-                string value = clip.GetItemAt(0)?.CoerceToText(Android.App.Application.Context)?.ToString();
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    if (bottom != null) bottom.Text = "Área de transferência vazia.";
-                    return;
-                }
-                if (url != null)
-                {
-                    url.Text = value.Trim();
-                    url.CursorPosition = url.Text.Length;
-                }
-                if (bottom != null) bottom.Text = "Link colado. Toque em Validar PKG.";
+
+                url.Focus();
+                url.CursorPosition = 0;
+                url.SelectionLength = (url.Text ?? "").Length;
+                object platform = url.Handler.PlatformView;
+                MethodInfo method = platform.GetType().GetMethod("OnTextContextMenuItem", new[] { typeof(int) });
+                object result = method?.Invoke(platform, new object[] { 16908322 }); // android.R.id.paste
+                bool pasted = result is bool ok && ok;
+                if (bottom != null)
+                    bottom.Text = pasted ? "Link colado. Toque em Validar PKG." : "Não foi possível colar automaticamente.";
             }
             catch
             {
