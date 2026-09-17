@@ -18,8 +18,9 @@ namespace Tayson.Providers;
 ///   Colar -> Validar PKG -> Gerar ELF em memoria -> PS4:9090 -> BGFT
 ///
 /// No Android file picker is opened and no ELF needs to be saved locally.
-/// Manual buttons remain available as fallback. A failed automatic send is
-/// never retried automatically, preventing duplicate BGFT registrations.
+/// Manual buttons remain available as fallback. Connection establishment may
+/// be retried, but once a TCP connection succeeds the payload itself is written
+/// only once, preventing duplicate BGFT registrations.
 /// </summary>
 public static class UiAutoPipeline
 {
@@ -148,7 +149,7 @@ public static class UiAutoPipeline
 
             // The ELF stays in memory. Nothing is written to Downloads and no
             // Storage Access Framework/file-picker flow is invoked.
-            SetStatus(page, bottom, "Enviando diretamente ao GoldHEN BinLoader 9090...");
+            SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
             await SendToBinLoaderAsync(ps4Ip, payload);
 
             SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
@@ -156,11 +157,15 @@ public static class UiAutoPipeline
         }
         catch (TimeoutException)
         {
-            Fail(bottom, "Tempo esgotado ao conectar ao PS4:9090. Verifique o BinLoader.");
+            Fail(bottom, "O PS4:9090 não respondeu após várias tentativas. Confirme que o GoldHEN BinLoader está ativado.");
+        }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
+        {
+            Fail(bottom, "PS4 recusou a conexão na porta 9090 após várias tentativas. Reative o GoldHEN BinLoader e tente novamente.");
         }
         catch (SocketException ex)
         {
-            Fail(bottom, "Falha ao conectar ao PS4:9090 (SocketException " + ex.SocketErrorCode + ").");
+            Fail(bottom, "Falha de rede ao conectar ao PS4:9090 (" + ex.SocketErrorCode + ").");
         }
         catch (Exception ex)
         {
@@ -174,17 +179,65 @@ public static class UiAutoPipeline
 
     static async Task SendToBinLoaderAsync(string host, byte[] payload)
     {
-        using var client = new TcpClient();
-        Task connect = client.ConnectAsync(host, 9090);
-        Task completed = await Task.WhenAny(connect, Task.Delay(6000));
-        if (!ReferenceEquals(completed, connect))
-            throw new TimeoutException("BinLoader connection timeout");
-        await connect;
+        TcpClient client = null;
+        SocketException lastSocket = null;
+        bool timedOut = false;
 
-        using NetworkStream stream = client.GetStream();
-        await stream.WriteAsync(payload, 0, payload.Length);
-        await stream.FlushAsync();
+        // Retry only the connection establishment. We never retry after a TCP
+        // connection succeeds, because replaying a partially written ELF could
+        // create duplicate or corrupted BinLoader/BGFT work.
+        for (int attempt = 1; attempt <= 4; attempt++)
+        {
+            client = new TcpClient();
+            try
+            {
+                Task connect = client.ConnectAsync(host, 9090);
+                Task completed = await Task.WhenAny(connect, Task.Delay(2500));
+                if (!ReferenceEquals(completed, connect))
+                {
+                    timedOut = true;
+                    client.Dispose();
+                    client = null;
+                    if (attempt < 4)
+                    {
+                        await Task.Delay(350 * attempt);
+                        continue;
+                    }
+                    throw new TimeoutException("BinLoader connection timeout");
+                }
+
+                await connect;
+                break;
+            }
+            catch (SocketException ex) when (IsRetryableConnectError(ex.SocketErrorCode) && attempt < 4)
+            {
+                lastSocket = ex;
+                client.Dispose();
+                client = null;
+                await Task.Delay(350 * attempt);
+            }
+        }
+
+        if (client == null)
+        {
+            if (lastSocket != null) throw lastSocket;
+            if (timedOut) throw new TimeoutException("BinLoader connection timeout");
+            throw new SocketException((int)SocketError.NotConnected);
+        }
+
+        using (client)
+        using (NetworkStream stream = client.GetStream())
+        {
+            await stream.WriteAsync(payload, 0, payload.Length);
+            await stream.FlushAsync();
+        }
     }
+
+    static bool IsRetryableConnectError(SocketError error)
+        => error == SocketError.ConnectionRefused ||
+           error == SocketError.TimedOut ||
+           error == SocketError.HostUnreachable ||
+           error == SocketError.NetworkUnreachable;
 
     static void SetStatus(MainPage page, Label bottom, string message)
     {
