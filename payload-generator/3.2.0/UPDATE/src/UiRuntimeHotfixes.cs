@@ -11,10 +11,11 @@ using PS4RemotePkgMobile;
 namespace Tayson.Providers;
 
 /// <summary>
-/// Runtime fixes derived from the 3.4.0 hardware smoke tests:
+/// Runtime fixes and one-touch helpers derived from hardware smoke tests:
 ///  - replace the inherited paste Button so the old handler cannot run;
 ///  - read Android's clipboard service directly through JNI;
 ///  - automatically start PKG validation after a successful paste;
+///  - accept multiple newline-separated links and queue them in memory;
 ///  - refresh artwork after MainPage commits _currentMeta;
 ///  - optionally enrich sparse PKGs with PS4 title-database artwork.
 /// </summary>
@@ -26,6 +27,8 @@ public static class UiRuntimeHotfixes
     static readonly Color Surface2 = Color.FromArgb("#0A2238");
     static readonly HashSet<string> Enriching = new HashSet<string>(StringComparer.Ordinal);
     static bool AutoValidationPending;
+    static int BatchTotal;
+    static int BatchCompleted;
 
     static T Field<T>(MainPage page, string name) where T : class
         => typeof(MainPage).GetField(name, PrivateInstance)?.GetValue(page) as T;
@@ -108,10 +111,20 @@ public static class UiRuntimeHotfixes
     {
         if (url == null || AutoValidationPending) return;
 
-        string text = ReadAndroidClipboard(bottom);
-        if (string.IsNullOrWhiteSpace(text)) return;
+        string clipboard = ReadAndroidClipboard(bottom);
+        if (string.IsNullOrWhiteSpace(clipboard)) return;
 
-        text = text.Trim();
+        string text = UiSendQueue.LoadClipboard(clipboard, out int total);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            if (bottom != null) bottom.Text = "A área de transferência não contém um link HTTP/HTTPS válido.";
+            return;
+        }
+
+        BatchTotal = Math.Max(1, total);
+        BatchCompleted = 0;
+        UiDiagnostics.Add("FILA", BatchTotal > 1 ? "Fila carregada com " + BatchTotal + " links." : "Envio único carregado.");
+
         url.Text = text;
         url.CursorPosition = text.Length;
         url.SelectionLength = 0;
@@ -126,7 +139,10 @@ public static class UiRuntimeHotfixes
         AutoValidationPending = true;
         try
         {
-            if (bottom != null) bottom.Text = "Link colado. Validando PKG automaticamente...";
+            if (bottom != null)
+                bottom.Text = BatchTotal > 1
+                    ? "Fila " + 1 + "/" + BatchTotal + ": validando PKG automaticamente..."
+                    : "Link colado. Validando PKG automaticamente...";
 
             // Give TextChanged/Invalidate one UI turn to finish before invoking
             // the original, hardware-tested validation handler.
@@ -147,6 +163,60 @@ public static class UiRuntimeHotfixes
         {
             AutoValidationPending = false;
         }
+    }
+
+    public static async Task<bool> MarkCurrentCompletedAndStartNextAsync(MainPage page)
+    {
+        if (page == null) return false;
+        BatchCompleted++;
+
+        if (!UiSendQueue.TryTakeNext(out string next, out int remaining))
+        {
+            if (BatchTotal > 1)
+            {
+                Label bottomDone = Field<Label>(page, "lblBottomStatus");
+                if (bottomDone != null)
+                    bottomDone.Text = "Fila concluída: " + BatchCompleted + "/" + BatchTotal + " payloads enviados ao PS4.";
+                UiDiagnostics.Add("FILA", "Fila concluída: " + BatchCompleted + "/" + BatchTotal + ".");
+            }
+            BatchTotal = 0;
+            BatchCompleted = 0;
+            return false;
+        }
+
+        Entry url = Field<Entry>(page, "txtUrl");
+        Button scan = Field<Button>(page, "btnScan");
+        Label bottom = Field<Label>(page, "lblBottomStatus");
+        if (url == null || scan == null)
+        {
+            UiDiagnostics.Add("FILA", "Fila pausada porque os controles de validação não estão disponíveis.");
+            return false;
+        }
+
+        int current = BatchCompleted + 1;
+        url.Text = next;
+        url.CursorPosition = next.Length;
+        url.SelectionLength = 0;
+        url.Unfocus();
+        UiAutoPipeline.ArmExternal(next);
+        UiDiagnostics.Add("FILA", "Iniciando item " + current + "/" + BatchTotal + "; pendentes após este: " + remaining + ".");
+
+        if (bottom != null)
+            bottom.Text = "Fila " + current + "/" + BatchTotal + ": validando próximo PKG...";
+
+        await Task.Delay(180);
+        if (!scan.IsEnabled)
+        {
+            if (bottom != null) bottom.Text = "Fila pausada: a validação anterior ainda está ocupada.";
+            return false;
+        }
+
+        if (!TriggerOriginalButton(scan))
+        {
+            if (bottom != null) bottom.Text = "Fila pausada: não foi possível iniciar a próxima validação.";
+            return false;
+        }
+        return true;
     }
 
     static string ReadAndroidClipboard(Label bottom)
@@ -190,6 +260,7 @@ public static class UiRuntimeHotfixes
         catch (Exception ex)
         {
             if (bottom != null) bottom.Text = "Falha ao colar: " + ex.GetType().Name;
+            UiDiagnostics.Add("CLIPBOARD", "Falha ao ler clipboard: " + ex.GetType().Name);
             return "";
         }
         finally
@@ -227,8 +298,9 @@ public static class UiRuntimeHotfixes
             object result = perform.Invoke(platform, null);
             return !(result is bool ok) || ok;
         }
-        catch
+        catch (Exception ex)
         {
+            UiDiagnostics.Add("UI", "Falha ao acionar botão original: " + ex.GetType().Name);
             return false;
         }
     }
@@ -257,6 +329,10 @@ public static class UiRuntimeHotfixes
                 UiArtworkStore.Set(meta.ContentId, images);
                 page.Dispatcher.Dispatch(() => Render(page, images));
             }
+        }
+        catch (Exception ex)
+        {
+            UiDiagnostics.Add("ARTWORK", "Fallback de artwork falhou: " + ex.GetType().Name);
         }
         finally
         {
