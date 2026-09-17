@@ -11,10 +11,10 @@ namespace Tayson.Providers;
 
 /// <summary>
 /// Runtime fixes derived from the 3.4.0 hardware smoke test:
-///  - retry the native Android paste action after the Entry receives focus;
-///  - refresh artwork after the original MainPage has committed _currentMeta;
-///  - fall back to the official PS4 title metadata service when a provider PKG
-///    does not expose enough artwork through the bounded PKG ranges.
+///  - replace the first paste Button so its immediate failing handler is gone;
+///  - invoke Android paste only after the Entry has actually received focus;
+///  - refresh artwork after MainPage commits _currentMeta;
+///  - optionally enrich sparse PKGs with PS4 title-database artwork.
 /// </summary>
 public static class UiRuntimeHotfixes
 {
@@ -37,7 +37,45 @@ public static class UiRuntimeHotfixes
         Button paste = FindButton(page.Content, "Colar");
         if (paste != null && paste.AutomationId != "TaysonPasteDirect")
         {
-            paste.AutomationId = "TaysonPasteDirect";
+            // The original 3.4.0 button already owns a Clicked handler. Rather
+            // than stacking another handler on top of it, replace the visual
+            // button while preserving its grid slot and styling.
+            if (paste.Parent is Grid grid)
+            {
+                int column = Grid.GetColumn(paste);
+                int row = Grid.GetRow(paste);
+                int columnSpan = Grid.GetColumnSpan(paste);
+                int rowSpan = Grid.GetRowSpan(paste);
+                var replacement = new Button
+                {
+                    Text = paste.Text,
+                    WidthRequest = paste.WidthRequest,
+                    HeightRequest = paste.HeightRequest,
+                    Padding = paste.Padding,
+                    FontSize = paste.FontSize,
+                    FontAttributes = paste.FontAttributes,
+                    BackgroundColor = paste.BackgroundColor,
+                    TextColor = paste.TextColor,
+                    BorderColor = paste.BorderColor,
+                    BorderWidth = paste.BorderWidth,
+                    CornerRadius = paste.CornerRadius,
+                    HorizontalOptions = paste.HorizontalOptions,
+                    VerticalOptions = paste.VerticalOptions,
+                    AutomationId = "TaysonPasteDirect"
+                };
+                Grid.SetColumn(replacement, column);
+                Grid.SetRow(replacement, row);
+                Grid.SetColumnSpan(replacement, columnSpan);
+                Grid.SetRowSpan(replacement, rowSpan);
+                grid.Children.Remove(paste);
+                grid.Children.Add(replacement);
+                paste = replacement;
+            }
+            else
+            {
+                paste.AutomationId = "TaysonPasteDirect";
+            }
+
             paste.Clicked += async (_, _) => await RetryNativePasteAsync(url, bottom);
         }
 
@@ -75,11 +113,9 @@ public static class UiRuntimeHotfixes
             url.CursorPosition = 0;
             url.SelectionLength = before.Length;
 
-            // The first 3.4.0 build invoked paste immediately while the Button
-            // still owned input focus. On real Android hardware that could be
-            // rejected. Give the native EditText a short window to own focus,
-            // then invoke android.R.id.paste through the existing platform view.
-            await Task.Delay(140);
+            // Hardware test showed that invoking paste in the same click frame
+            // happens before Android transfers focus from the Button to EditText.
+            await Task.Delay(160);
             object platform = url.Handler?.PlatformView;
             if (platform == null)
             {
@@ -87,24 +123,14 @@ public static class UiRuntimeHotfixes
                 return;
             }
 
-            MethodInfo method = null;
-            Type type = platform.GetType();
-            while (type != null && method == null)
-            {
-                method = type.GetMethod(
-                    "OnTextContextMenuItem",
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                    null,
-                    new[] { typeof(int) },
-                    null);
-                type = type.BaseType;
-            }
-
+            MethodInfo method = platform.GetType().GetMethod("OnTextContextMenuItem", new[] { typeof(int) });
             object result = method?.Invoke(platform, new object[] { 16908322 }); // android.R.id.paste
-            await Task.Delay(60);
+            await Task.Delay(80);
+
             string after = url.Text ?? "";
-            bool pasted = after.Length > 0 && (!string.Equals(after, before, StringComparison.Ordinal) || before.Length == 0) &&
-                          (!(result is bool ok) || ok);
+            bool nativeAccepted = !(result is bool ok) || ok;
+            bool changed = !string.Equals(after, before, StringComparison.Ordinal);
+            bool pasted = nativeAccepted && after.Length > 0 && (changed || before.Length == 0);
 
             if (pasted)
             {
@@ -144,8 +170,9 @@ public static class UiRuntimeHotfixes
 
             if (merged.Count > 0)
             {
-                UiArtworkStore.Set(meta.ContentId, merged.ToArray());
-                page.Dispatcher.Dispatch(() => Render(page, merged.ToArray()));
+                byte[][] images = merged.ToArray();
+                UiArtworkStore.Set(meta.ContentId, images);
+                page.Dispatcher.Dispatch(() => Render(page, images));
             }
         }
         finally
@@ -218,7 +245,7 @@ public static class UiRuntimeHotfixes
             {
                 WidthRequest = i == 0 ? 92 : 132,
                 HeightRequest = 78,
-                Aspect = Aspect.AspectFill,
+                Aspect = Microsoft.Maui.Aspect.AspectFill,
                 Source = ImageSource.FromStream(() => new MemoryStream(bytes, false))
             };
             host.Children.Add(new Frame
