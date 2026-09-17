@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
+using Android.Runtime;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
@@ -12,7 +13,8 @@ namespace Tayson.Providers;
 /// <summary>
 /// Runtime fixes derived from the 3.4.0 hardware smoke test:
 ///  - replace the inherited paste Button so the old handler cannot run;
-///  - read Android's clipboard service directly, without focus/context-menu tricks;
+///  - read Android's clipboard service directly through JNI, avoiding bindings
+///    missing from the inherited/prebuilt Android runtime;
 ///  - refresh artwork after MainPage commits _currentMeta;
 ///  - optionally enrich sparse PKGs with PS4 title-database artwork.
 /// </summary>
@@ -103,14 +105,42 @@ public static class UiRuntimeHotfixes
     static void PasteFromAndroidClipboard(Entry url, Label bottom)
     {
         if (url == null) return;
+        IntPtr serviceClass = IntPtr.Zero;
+        IntPtr charsClass = IntPtr.Zero;
+        IntPtr chars = IntPtr.Zero;
         try
         {
             var context = Android.App.Application.Context;
-            var clipboard = context.GetSystemService("clipboard") as Android.Text.ClipboardManager;
-            string text = clipboard?.Text?.ToString()?.Trim() ?? "";
-            if (text.Length == 0)
+            Java.Lang.Object service = context.GetSystemService("clipboard");
+            if (service == null)
+            {
+                if (bottom != null) bottom.Text = "Serviço da área de transferência indisponível.";
+                return;
+            }
+
+            serviceClass = JNIEnv.GetObjectClass(service.Handle);
+            IntPtr getText = JNIEnv.GetMethodID(serviceClass, "getText", "()Ljava/lang/CharSequence;");
+            if (getText == IntPtr.Zero)
+            {
+                if (bottom != null) bottom.Text = "Área de transferência incompatível.";
+                return;
+            }
+
+            chars = JNIEnv.CallObjectMethod(service.Handle, getText);
+            if (chars == IntPtr.Zero)
             {
                 if (bottom != null) bottom.Text = "A área de transferência está vazia.";
+                return;
+            }
+
+            charsClass = JNIEnv.GetObjectClass(chars);
+            IntPtr toString = JNIEnv.GetMethodID(charsClass, "toString", "()Ljava/lang/String;");
+            IntPtr javaString = JNIEnv.CallObjectMethod(chars, toString);
+            string text = javaString == IntPtr.Zero ? "" : JNIEnv.GetString(javaString, JniHandleOwnership.TransferLocalRef);
+            text = (text ?? "").Trim();
+            if (text.Length == 0)
+            {
+                if (bottom != null) bottom.Text = "A área de transferência não contém texto.";
                 return;
             }
 
@@ -123,6 +153,12 @@ public static class UiRuntimeHotfixes
         catch (Exception ex)
         {
             if (bottom != null) bottom.Text = "Falha ao colar: " + ex.GetType().Name;
+        }
+        finally
+        {
+            if (charsClass != IntPtr.Zero) JNIEnv.DeleteLocalRef(charsClass);
+            if (chars != IntPtr.Zero) JNIEnv.DeleteLocalRef(chars);
+            if (serviceClass != IntPtr.Zero) JNIEnv.DeleteLocalRef(serviceClass);
         }
     }
 
