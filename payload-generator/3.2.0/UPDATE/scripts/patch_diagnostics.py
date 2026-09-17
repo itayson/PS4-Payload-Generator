@@ -15,16 +15,16 @@ assert len(old_diag) == len(new_diag)
 assert patched[diag_offset:diag_offset + len(old_diag)] == old_diag
 patched[diag_offset:diag_offset + len(old_diag)] = new_diag
 
-# The inherited native show_credits() routine does not store its message as one
-# contiguous string. It writes each byte to a stack buffer with a sequence of
-# `mov byte ptr [rbp-N], imm8` instructions at virtual address 0x438. The .text
-# section starts at file offset 0x4000, so only the imm8 operands are changed.
-# Instruction layout, call target, function size and notification behavior stay
-# exactly the same; only "Dev. By Phoenixx" becomes "Dev. By Tayson".
+# The inherited native show_credits() routine builds the message byte-by-byte
+# with `mov byte ptr [rbp-N], imm8`. Keep the exact instruction sequence and,
+# importantly, keep the C-string terminator at the exact same final byte as the
+# inherited payload. TaySon is padded with two spaces instead of introducing
+# earlier NUL bytes. This is the most conservative credit-only patch possible:
+# no opcode, displacement, call target, stack layout or function size changes.
 text_file_offset = 0x4000
 credit_vaddr = 0x438
 old_credit = b'Dev. By Phoenixx\0'
-new_credit = b'Dev. By Tayson\0\0\0'
+new_credit = b'Dev. By TaySon  \0'
 assert len(old_credit) == len(new_credit) == 17
 
 for i, (old_byte, new_byte) in enumerate(zip(old_credit, new_credit)):
@@ -36,6 +36,6 @@ for i, (old_byte, new_byte) in enumerate(zip(old_credit, new_credit)):
     patched[instruction + 3] = new_byte
 
 patched = bytes(patched)
-assert hashlib.sha256(patched).hexdigest() == '1cd739a6cfc5bd9bc0f8c86516eda7485da36655d98265e041e99a52d07276c1'
+assert hashlib.sha256(patched).hexdigest() == 'ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc'
 (root / 'assets/template.elf').write_bytes(patched)
-print('Template patched: diagnostic text corrected and native credit changed to Dev. By Tayson.')
+print('Template patched: diagnostic text corrected and fixed-width native credit changed to Dev. By TaySon.')
