@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.Maui;
@@ -85,34 +84,37 @@ public static class UiWorkerScreen
             status.Text = automatic ? "● Verificando Worker…" : "● Testando /health…";
             status.TextColor = Cyan;
             response.Text = worker.TrimEnd('/') + "/health";
-            var watch = Stopwatch.StartNew();
+            DateTime started = DateTime.UtcNow;
             try
             {
                 using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
                 string health = await client.GetStringAsync(worker.TrimEnd('/') + "/health");
-                watch.Stop();
+                long elapsed = ElapsedMs(started);
                 string compact = (health ?? "").Trim();
                 if (compact.Length > 160) compact = compact.Substring(0, 160) + "…";
                 bool ok = compact.IndexOf("OK", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool v8 = compact.IndexOf("v8", StringComparison.OrdinalIgnoreCase) >= 0;
                 status.Text = ok ? (v8 ? "● Online • Worker v8 OK" : "● Online • health OK") : "● Resposta recebida";
                 status.TextColor = ok ? Green : Cyan;
-                response.Text = watch.ElapsedMilliseconds + " ms • " + (compact.Length == 0 ? "Resposta vazia." : compact);
+                response.Text = elapsed + " ms • " + (compact.Length == 0 ? "Resposta vazia." : compact);
                 response.TextColor = ok ? Green : Muted;
-                UiDiagnostics.Add("WORKER", (ok ? "Health OK" : "Health respondeu") + " em " + watch.ElapsedMilliseconds + " ms.");
+                UiDiagnostics.Add("WORKER", (ok ? "Health OK" : "Health respondeu") + " em " + elapsed + " ms.");
             }
             catch (Exception ex)
             {
-                watch.Stop();
+                long elapsed = ElapsedMs(started);
                 status.Text = "● Worker indisponível";
                 status.TextColor = Red;
-                response.Text = ex.GetType().Name + " após " + watch.ElapsedMilliseconds + " ms.";
+                response.Text = ex.GetType().Name + " após " + elapsed + " ms.";
                 response.TextColor = Red;
-                UiDiagnostics.Add("WORKER", "Health falhou: " + ex.GetType().Name + " após " + watch.ElapsedMilliseconds + " ms.");
+                UiDiagnostics.Add("WORKER", "Health falhou: " + ex.GetType().Name + " após " + elapsed + " ms.");
             }
             finally { test.IsEnabled = true; }
         }
     }
+
+    static long ElapsedMs(DateTime started)
+        => (long)(DateTime.UtcNow - started).TotalMilliseconds;
 
     static View Hero(string title, string subtitle)
     {
