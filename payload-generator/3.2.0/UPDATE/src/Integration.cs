@@ -50,6 +50,7 @@ public static class Integration
 
         UiRedesign.Apply(page);
         UiPolish.Apply(page);
+        UiRuntimeHotfixes.Apply(page);
     }
 
     public static void Invalidate(MainPage page)
