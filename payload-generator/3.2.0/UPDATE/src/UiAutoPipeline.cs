@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.Maui.Controls;
@@ -10,15 +11,15 @@ namespace Tayson.Providers;
 /// <summary>
 /// One-touch pipeline for the 3.4.0 Home screen.
 ///
-/// The already hardware-tested MainPage handlers remain authoritative. This
-/// coordinator only presses those same controls in sequence after the user
-/// taps Colar:
+/// After Colar, the existing hardware-tested validation handler remains
+/// authoritative. As soon as the PKG is valid, this coordinator generates the
+/// ELF only in memory and streams it directly to GoldHEN BinLoader TCP 9090:
 ///
-///   Colar -> Validar PKG -> Gerar ELF -> Enviar ao BinLoader 9090
+///   Colar -> Validar PKG -> Gerar ELF em memoria -> PS4:9090 -> BGFT
 ///
-/// Manual buttons remain available as a fallback, but are not required for the
-/// normal flow. The coordinator is deliberately session-only and never retries
-/// a failed send automatically, preventing duplicate BGFT registrations.
+/// No Android file picker is opened and no ELF needs to be saved locally.
+/// Manual buttons remain available as fallback. A failed automatic send is
+/// never retried automatically, preventing duplicate BGFT registrations.
 /// </summary>
 public static class UiAutoPipeline
 {
@@ -27,8 +28,7 @@ public static class UiAutoPipeline
 
     static bool Pending;
     static bool Busy;
-    static bool GenerateTriggered;
-    static bool InjectTriggered;
+    static bool SendStarted;
     static string PendingUrl = "";
 
     static T Field<T>(MainPage page, string name) where T : class
@@ -41,14 +41,12 @@ public static class UiAutoPipeline
         Button paste = FindPasteButton(page.Content);
         var url = Field<Entry>(page, "txtUrl");
         var generate = Field<Button>(page, "btnGerar");
-        var inject = Field<Button>(page, "btnInjetar");
         var bottom = Field<Label>(page, "lblBottomStatus");
 
         if (paste != null)
         {
-            // UiRuntimeHotfixes wires its paste/validate handler before this
-            // coordinator. By the time this handler runs, txtUrl already holds
-            // the clipboard value and validation is about to start.
+            // UiRuntimeHotfixes is attached first. It writes the clipboard URL
+            // and starts validation; this handler only arms the direct-send step.
             paste.Clicked += (_, _) => Arm(url);
         }
 
@@ -57,16 +55,7 @@ public static class UiAutoPipeline
             generate.PropertyChanged += async (_, e) =>
             {
                 if (e.PropertyName == nameof(Button.IsEnabled) && generate.IsEnabled)
-                    await ContinueAsync(page).ConfigureAwait(false);
-            };
-        }
-
-        if (inject != null)
-        {
-            inject.PropertyChanged += async (_, e) =>
-            {
-                if (e.PropertyName == nameof(Button.IsEnabled) && inject.IsEnabled)
-                    await ContinueAsync(page).ConfigureAwait(false);
+                    await ContinueAsync(page);
             };
         }
 
@@ -77,24 +66,15 @@ public static class UiAutoPipeline
                 if (e.PropertyName != nameof(Label.Text)) return;
                 string text = bottom.Text ?? "";
 
-                if (LooksSuccessful(text))
-                {
-                    Reset();
-                    return;
-                }
-
-                if (LooksLikeFailure(text))
+                if (LooksSuccessful(text) || LooksLikeFailure(text))
                 {
                     bool active;
-                    lock (Gate) active = Pending && (GenerateTriggered || InjectTriggered);
+                    lock (Gate) active = Pending;
                     if (active) Reset();
                     return;
                 }
 
-                // Some inherited handlers update status text before toggling
-                // button state. This gives the pipeline a second continuation
-                // signal without depending on one exact localized sentence.
-                if (LooksValidated(text) || LooksGenerated(text))
+                if (LooksValidated(text))
                     _ = ContinueAsync(page);
             };
         }
@@ -109,8 +89,7 @@ public static class UiAutoPipeline
         {
             Pending = true;
             Busy = false;
-            GenerateTriggered = false;
-            InjectTriggered = false;
+            SendStarted = false;
             PendingUrl = value;
         }
     }
@@ -118,14 +97,13 @@ public static class UiAutoPipeline
     static async Task ContinueAsync(MainPage page)
     {
         Entry url = Field<Entry>(page, "txtUrl");
-        Button generate = Field<Button>(page, "btnGerar");
-        Button inject = Field<Button>(page, "btnInjetar");
-        Label bottom = Field<Label>(page, "lblBottomStatus");
         Entry ip = Field<Entry>(page, "txtIp");
+        Button generate = Field<Button>(page, "btnGerar");
+        Label bottom = Field<Label>(page, "lblBottomStatus");
 
         lock (Gate)
         {
-            if (!Pending || Busy) return;
+            if (!Pending || Busy || SendStarted) return;
             Busy = true;
         }
 
@@ -142,57 +120,51 @@ public static class UiAutoPipeline
                 }
             }
 
+            // Validation is complete only after MainPage has committed metadata
+            // and enabled its existing Gerar button. We use the state as a signal
+            // only; we do NOT click Gerar, because that handler opens the Android
+            // save-file picker.
             PkgMetadata meta = Field<PkgMetadata>(page, "_currentMeta");
-            bool shouldGenerate;
-            lock (Gate) shouldGenerate = Pending && !GenerateTriggered;
+            if (meta == null || generate == null || !generate.IsEnabled) return;
 
-            if (shouldGenerate && generate != null && generate.IsEnabled && meta != null)
+            string ps4Ip = (ip?.Text ?? "").Trim();
+            if (ps4Ip.Length == 0)
             {
-                lock (Gate)
-                {
-                    if (!Pending || GenerateTriggered) return;
-                    GenerateTriggered = true;
-                }
-
-                Dispatch(page, () =>
-                {
-                    if (bottom != null) bottom.Text = "PKG validado. Gerando ELF automaticamente...";
-                });
-                await Task.Delay(140).ConfigureAwait(false);
-
-                bool started = await TriggerOnUiAsync(page, generate).ConfigureAwait(false);
-                if (!started)
-                    Fail(bottom, "PKG validado, mas não foi possível iniciar a geração automática do ELF.");
+                Fail(bottom, "Informe o IP do PS4 antes de usar o envio automático.");
                 return;
             }
 
-            bool shouldInject;
-            lock (Gate) shouldInject = Pending && GenerateTriggered && !InjectTriggered;
-
-            if (shouldInject && inject != null && inject.IsEnabled)
+            lock (Gate)
             {
-                if (string.IsNullOrWhiteSpace(ip?.Text))
-                {
-                    Fail(bottom, "Informe o IP do PS4 antes de usar o envio automático.");
-                    return;
-                }
-
-                lock (Gate)
-                {
-                    if (!Pending || InjectTriggered) return;
-                    InjectTriggered = true;
-                }
-
-                Dispatch(page, () =>
-                {
-                    if (bottom != null) bottom.Text = "ELF pronto. Enviando automaticamente ao PS4:9090...";
-                });
-                await Task.Delay(140).ConfigureAwait(false);
-
-                bool started = await TriggerOnUiAsync(page, inject).ConfigureAwait(false);
-                if (!started)
-                    Fail(bottom, "ELF pronto, mas não foi possível iniciar o envio automático ao PS4.");
+                if (!Pending || SendStarted) return;
+                SendStarted = true;
             }
+
+            SetStatus(page, bottom, "PKG validado. Preparando envio direto ao PS4...");
+
+            byte[] payload = await Integration.GenerateAsync(page);
+            if (payload == null || payload.Length == 0)
+                throw new InvalidOperationException("O ELF gerado está vazio.");
+
+            // The ELF stays in memory. Nothing is written to Downloads and no
+            // Storage Access Framework/file-picker flow is invoked.
+            SetStatus(page, bottom, "Enviando diretamente ao GoldHEN BinLoader 9090...");
+            await SendToBinLoaderAsync(ps4Ip, payload);
+
+            SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
+            Reset();
+        }
+        catch (TimeoutException)
+        {
+            Fail(bottom, "Tempo esgotado ao conectar ao PS4:9090. Verifique o BinLoader.");
+        }
+        catch (SocketException ex)
+        {
+            Fail(bottom, "Falha ao conectar ao PS4:9090 (SocketException " + ex.SocketErrorCode + ").");
+        }
+        catch (Exception ex)
+        {
+            Fail(bottom, "Falha no envio automático: " + ex.Message);
         }
         finally
         {
@@ -200,15 +172,24 @@ public static class UiAutoPipeline
         }
     }
 
-    static Task<bool> TriggerOnUiAsync(MainPage page, Button button)
+    static async Task SendToBinLoaderAsync(string host, byte[] payload)
     {
-        var result = new TaskCompletionSource<bool>();
-        Dispatch(page, () =>
-        {
-            try { result.TrySetResult(TriggerOriginalButton(button)); }
-            catch (Exception ex) { result.TrySetException(ex); }
-        });
-        return result.Task;
+        using var client = new TcpClient { NoDelay = true };
+        Task connect = client.ConnectAsync(host, 9090);
+        Task completed = await Task.WhenAny(connect, Task.Delay(6000));
+        if (!ReferenceEquals(completed, connect))
+            throw new TimeoutException("BinLoader connection timeout");
+        await connect;
+
+        using NetworkStream stream = client.GetStream();
+        await stream.WriteAsync(payload, 0, payload.Length);
+        await stream.FlushAsync();
+    }
+
+    static void SetStatus(MainPage page, Label bottom, string message)
+    {
+        if (bottom == null) return;
+        Dispatch(page, () => bottom.Text = message);
     }
 
     static void Dispatch(MainPage page, Action action)
@@ -231,54 +212,18 @@ public static class UiAutoPipeline
         {
             Pending = false;
             Busy = false;
-            GenerateTriggered = false;
-            InjectTriggered = false;
+            SendStarted = false;
             PendingUrl = "";
         }
     }
 
-    static bool TriggerOriginalButton(Button button)
-    {
-        try
-        {
-            Type type = button.GetType();
-            while (type != null)
-            {
-                MethodInfo send = type.GetMethod(
-                    "SendClicked",
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
-                    null,
-                    Type.EmptyTypes,
-                    null);
-                if (send != null)
-                {
-                    send.Invoke(button, null);
-                    return true;
-                }
-                type = type.BaseType;
-            }
-
-            object platform = button.Handler?.PlatformView;
-            if (platform == null) return false;
-            MethodInfo perform = platform.GetType().GetMethod("PerformClick", Type.EmptyTypes);
-            if (perform == null) return false;
-            object nativeResult = perform.Invoke(platform, null);
-            return !(nativeResult is bool ok) || ok;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     static bool LooksSuccessful(string text)
-        => Contains(text, "payload enviado") || Contains(text, "enviado ao ps4") || Contains(text, "successfully sent") || Contains(text, "payload sent");
+        => Contains(text, "payload enviado") || Contains(text, "enviado ao ps4") ||
+           Contains(text, "successfully sent") || Contains(text, "payload sent");
 
     static bool LooksValidated(string text)
-        => Contains(text, "analisado com sucesso") || Contains(text, "validado com sucesso") || Contains(text, "pkg validado");
-
-    static bool LooksGenerated(string text)
-        => Contains(text, "elf gerado") || Contains(text, "payload salvo") || Contains(text, "payload saved");
+        => Contains(text, "analisado com sucesso") || Contains(text, "validado com sucesso") ||
+           Contains(text, "pkg validado");
 
     static bool LooksLikeFailure(string text)
         => Contains(text, "erro") || Contains(text, "falha") || Contains(text, "inválid") ||
