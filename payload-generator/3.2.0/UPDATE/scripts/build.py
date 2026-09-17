@@ -51,6 +51,31 @@ def _circle(x, y, cx, cy, r):
     dx = x - cx; dy = y - cy
     return dx * dx + dy * dy <= r * r
 
+def _t_shape(nx, ny, expand=0.0):
+    top_y0 = 0.275 - expand
+    top_y1 = 0.385 + expand
+    if top_y0 <= ny <= top_y1:
+        progress = (ny - top_y0) / max(0.001, top_y1 - top_y0)
+        inset = 0.205 + progress * 0.045 - expand
+        if inset <= nx <= 1.0 - inset:
+            return True
+    stem_left = 0.455 - expand
+    stem_right = 0.555 + expand
+    if stem_left <= nx <= stem_right and 0.355 - expand <= ny <= 0.725 + expand:
+        return True
+    # Small diagonal cut gives the monogram a custom TaySon identity while
+    # keeping it readable at Android's 48 px launcher density.
+    if 0.43 - expand <= nx <= 0.555 + expand and 0.66 - expand <= ny <= 0.745 + expand:
+        return nx >= 0.43 + (ny - 0.66) * 0.42 - expand
+    return False
+
+def _purple(nx, ny, bright=False):
+    # Violet gradient: deeper at the bottom, brighter toward the top/right.
+    mix = max(0.0, min(1.0, 0.58 * nx + 0.42 * (1.0 - ny)))
+    if bright:
+        return (176 + int(35 * mix), 72 + int(38 * mix), 255, 255)
+    return (104 + int(42 * mix), 28 + int(28 * mix), 210 + int(35 * mix), 255)
+
 def _icon_pixel(x, y, w, h, round_mask=False, foreground_only=False):
     nx = (x + 0.5) / w
     ny = (y + 0.5) / h
@@ -59,47 +84,37 @@ def _icon_pixel(x, y, w, h, round_mask=False, foreground_only=False):
         return (0, 0, 0, 0)
 
     if foreground_only:
-        # Safe adaptive-icon foreground: neon T monogram + three status nodes.
-        t = ((0.27 <= nx <= 0.73 and 0.28 <= ny <= 0.39) or
-             (0.445 <= nx <= 0.555 and 0.36 <= ny <= 0.70))
-        if t:
-            return (20, 220, 255, 255)
-        if (_circle(nx, ny, 0.36, 0.77, 0.038) or
-            _circle(nx, ny, 0.50, 0.77, 0.038) or
-            _circle(nx, ny, 0.64, 0.77, 0.038)):
-            return (0, 230, 167, 255)
+        if _t_shape(nx, ny, 0.012):
+            if _t_shape(nx, ny, 0.0):
+                return _purple(nx, ny, True)
+            return (87, 20, 170, 150)
         return (0, 0, 0, 0)
 
-    # Dark navy background with a subtle vertical blue gradient.
-    r = 3 + int(4 * (1 - ny))
-    g = 13 + int(17 * (1 - ny))
-    b = 27 + int(25 * (1 - ny))
+    # Predominantly black background with only a restrained purple lift.
+    edge = abs(nx - 0.5) + abs(ny - 0.5)
+    lift = max(0.0, 1.0 - edge * 1.45)
+    r = 4 + int(7 * lift)
+    g = 2 + int(2 * lift)
+    b = 9 + int(17 * lift)
 
-    outer = _rounded_box(nx, ny, 0.055, 0.055, 0.945, 0.945, 0.16)
-    inner = _rounded_box(nx, ny, 0.075, 0.075, 0.925, 0.925, 0.145)
+    # Minimal one-pixel-equivalent purple outline at launcher scale.
+    outer = _rounded_box(nx, ny, 0.065, 0.065, 0.935, 0.935, 0.17)
+    inner = _rounded_box(nx, ny, 0.082, 0.082, 0.918, 0.918, 0.155)
     if outer and not inner:
-        return (0, 190, 255, 255)
+        return (92, 28, 178, 255)
 
-    # Geometric TAYS0N/T monogram: readable even at 48 px.
-    t_glow = ((0.205 <= nx <= 0.795 and 0.245 <= ny <= 0.405) or
-              (0.415 <= nx <= 0.585 and 0.36 <= ny <= 0.735))
-    t_core = ((0.235 <= nx <= 0.765 and 0.275 <= ny <= 0.375) or
-              (0.445 <= nx <= 0.555 and 0.35 <= ny <= 0.70))
-    if t_glow:
-        if t_core:
-            return (85, 235, 255, 255)
-        return (0, 104, 205, 255)
-
-    if (_circle(nx, ny, 0.34, 0.79, 0.034) or
-        _circle(nx, ny, 0.50, 0.79, 0.034) or
-        _circle(nx, ny, 0.66, 0.79, 0.034)):
-        return (0, 230, 167, 255)
+    if _t_shape(nx, ny, 0.018):
+        if _t_shape(nx, ny, 0.0):
+            return _purple(nx, ny, True)
+        return _purple(nx, ny, False)
 
     return (r, g, b, 255)
 
 def _background_pixel(x, y, w, h):
+    nx = (x + 0.5) / w
     ny = (y + 0.5) / h
-    return (3, 15 + int(14 * (1 - ny)), 31 + int(24 * (1 - ny)), 255)
+    lift = max(0.0, 1.0 - (abs(nx - 0.5) + abs(ny - 0.45)) * 1.3)
+    return (4 + int(8 * lift), 2 + int(2 * lift), 10 + int(22 * lift), 255)
 
 def icon_resource(name):
     parts = name.split('/')
