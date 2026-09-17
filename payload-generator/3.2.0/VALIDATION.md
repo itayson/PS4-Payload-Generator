@@ -12,6 +12,23 @@ Os cinco provedores principais já tiveram o núcleo Android → ELF → GoldHEN
 
 A 3.5.0 não redesenha esse núcleo. Ela adiciona confiabilidade, fila e diagnóstico ao redor dele.
 
+## Smoke test físico parcial — 2026-09-17
+
+Vídeo de validação em Android + PS4 confirmou na build 3.5.0:
+
+- fluxo AkiraBox de um único PKG iniciado pelo botão **Colar**;
+- validação automática do PKG sem seletor de arquivo;
+- geração do ELF em memória e envio direto ao GoldHEN BinLoader 9090;
+- PS4 exibindo **Payload received** para a conexão originada pelo Android;
+- app exibindo **Payload enviado ao PS4. Registro BGFT iniciado.**;
+- histórico registrando o envio como **ENVIADO**;
+- artwork/metadados do pacote exibidos após a validação;
+- Worker v8 respondendo **Online • Worker v8 OK**, com latência observada de aproximadamente 49 ms;
+- interface, navegação entre Início/Histórico/Worker/Ajustes e identidade 3.5.0 funcionando durante o teste.
+
+Este vídeo valida o caminho de **envio único** e o health check do Worker. Ele não demonstra ainda a fila com dois links consecutivos, a preservação da fila sob falha 9090 nem a inspeção do conteúdo copiado pelo diagnóstico. Esses itens permanecem como bloqueadores antes do merge.
+
+
 ## Mudanças específicas da 3.5.0
 
 ### Fila automática transacional
