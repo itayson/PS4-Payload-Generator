@@ -113,10 +113,11 @@ public static class UiSettingsScreen
         var clearQueue = Outline("Limpar fila pendente");
         clearQueue.Clicked += (_, _) =>
         {
-            UiSendQueue.Clear();
-            UiDiagnostics.Add("FILA", "Fila limpa manualmente.");
-            queueStatus.Text = "Fila limpa. Nenhum item pendente.";
-            queueStatus.TextColor = Green;
+            int removed = UiRuntimeHotfixes.CancelPendingBatch();
+            queueStatus.Text = removed > 0
+                ? removed + " item(ns) pendente(s) cancelado(s). O envio atual, se houver, continua."
+                : "Nenhum item pendente para cancelar.";
+            queueStatus.TextColor = removed > 0 ? Green : Muted;
         };
         var queueCard = Card();
         queueCard.Content = new VerticalStackLayout
