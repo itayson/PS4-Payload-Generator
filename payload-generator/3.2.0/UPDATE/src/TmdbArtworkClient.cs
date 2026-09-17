@@ -121,12 +121,13 @@ public static class TmdbArtworkClient
         return LinkPolicy.Domain(host, "playstation.net");
     }
 
-    static string JsonUrl(string titleId)
+    static string JsonUrl(string titleId, bool secure)
     {
         string id = (titleId ?? "").Trim().ToUpperInvariant();
         if (!TitleId.IsMatch(id)) return "";
         string np = id + "_00";
-        return "https://tmdb.np.dl.playstation.net/tmdb2/" + np + "_" + Hash(np) + "/" + np + ".json";
+        string scheme = secure ? "https://" : "http://";
+        return scheme + "tmdb.np.dl.playstation.net/tmdb2/" + np + "_" + Hash(np) + "/" + np + ".json";
     }
 
     static string UnescapeUrl(string value)
@@ -138,10 +139,23 @@ public static class TmdbArtworkClient
     static void AddUrl(List<string> urls, string value)
     {
         value = UnescapeUrl(value);
-        if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) value = "https://" + value.Substring(7);
-        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri uri) || uri.Scheme != Uri.UriSchemeHttps || !AllowedImageHost(uri)) return;
-        foreach (string existing in urls) if (existing.Equals(uri.AbsoluteUri, StringComparison.Ordinal)) return;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri uri)) return;
+        if (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp) return;
+        if (!AllowedImageHost(uri)) return;
+        foreach (string existing in urls)
+            if (existing.Equals(uri.AbsoluteUri, StringComparison.Ordinal)) return;
         urls.Add(uri.AbsoluteUri);
+    }
+
+    static void AddSibling(List<string> urls, string source, string filename)
+    {
+        source = UnescapeUrl(source);
+        if (!Uri.TryCreate(source, UriKind.Absolute, out Uri uri) || !AllowedImageHost(uri)) return;
+        string path = uri.AbsolutePath;
+        int slash = path.LastIndexOf('/');
+        if (slash < 0) return;
+        string sibling = uri.Scheme + "://" + uri.Authority + path.Substring(0, slash + 1) + filename;
+        AddUrl(urls, sibling);
     }
 
     static bool IsImage(byte[] data)
@@ -194,25 +208,48 @@ public static class TmdbArtworkClient
 
     public static async Task<byte[][]> FetchAsync(string titleId)
     {
-        string metadataUrl = JsonUrl(titleId);
-        if (metadataUrl.Length == 0) return Array.Empty<byte[]>();
+        string secureMetadataUrl = JsonUrl(titleId, true);
+        if (secureMetadataUrl.Length == 0) return Array.Empty<byte[]>();
+
         try
         {
             using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(12) };
             http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", new[] { "PS4TitleMetadata/1.00" });
-            string json = await DownloadTextAsync(http, metadataUrl).ConfigureAwait(false);
+
+            string json = await DownloadTextAsync(http, secureMetadataUrl).ConfigureAwait(false);
+            if (json.Length == 0)
+            {
+                string legacy = JsonUrl(titleId, false);
+                json = await DownloadTextAsync(http, legacy).ConfigureAwait(false);
+            }
             if (json.Length == 0) return Array.Empty<byte[]>();
 
             var urls = new List<string>();
             foreach (Match m in IconUrl.Matches(json)) AddUrl(urls, m.Groups[1].Value);
+
             Match background = BackgroundUrl.Match(json);
-            if (background.Success) AddUrl(urls, background.Groups[1].Value);
+            if (background.Success)
+            {
+                string value = background.Groups[1].Value;
+                AddUrl(urls, value);
+                // Many PS4 title packages keep additional artwork beside pic0.
+                // Probe only a few bounded siblings; 404/403 simply means that
+                // particular title does not publish the extra image.
+                AddSibling(urls, value, "pic1.png");
+                AddSibling(urls, value, "pic2.png");
+                AddSibling(urls, value, "icon0.png");
+            }
 
             var result = new List<byte[]>();
             foreach (string url in urls)
             {
-                if (result.Count >= 3) break;
+                if (result.Count >= 5) break;
                 byte[] image = await DownloadBoundedAsync(http, url).ConfigureAwait(false);
+                if (image == null && url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                {
+                    string secure = "https://" + url.Substring(7);
+                    image = await DownloadBoundedAsync(http, secure).ConfigureAwait(false);
+                }
                 if (image != null) result.Add(image);
             }
             return result.ToArray();
