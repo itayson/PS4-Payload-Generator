@@ -29,6 +29,7 @@ public static class UiRuntimeHotfixes
     static bool AutoValidationPending;
     static int BatchTotal;
     static int BatchCompleted;
+    static volatile bool BatchCancelRequested;
 
     static T Field<T>(MainPage page, string name) where T : class
         => typeof(MainPage).GetField(name, PrivateInstance)?.GetValue(page) as T;
@@ -107,6 +108,19 @@ public static class UiRuntimeHotfixes
         }
     }
 
+    public static int CancelPendingBatch()
+    {
+        int removed = UiSendQueue.PendingCount;
+        BatchCancelRequested = true;
+        UiSendQueue.Clear();
+        BatchTotal = 0;
+        BatchCompleted = 0;
+        UiDiagnostics.Add("FILA", removed > 0
+            ? "Fila pendente cancelada manualmente; envio atual, se houver, não foi interrompido."
+            : "Comando de limpar fila executado sem itens pendentes.");
+        return removed;
+    }
+
     static async Task PasteAndValidateAsync(Entry url, Label bottom, Button scan)
     {
         if (url == null || AutoValidationPending) return;
@@ -127,6 +141,7 @@ public static class UiRuntimeHotfixes
             return;
         }
 
+        BatchCancelRequested = false;
         BatchTotal = Math.Max(1, total);
         BatchCompleted = 0;
         UiDiagnostics.Add("FILA", BatchTotal > 1 ? "Fila carregada com " + BatchTotal + " links." : "Envio único carregado.");
@@ -174,6 +189,16 @@ public static class UiRuntimeHotfixes
     public static async Task<bool> MarkCurrentCompletedAndStartNextAsync(MainPage page)
     {
         if (page == null) return false;
+
+        if (BatchCancelRequested)
+        {
+            BatchCancelRequested = false;
+            BatchTotal = 0;
+            BatchCompleted = 0;
+            UiDiagnostics.Add("FILA", "Continuação automática cancelada; não há próximo item a iniciar.");
+            return false;
+        }
+
         BatchCompleted++;
 
         if (!UiSendQueue.TryPeekNext(out string next, out int remainingAfterCurrent))
@@ -210,8 +235,18 @@ public static class UiRuntimeHotfixes
 
         // The original validation button may still be unwinding after the
         // previous item. Wait briefly instead of consuming the queued URL.
-        for (int attempt = 0; attempt < 5 && !scan.IsEnabled; attempt++)
+        for (int attempt = 0; attempt < 5 && !scan.IsEnabled && !BatchCancelRequested; attempt++)
             await Task.Delay(180);
+
+        if (BatchCancelRequested)
+        {
+            BatchCancelRequested = false;
+            BatchTotal = 0;
+            BatchCompleted = 0;
+            if (bottom != null) bottom.Text = "Fila pendente cancelada. O próximo PKG não foi iniciado.";
+            UiDiagnostics.Add("FILA", "Cancelamento aplicado antes de iniciar o próximo item.");
+            return false;
+        }
 
         if (!scan.IsEnabled)
         {
