@@ -1,12 +1,127 @@
 #!/usr/bin/env python3
 """Rebuild the Tayson delta with the user's extracted app and a local .NET toolchain."""
-import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile
+import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile, zlib
 from pathlib import Path
 
-APP_VERSION = '3.3.1'
-APP_VERSION_CODE = 36
+APP_VERSION = '3.4.0'
+APP_VERSION_CODE = 37
 APP_LABEL = 'Tayson PS4 Payload Generator'
-APK_NAME = 'PS4-Payload-Generator-3.3.1-TaySon.apk'
+APK_NAME = 'PS4-Payload-Generator-3.4.0-TaySon.apk'
+
+ICON_SIZES = {
+    'mipmap-mdpi-v4': 48,
+    'mipmap-hdpi-v4': 72,
+    'mipmap-xhdpi-v4': 96,
+    'mipmap-xxhdpi-v4': 144,
+    'mipmap-xxxhdpi-v4': 192,
+}
+ADAPTIVE_SIZES = {
+    'mipmap-mdpi-v4': 108,
+    'mipmap-hdpi-v4': 162,
+    'mipmap-xhdpi-v4': 216,
+    'mipmap-xxhdpi-v4': 324,
+    'mipmap-xxxhdpi-v4': 432,
+}
+
+def _chunk(kind, payload):
+    return struct.pack('>I', len(payload)) + kind + payload + struct.pack('>I', zlib.crc32(kind + payload) & 0xffffffff)
+
+def _png(width, height, pixel):
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)
+        for x in range(width):
+            raw.extend(pixel(x, y, width, height))
+    return (b'\x89PNG\r\n\x1a\n' +
+            _chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)) +
+            _chunk(b'IDAT', zlib.compress(bytes(raw), 9)) +
+            _chunk(b'IEND', b''))
+
+def _rounded_box(x, y, left, top, right, bottom, radius):
+    if x < left or x > right or y < top or y > bottom:
+        return False
+    if left + radius <= x <= right - radius or top + radius <= y <= bottom - radius:
+        return True
+    cx = left + radius if x < left + radius else right - radius
+    cy = top + radius if y < top + radius else bottom - radius
+    dx = x - cx; dy = y - cy
+    return dx * dx + dy * dy <= radius * radius
+
+def _circle(x, y, cx, cy, r):
+    dx = x - cx; dy = y - cy
+    return dx * dx + dy * dy <= r * r
+
+def _icon_pixel(x, y, w, h, round_mask=False, foreground_only=False):
+    nx = (x + 0.5) / w
+    ny = (y + 0.5) / h
+
+    if round_mask and not _circle(nx, ny, 0.5, 0.5, 0.5):
+        return (0, 0, 0, 0)
+
+    if foreground_only:
+        # Safe adaptive-icon foreground: neon T monogram + three status nodes.
+        t = ((0.27 <= nx <= 0.73 and 0.28 <= ny <= 0.39) or
+             (0.445 <= nx <= 0.555 and 0.36 <= ny <= 0.70))
+        if t:
+            return (20, 220, 255, 255)
+        if (_circle(nx, ny, 0.36, 0.77, 0.038) or
+            _circle(nx, ny, 0.50, 0.77, 0.038) or
+            _circle(nx, ny, 0.64, 0.77, 0.038)):
+            return (0, 230, 167, 255)
+        return (0, 0, 0, 0)
+
+    # Dark navy background with a subtle vertical blue gradient.
+    r = 3 + int(4 * (1 - ny))
+    g = 13 + int(17 * (1 - ny))
+    b = 27 + int(25 * (1 - ny))
+
+    outer = _rounded_box(nx, ny, 0.055, 0.055, 0.945, 0.945, 0.16)
+    inner = _rounded_box(nx, ny, 0.075, 0.075, 0.925, 0.925, 0.145)
+    if outer and not inner:
+        return (0, 190, 255, 255)
+
+    # Geometric TAYS0N/T monogram: readable even at 48 px.
+    t_glow = ((0.205 <= nx <= 0.795 and 0.245 <= ny <= 0.405) or
+              (0.415 <= nx <= 0.585 and 0.36 <= ny <= 0.735))
+    t_core = ((0.235 <= nx <= 0.765 and 0.275 <= ny <= 0.375) or
+              (0.445 <= nx <= 0.555 and 0.35 <= ny <= 0.70))
+    if t_glow:
+        if t_core:
+            return (85, 235, 255, 255)
+        return (0, 104, 205, 255)
+
+    if (_circle(nx, ny, 0.34, 0.79, 0.034) or
+        _circle(nx, ny, 0.50, 0.79, 0.034) or
+        _circle(nx, ny, 0.66, 0.79, 0.034)):
+        return (0, 230, 167, 255)
+
+    return (r, g, b, 255)
+
+def _background_pixel(x, y, w, h):
+    ny = (y + 0.5) / h
+    return (3, 15 + int(14 * (1 - ny)), 31 + int(24 * (1 - ny)), 255)
+
+def icon_resource(name):
+    parts = name.split('/')
+    if len(parts) < 3 or not name.startswith('res/mipmap-'):
+        return None
+    folder = parts[-2]
+    file = parts[-1]
+    if folder not in ICON_SIZES:
+        return None
+    if file == 'icone.png':
+        size = ICON_SIZES[folder]
+        return _png(size, size, lambda x,y,w,h: _icon_pixel(x,y,w,h))
+    if file == 'icone_round.png':
+        size = ICON_SIZES[folder]
+        return _png(size, size, lambda x,y,w,h: _icon_pixel(x,y,w,h,round_mask=True))
+    if file == 'icone_background.png':
+        size = ADAPTIVE_SIZES[folder]
+        return _png(size, size, _background_pixel)
+    if file == 'icone_foreground.png':
+        size = ADAPTIVE_SIZES[folder]
+        return _png(size, size, lambda x,y,w,h: _icon_pixel(x,y,w,h,foreground_only=True))
+    return None
 
 def manifest_patch(data):
     chunks = []
@@ -123,6 +238,7 @@ def main():
     struct.pack_into('<II',store,20+78*24,offset,len(dll))
     manifest=manifest_patch(((backup/'original-AndroidManifest.xml') if (backup/'original-AndroidManifest.xml').exists() else base/'AndroidManifest.xml').read_bytes())
     unsigned=work/'unsigned.apk'
+    icon_count=0
     with zipfile.ZipFile(unsigned,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for p in sorted(base.rglob('*')):
             if not p.is_file():continue
@@ -130,9 +246,16 @@ def main():
             name=p.relative_to(base).as_posix()
             if name.startswith('UPDATE/') or name.endswith('libaot-PS4RemotePkgMobile.dll.so'):continue
             if name.startswith('META-INF/') and (name.upper().endswith(('.RSA','.SF','.DSA','.EC')) or name=='META-INF/MANIFEST.MF'):continue
-            data=store if name=='assemblies/assemblies.blob' else manifest if name=='AndroidManifest.xml' else p.read_bytes()
+            custom_icon=icon_resource(name)
+            if custom_icon is not None:
+                data=custom_icon
+                icon_count+=1
+            else:
+                data=store if name=='assemblies/assemblies.blob' else manifest if name=='AndroidManifest.xml' else p.read_bytes()
             compression=zipfile.ZIP_STORED if (name.startswith('assemblies/') or name=='resources.arsc') else zipfile.ZIP_DEFLATED
             z.writestr(name,data,compress_type=compression)
+    if icon_count != 20:
+        raise RuntimeError('Expected 20 launcher icon resources, replaced %d' % icon_count)
     android=tool/'android/android-15'
     for name in ['zipalign','apksigner','aapt']:(android/name).chmod(0o755)
     aligned=work/'aligned.apk';run(android/'zipalign','-f','-p','4',unsigned,aligned)
@@ -148,12 +271,14 @@ def main():
         assert z.read('assets/template.elf')==(base/'assets/template.elf').read_bytes()
         assert z.read('classes.dex')==(base/'classes.dex').read_bytes()
         assert z.read('classes2.dex')==(base/'classes2.dex').read_bytes()
+        assert z.read('res/mipmap-xxxhdpi-v4/icone.png') != (base/'res/mipmap-xxxhdpi-v4/icone.png').read_bytes()
     details={'apk':apk.name,'bytes':apk.stat().st_size,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),
         'embedded_template_sha256':hashlib.sha256((base/'assets/template.elf').read_bytes()).hexdigest(),
         'original_template_sha256':hashlib.sha256((backup/'original-template.elf').read_bytes()).hexdigest(),
         'package':'com.phoenixx.ps4remotepkg','applicationLabel':APP_LABEL,
         'versionCode':APP_VERSION_CODE,'versionName':APP_VERSION,
         'managed_ptbr_resource_patches':ui_patch_count,
+        'launcher_icon_resources_replaced':icon_count,
         'original_interface_and_dex_preserved':True,'removed_stale_main_aot_libraries':4}
     (out/'build-info.json').write_text(json.dumps(details,indent=2)+'\n')
     print(json.dumps(details))
