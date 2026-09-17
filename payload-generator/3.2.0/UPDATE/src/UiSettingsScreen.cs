@@ -2,6 +2,7 @@ using System;
 using System.Net;
 using System.Reflection;
 using Microsoft.Maui;
+using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
@@ -32,7 +33,7 @@ public static class UiSettingsScreen
             BackgroundColor = Background
         };
 
-        body.Children.Add(Hero("Ajustes", "Conexão e transporte BGFT"));
+        body.Children.Add(Hero("Ajustes", "Conexão, automação e diagnóstico"));
 
         var ip = Input(UiStateStore.LoadPs4Ip(realIp?.Text ?? ""), "192.168.0.10");
         var ps4Status = new Label
@@ -56,6 +57,7 @@ public static class UiSettingsScreen
 
             UiStateStore.SavePs4Ip(host);
             if (realIp != null) realIp.Text = host;
+            UiDiagnostics.Add("CONFIG", "IP do PS4 atualizado.");
             ps4Status.Text = "✓ PS4 configurado. O BinLoader 9090 será usado apenas no envio do payload.";
             ps4Status.TextColor = Green;
         };
@@ -101,12 +103,78 @@ public static class UiSettingsScreen
         };
         body.Children.Add(workerCard);
 
+        var queueStatus = new Label
+        {
+            Text = UiSendQueue.PendingCount == 0 ? "Nenhum item pendente." : UiSendQueue.PendingCount + " item(ns) aguardando envio.",
+            TextColor = UiSendQueue.PendingCount == 0 ? Muted : Cyan,
+            FontSize = 11,
+            LineBreakMode = LineBreakMode.WordWrap
+        };
+        var clearQueue = Outline("Limpar fila pendente");
+        clearQueue.Clicked += (_, _) =>
+        {
+            UiSendQueue.Clear();
+            UiDiagnostics.Add("FILA", "Fila limpa manualmente.");
+            queueStatus.Text = "Fila limpa. Nenhum item pendente.";
+            queueStatus.TextColor = Green;
+        };
+        var queueCard = Card();
+        queueCard.Content = new VerticalStackLayout
+        {
+            Spacing = 8,
+            Children =
+            {
+                Title("Fila automática", Cyan),
+                new Label { Text = "Cole vários links, um por linha. O app valida e envia em sequência, um payload por vez.", TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap },
+                queueStatus,
+                clearQueue
+            }
+        };
+        body.Children.Add(queueCard);
+
         body.Children.Add(StatusCard("Validação de PKG", "Sempre ativa", Green,
             "Magic, Content ID, tamanho e comportamento HTTP são validados antes da geração do ELF."));
         body.Children.Add(StatusCard("Navegador de provedor", "Automático", Cyan,
             "O fluxo de navegador é acionado somente quando o provedor exige contexto de sessão, como AkiraBox."));
         body.Children.Add(StatusCard("Dados sensíveis", "Não persistidos", Blue,
-            "URLs assinadas, cookies e tokens não são gravados no histórico local."));
+            "URLs assinadas, cookies e tokens não são gravados no histórico nem no diagnóstico."));
+
+        var diagStatus = new Label { Text = "O relatório remove query strings e credenciais antes de copiar.", TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap };
+        var copyDiag = Action("Copiar diagnóstico", Blue);
+        copyDiag.Clicked += async (_, _) =>
+        {
+            try
+            {
+                await Clipboard.Default.SetTextAsync(UiDiagnostics.BuildReport());
+                diagStatus.Text = "✓ Diagnóstico copiado para a área de transferência.";
+                diagStatus.TextColor = Green;
+            }
+            catch (Exception ex)
+            {
+                diagStatus.Text = "Falha ao copiar diagnóstico: " + ex.GetType().Name;
+                diagStatus.TextColor = Red;
+            }
+        };
+        var clearDiag = Outline("Limpar diagnóstico da sessão");
+        clearDiag.Clicked += (_, _) =>
+        {
+            UiDiagnostics.Clear();
+            diagStatus.Text = "Diagnóstico da sessão limpo.";
+            diagStatus.TextColor = Green;
+        };
+        var diagCard = Card();
+        diagCard.Content = new VerticalStackLayout
+        {
+            Spacing = 8,
+            Children =
+            {
+                Title("Diagnóstico", Cyan),
+                diagStatus,
+                copyDiag,
+                clearDiag
+            }
+        };
+        body.Children.Add(diagCard);
 
         var saveStatus = new Label { TextColor = Muted, FontSize = 11, HorizontalTextAlignment = TextAlignment.Center };
         var save = Action("Salvar configurações", Blue);
@@ -132,6 +200,7 @@ public static class UiSettingsScreen
             UiStateStore.SavePs4Ip(ipValue);
             UiStateStore.SaveWorkerUrl(workerValue);
             if (realIp != null) realIp.Text = ipValue;
+            UiDiagnostics.Add("CONFIG", "Configurações salvas.");
             saveStatus.Text = "✓ Configurações salvas";
             saveStatus.TextColor = Green;
         };
