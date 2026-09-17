@@ -116,8 +116,6 @@ public static class Integration
 
     public static async Task<PkgMetadata> AnalyzeAsync(MainPage page, string url, int limit)
     {
-        // 3.4.0 keeps validation bounded while reading enough of the metadata
-        // area to discover ICON/PIC artwork when the package exposes it early.
         int metadataLimit = Math.Min(2097152, Math.Max(1048576, limit));
         DownloadInfo info = await ProbeForProviderAsync(url, metadataLimit);
         var sfo = ((string Title, string Category))typeof(MainPage).GetMethod("ExtractMetadataFromSfo", PrivateInstance)
@@ -129,7 +127,9 @@ public static class Integration
         string kind = category == "gp" ? "PS4PATCH" : category == "ac" ? "PS4AC" : "PS4GD";
         string suffix = kind == "PS4PATCH" ? "Update" : kind == "PS4AC" ? "DLC" : "Game";
 
-        byte[][] artworks = UiArtworkStore.Extract(info.Prefix);
+        byte[][] artworks = await UiArtworkStore.ExtractExtendedAsync(
+            info.Prefix,
+            (offset, size) => ArtworkRangeClient.ReadAsync(info.Url.AbsoluteUri, offset, size));
         UiArtworkStore.Set(info.ContentId, artworks);
         byte[] icon = artworks.Length > 0 ? artworks[0] : null;
 
