@@ -19,6 +19,23 @@ public static class ArtworkRangeClient
     static string Header(HttpHeaders headers, string name)
         => headers.TryGetValues(name, out var values) ? string.Join(",", values) : "";
 
+    static bool ParsePositiveInt64(string text, int start, int length, out long value)
+    {
+        value = 0;
+        if (string.IsNullOrEmpty(text) || length <= 0 || start < 0 || start + length > text.Length) return false;
+        long current = 0;
+        for (int i = start; i < start + length; i++)
+        {
+            char c = text[i];
+            if (c < '0' || c > '9') return false;
+            int digit = c - '0';
+            if (current > (long.MaxValue - digit) / 10L) return false;
+            current = current * 10L + digit;
+        }
+        value = current;
+        return true;
+    }
+
     static bool ExactRange(string value, long expectedFrom, long expectedTo)
     {
         if (string.IsNullOrWhiteSpace(value)) return false;
@@ -27,8 +44,8 @@ public static class ArtworkRangeClient
         int dash = value.IndexOf('-', 6);
         int slash = dash < 0 ? -1 : value.IndexOf('/', dash + 1);
         if (dash <= 6 || slash <= dash + 1) return false;
-        if (!long.TryParse(value.Substring(6, dash - 6), out long from)) return false;
-        if (!long.TryParse(value.Substring(dash + 1, slash - dash - 1), out long to)) return false;
+        if (!ParsePositiveInt64(value, 6, dash - 6, out long from)) return false;
+        if (!ParsePositiveInt64(value, dash + 1, slash - dash - 1, out long to)) return false;
         return from == expectedFrom && to == expectedTo;
     }
 
