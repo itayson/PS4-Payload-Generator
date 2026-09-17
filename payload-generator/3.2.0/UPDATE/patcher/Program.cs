@@ -58,9 +58,6 @@ Replace("GeneratePatchedElfAsync", "Tayson.Providers.Integration", "GenerateAsyn
 Replace("PatchElf", "Tayson.Providers.PayloadPatcher", "Patch", new[] { 1, 2, 3, 4, 5, 6 });
 Replace("IsUnsupportedUrl", "Tayson.Providers.LinkPolicy", "Unsupported", new[] { 1 });
 
-// These resource getters are consumed by the original MainPage handlers at
-// runtime. Patch them at IL level so transient states cannot fall back to the
-// Phoenixx/English strings after the neon UI has already been rendered.
 void SetMessage(string property, string text)
 {
     var method = Target("PS4RemotePkgMobile.Idiomas.AppStrings", "get_" + property);
@@ -72,7 +69,7 @@ void SetMessage(string property, string text)
 SetMessage("AlertSuccess", "Sucesso");
 SetMessage("AlertError", "Erro");
 SetMessage("AlertNetError", "Erro de rede");
-SetMessage("AlertInjected", "Payload enviado ao PS4. Isso confirma apenas o envio. Confira na TV se o download iniciou; se aparecer Registro: 0x..., fotografe o código completo. Versão Tayson 3.3.1.");
+SetMessage("AlertInjected", "Payload enviado ao PS4. Isso confirma apenas o envio. Confira na TV se o download iniciou; se aparecer Registro: 0x..., fotografe o código completo. Versão Tayson 3.4.0.");
 SetMessage("BtnScan", "Validar PKG");
 SetMessage("BtnInject", "Enviar ao PS4");
 SetMessage("BtnSending", "Enviando…");
@@ -94,7 +91,7 @@ foreach (var method in type.Methods.Where(m => m.HasBody))
 foreach (var instruction in method.Body.Instructions)
     if (instruction.OpCode == OpCodes.Ldstr && (string)instruction.Operand == "PS4 Payload Generator")
     {
-        instruction.Operand = "Tayson PS4 Payload Generator 3.3.1";
+        instruction.Operand = "Tayson PS4 Payload Generator 3.4.0";
         titleChanges++;
     }
 if (titleChanges == 0) throw new InvalidOperationException("Application title was not located");
@@ -115,7 +112,6 @@ using var check = AssemblyDefinition.ReadAssembly(args[3], read);
 var tokens = original.MainModule.GetTypes().ToDictionary(t => t.FullName, t => t.MetadataToken.ToUInt32());
 var changes = check.MainModule.GetTypes().Where(t => tokens.ContainsKey(t.FullName) && tokens[t.FullName] != t.MetadataToken.ToUInt32())
     .Select(t => new { name = t.FullName, before = tokens[t.FullName], after = t.MetadataToken.ToUInt32() }).ToArray();
-// JNI typemaps in libxamarin-app.so point at these exact TypeDef tokens.
 foreach (string type in new[] { "PS4RemotePkgMobile.MainActivity", "PS4RemotePkgMobile.MainApplication", "PS4RemotePkgMobile.Resource" })
     if (check.MainModule.GetType(type).MetadataToken.ToUInt32() != tokens[type])
         throw new InvalidOperationException("JNI TypeDef token changed: " + type);

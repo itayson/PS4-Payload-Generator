@@ -1,12 +1,142 @@
 #!/usr/bin/env python3
 """Rebuild the Tayson delta with the user's extracted app and a local .NET toolchain."""
-import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile
+import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile, zlib
 from pathlib import Path
 
-APP_VERSION = '3.3.1'
-APP_VERSION_CODE = 36
+APP_VERSION = '3.4.0'
+APP_VERSION_CODE = 37
 APP_LABEL = 'Tayson PS4 Payload Generator'
-APK_NAME = 'PS4-Payload-Generator-3.3.1-TaySon.apk'
+APK_NAME = 'PS4-Payload-Generator-3.4.0-TaySon.apk'
+
+ICON_SIZES = {
+    'mipmap-mdpi-v4': 48,
+    'mipmap-hdpi-v4': 72,
+    'mipmap-xhdpi-v4': 96,
+    'mipmap-xxhdpi-v4': 144,
+    'mipmap-xxxhdpi-v4': 192,
+}
+ADAPTIVE_SIZES = {
+    'mipmap-mdpi-v4': 108,
+    'mipmap-hdpi-v4': 162,
+    'mipmap-xhdpi-v4': 216,
+    'mipmap-xxhdpi-v4': 324,
+    'mipmap-xxxhdpi-v4': 432,
+}
+
+def _chunk(kind, payload):
+    return struct.pack('>I', len(payload)) + kind + payload + struct.pack('>I', zlib.crc32(kind + payload) & 0xffffffff)
+
+def _png(width, height, pixel):
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)
+        for x in range(width):
+            raw.extend(pixel(x, y, width, height))
+    return (b'\x89PNG\r\n\x1a\n' +
+            _chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)) +
+            _chunk(b'IDAT', zlib.compress(bytes(raw), 9)) +
+            _chunk(b'IEND', b''))
+
+def _rounded_box(x, y, left, top, right, bottom, radius):
+    if x < left or x > right or y < top or y > bottom:
+        return False
+    if left + radius <= x <= right - radius or top + radius <= y <= bottom - radius:
+        return True
+    cx = left + radius if x < left + radius else right - radius
+    cy = top + radius if y < top + radius else bottom - radius
+    dx = x - cx; dy = y - cy
+    return dx * dx + dy * dy <= radius * radius
+
+def _circle(x, y, cx, cy, r):
+    dx = x - cx; dy = y - cy
+    return dx * dx + dy * dy <= r * r
+
+def _t_shape(nx, ny, expand=0.0):
+    top_y0 = 0.275 - expand
+    top_y1 = 0.385 + expand
+    if top_y0 <= ny <= top_y1:
+        progress = (ny - top_y0) / max(0.001, top_y1 - top_y0)
+        inset = 0.205 + progress * 0.045 - expand
+        if inset <= nx <= 1.0 - inset:
+            return True
+    stem_left = 0.455 - expand
+    stem_right = 0.555 + expand
+    if stem_left <= nx <= stem_right and 0.355 - expand <= ny <= 0.725 + expand:
+        return True
+    # Small diagonal cut gives the monogram a custom TaySon identity while
+    # keeping it readable at Android's 48 px launcher density.
+    if 0.43 - expand <= nx <= 0.555 + expand and 0.66 - expand <= ny <= 0.745 + expand:
+        return nx >= 0.43 + (ny - 0.66) * 0.42 - expand
+    return False
+
+def _purple(nx, ny, bright=False):
+    # Violet gradient: deeper at the bottom, brighter toward the top/right.
+    mix = max(0.0, min(1.0, 0.58 * nx + 0.42 * (1.0 - ny)))
+    if bright:
+        return (176 + int(35 * mix), 72 + int(38 * mix), 255, 255)
+    return (104 + int(42 * mix), 28 + int(28 * mix), 210 + int(35 * mix), 255)
+
+def _icon_pixel(x, y, w, h, round_mask=False, foreground_only=False):
+    nx = (x + 0.5) / w
+    ny = (y + 0.5) / h
+
+    if round_mask and not _circle(nx, ny, 0.5, 0.5, 0.5):
+        return (0, 0, 0, 0)
+
+    if foreground_only:
+        if _t_shape(nx, ny, 0.012):
+            if _t_shape(nx, ny, 0.0):
+                return _purple(nx, ny, True)
+            return (87, 20, 170, 150)
+        return (0, 0, 0, 0)
+
+    # Predominantly black background with only a restrained purple lift.
+    edge = abs(nx - 0.5) + abs(ny - 0.5)
+    lift = max(0.0, 1.0 - edge * 1.45)
+    r = 4 + int(7 * lift)
+    g = 2 + int(2 * lift)
+    b = 9 + int(17 * lift)
+
+    # Minimal one-pixel-equivalent purple outline at launcher scale.
+    outer = _rounded_box(nx, ny, 0.065, 0.065, 0.935, 0.935, 0.17)
+    inner = _rounded_box(nx, ny, 0.082, 0.082, 0.918, 0.918, 0.155)
+    if outer and not inner:
+        return (92, 28, 178, 255)
+
+    if _t_shape(nx, ny, 0.018):
+        if _t_shape(nx, ny, 0.0):
+            return _purple(nx, ny, True)
+        return _purple(nx, ny, False)
+
+    return (r, g, b, 255)
+
+def _background_pixel(x, y, w, h):
+    nx = (x + 0.5) / w
+    ny = (y + 0.5) / h
+    lift = max(0.0, 1.0 - (abs(nx - 0.5) + abs(ny - 0.45)) * 1.3)
+    return (4 + int(8 * lift), 2 + int(2 * lift), 10 + int(22 * lift), 255)
+
+def icon_resource(name):
+    parts = name.split('/')
+    if len(parts) < 3 or not name.startswith('res/mipmap-'):
+        return None
+    folder = parts[-2]
+    file = parts[-1]
+    if folder not in ICON_SIZES:
+        return None
+    if file == 'icone.png':
+        size = ICON_SIZES[folder]
+        return _png(size, size, lambda x,y,w,h: _icon_pixel(x,y,w,h))
+    if file == 'icone_round.png':
+        size = ICON_SIZES[folder]
+        return _png(size, size, lambda x,y,w,h: _icon_pixel(x,y,w,h,round_mask=True))
+    if file == 'icone_background.png':
+        size = ADAPTIVE_SIZES[folder]
+        return _png(size, size, _background_pixel)
+    if file == 'icone_foreground.png':
+        size = ADAPTIVE_SIZES[folder]
+        return _png(size, size, lambda x,y,w,h: _icon_pixel(x,y,w,h,foreground_only=True))
+    return None
 
 def manifest_patch(data):
     chunks = []
@@ -123,6 +253,7 @@ def main():
     struct.pack_into('<II',store,20+78*24,offset,len(dll))
     manifest=manifest_patch(((backup/'original-AndroidManifest.xml') if (backup/'original-AndroidManifest.xml').exists() else base/'AndroidManifest.xml').read_bytes())
     unsigned=work/'unsigned.apk'
+    icon_count=0
     with zipfile.ZipFile(unsigned,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for p in sorted(base.rglob('*')):
             if not p.is_file():continue
@@ -130,9 +261,16 @@ def main():
             name=p.relative_to(base).as_posix()
             if name.startswith('UPDATE/') or name.endswith('libaot-PS4RemotePkgMobile.dll.so'):continue
             if name.startswith('META-INF/') and (name.upper().endswith(('.RSA','.SF','.DSA','.EC')) or name=='META-INF/MANIFEST.MF'):continue
-            data=store if name=='assemblies/assemblies.blob' else manifest if name=='AndroidManifest.xml' else p.read_bytes()
+            custom_icon=icon_resource(name)
+            if custom_icon is not None:
+                data=custom_icon
+                icon_count+=1
+            else:
+                data=store if name=='assemblies/assemblies.blob' else manifest if name=='AndroidManifest.xml' else p.read_bytes()
             compression=zipfile.ZIP_STORED if (name.startswith('assemblies/') or name=='resources.arsc') else zipfile.ZIP_DEFLATED
             z.writestr(name,data,compress_type=compression)
+    if icon_count != 20:
+        raise RuntimeError('Expected 20 launcher icon resources, replaced %d' % icon_count)
     android=tool/'android/android-15'
     for name in ['zipalign','apksigner','aapt']:(android/name).chmod(0o755)
     aligned=work/'aligned.apk';run(android/'zipalign','-f','-p','4',unsigned,aligned)
@@ -148,12 +286,14 @@ def main():
         assert z.read('assets/template.elf')==(base/'assets/template.elf').read_bytes()
         assert z.read('classes.dex')==(base/'classes.dex').read_bytes()
         assert z.read('classes2.dex')==(base/'classes2.dex').read_bytes()
+        assert z.read('res/mipmap-xxxhdpi-v4/icone.png') != (base/'res/mipmap-xxxhdpi-v4/icone.png').read_bytes()
     details={'apk':apk.name,'bytes':apk.stat().st_size,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),
         'embedded_template_sha256':hashlib.sha256((base/'assets/template.elf').read_bytes()).hexdigest(),
         'original_template_sha256':hashlib.sha256((backup/'original-template.elf').read_bytes()).hexdigest(),
         'package':'com.phoenixx.ps4remotepkg','applicationLabel':APP_LABEL,
         'versionCode':APP_VERSION_CODE,'versionName':APP_VERSION,
         'managed_ptbr_resource_patches':ui_patch_count,
+        'launcher_icon_resources_replaced':icon_count,
         'original_interface_and_dex_preserved':True,'removed_stale_main_aot_libraries':4}
     (out/'build-info.json').write_text(json.dumps(details,indent=2)+'\n')
     print(json.dumps(details))

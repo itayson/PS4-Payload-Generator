@@ -1,116 +1,107 @@
-# Validação 3.3.1 — Tayson PS4 Payload Generator
+# Validação 3.4.0 — Tayson PS4 Payload Generator
 
-## Evidência em hardware
+## Evidência em hardware já preservada
 
 Os cinco provedores principais já tiveram o fluxo funcional validado em PS4 real:
 
-- **Mocha:** a query autenticada é preservada e `#tayson.pkg` corrige a validação de extensão do BGFT sem alterar a requisição HTTP;
-- **VikingFile:** URL R2 direta retornou `0x80991403`/HTTP 403 no BGFT; Worker normalizou o transporte e criou download real no PS4;
-- **FileKeeper:** fluxo direto validado quando o endpoint final já é compatível com Range/BGFT;
+- **Mocha:** query autenticada preservada e `#tayson.pkg` usado somente para compatibilidade BGFT;
+- **VikingFile:** R2 direto retornou HTTP 403 no BGFT; Worker v8 normalizou o transporte;
+- **FileKeeper:** fluxo direto validado quando o endpoint final suporta Range/BGFT;
 - **Rootz:** final R2/SigV4 validado via Universal Transport Worker;
-- **AkiraBox:** acesso BGFT direto retornou HTTP 403; Worker v8 + KV `ROUTES` permitiu download real.
+- **AkiraBox:** Worker v8 + KV `ROUTES` permitiu download real após o acesso direto ao BGFT ser recusado.
 
-O smoke test gravado da interface Tayson confirmou novamente o caminho completo com **AkiraBox**: o Android validou o PKG, o ELF foi enviado ao GoldHEN, o PS4 exibiu a notificação de payload recebido e a nova tarefa apareceu em **Downloads**.
+A 3.4.0 não reescreve o núcleo desse fluxo.
 
-## Ajustes derivados do smoke test
+## Mudanças específicas da 3.4.0
 
-O teste físico mostrou que o núcleo funcional estava correto, mas revelou três resíduos visuais da base original:
+### Botão Colar
 
-- estado `Scanning...` durante a validação;
-- estado/botão `Sending...` / `Inject Directly to PS4` durante e após o envio;
-- diálogo de sucesso ainda identificando `Tayson 3.2.0`.
+A Home adiciona um botão **Colar** ao lado da entrada de URL. A implementação aciona o comando nativo de colagem do campo Android, evitando dependência de APIs de clipboard removidas pelo linker da aplicação-base.
 
-A 3.3.1 corrige esses pontos em duas camadas:
+### Artwork do PKG
 
-1. getters `AppStrings` usados pelos handlers originais são sobrescritos no IL para PT-BR;
-2. a camada `UiPolish` normaliza novamente qualquer estado transitório que a `MainPage` tente escrever em inglês após um evento assíncrono.
+A camada de metadados agora:
+
+1. mantém a leitura inicial limitada do PKG;
+2. procura imagens PNG/JPEG já presentes no prefixo;
+3. interpreta a tabela big-endian de entradas do PKG;
+4. prioriza `icon0.png`, `pic0.png` e `pic1.png`;
+5. pode solicitar pequenas faixas HTTP adicionais, limitadas a 2 MiB por imagem;
+6. trata falhas de artwork como opcionais, sem transformar um PKG válido em erro de validação.
+
+As imagens ficam somente em memória durante a sessão e não são gravadas no histórico.
+
+### Novo ícone Android
+
+O build substitui os 20 recursos de launcher da aplicação-base usando a arte oficial fornecida para o projeto:
+
+- `icone.png`;
+- `icone_round.png`;
+- `icone_foreground.png`;
+- `icone_background.png`;
+- densidades mdpi, hdpi, xhdpi, xxhdpi e xxxhdpi.
+
+O adaptive icon continua usando os XMLs e resource IDs existentes; apenas os bitmaps são substituídos, evitando alterar a tabela de recursos compilada.
+
+### Identidade Android própria
+
+A etapa final do build altera a identidade pública do APK de `com.phoenixx.ps4remotepkg` para `com.tayson.ps4payloadgenerator`. Também são atualizadas a permissão dinâmica e a authority `androidx-startup`. A classe `com.phoenixx.ps4remotepkg.mono.MonoRuntimeProvider.__mono_init__` é preservada propositalmente porque o runtime MAUI/Xamarin compilado em `classes2.dex` ainda usa esse namespace.
+
+A troca do package ID significa que o Android considera a 3.4.0 Tayson um aplicativo diferente da instalação antiga; dados locais não migram automaticamente entre os dois IDs.
 
 ## Invariantes funcionais
 
-O hotfix 3.3.1 não altera o núcleo comprovado. Permanecem:
+Permanecem:
 
 - validação do PKG usando a URL real do provedor;
 - segunda verificação antes da geração do ELF;
-- preservação byte a byte das queries autenticadas quando necessário;
-- detecção estrutural de Cloudflare R2/AWS SigV4;
+- preservação de queries autenticadas quando necessário;
+- detecção de Cloudflare R2/AWS SigV4;
 - `BgftRoutePlanner` separado da URL original;
-- Worker v8 somente quando o BGFT necessita da camada de transporte;
-- PayloadPatcher baseado no template ELF existente;
+- Universal Transport Worker v8 + KV `ROUTES`;
+- `PayloadPatcher` e template ELF existentes;
 - envio ao GoldHEN BinLoader TCP 9090;
 - nenhum Receiver/RPI.
-
-## Worker v8
-
-Endpoint padrão:
-
-```text
-https://drive.itaysondaniel.workers.dev
-```
-
-Binding esperado:
-
-```text
-ROUTES
-```
-
-O Worker v8 trata:
-
-- VikingFile R2;
-- Rootz R2;
-- AkiraBox com contexto de sessão;
-- `HEAD` do BGFT quando o upstream aceita somente o padrão de GET/Range necessário ao download.
-
-Na 3.3.1 o endpoint é configurável em Ajustes e o valor salvo é usado pelo `BgftRoutePlanner` durante a geração real do ELF.
-
-## Interface 3.3.1
-
-A camada nova preserva os controles reais da `MainPage` e os reposiciona. Isso significa que os handlers originais continuam associados aos mesmos objetos de UI.
-
-Cobertura visual/funcional:
-
-- Home Tayson própria, sem a composição Phoenixx antiga visível;
-- status do PS4/IP/BinLoader;
-- entrada de link e detecção visual do provedor;
-- pacote, capa/metadados e estágio do fluxo;
-- ações reais `Validar PKG`, `Gerar ELF`, `Enviar ao PS4` e `Arquivo local`;
-- Histórico persistente;
-- Worker com `/health` real;
-- Ajustes com Worker persistente e teste TCP real do BinLoader 9090;
-- estados principais e transitórios localizados em PT-BR;
-- crédito `Dev. By TaySon`.
 
 ## Identidade da release
 
 ```text
 application label: Tayson PS4 Payload Generator
-versionName: 3.3.1
-versionCode: 36
-package: com.phoenixx.ps4remotepkg
+versionName: 3.4.0
+versionCode: 37
+package: com.tayson.ps4payloadgenerator
 ```
 
-O package ID é mantido propositalmente para preservar compatibilidade de instalação e dados do aplicativo. A mudança de identidade é feita pelo label, interface e versão.
+## CI 3.4.0
 
-## CI 3.3.1
+O pipeline exige:
 
-GitHub Actions run **#136** concluiu com sucesso:
-
-- **87 checks** do núcleo aprovados;
-- dependency audit sem membros ausentes do runtime empacotado;
-- ILRepack/patch concluídos;
-- APK alinhado;
-- assinatura verificada;
+- **89 checks** aprovados;
+- testes adicionais para leitura da tabela de artwork e ordem `icon0 → pic0 → pic1`;
+- dependency audit do runtime empacotado;
+- ILRepack/patch preservando MVID/JNI TypeDef tokens críticos;
+- APK alinhado e assinado;
 - integridade ZIP aprovada;
 - `classes.dex` e `classes2.dex` preservados;
-- template ELF final preservado;
-- artifact `Tayson-PS4-Payload-Generator-3.3.1` criado;
-- `versionName 3.3.1` / `versionCode 36` confirmados em `build-info.json`.
+- template ELF preservado;
+- substituição verificada dos 20 recursos de ícone;
+- `aapt` confirma o package `com.tayson.ps4payloadgenerator`;
+- classe MonoRuntimeProvider herdada preservada no namespace compilado original;
+- artifact `Tayson-PS4-Payload-Generator-3.4.0` com `build-info.json` e `SHA256SUMS.txt`.
+
+## Smoke test recomendado
+
+Para validar a 3.4.0 em aparelho real:
+
+1. confirmar o novo ícone no launcher;
+2. abrir a Home e usar **Colar** sem pressionar/segurar o campo;
+3. validar um PKG que possua mais de uma imagem de sistema;
+4. confirmar a galeria horizontal abaixo dos metadados;
+5. gerar o ELF;
+6. enviar ao PS4;
+7. confirmar a tarefa no BGFT/Downloads;
+8. repetir com pelo menos um fluxo AkiraBox e um R2 (VikingFile ou Rootz).
 
 ## Assinatura de teste
 
-O CI ainda utiliza uma chave de teste descartável quando não recebe um keystore persistente. Consequentemente, APKs de execuções diferentes podem ter certificados distintos e exigir desinstalação da build anterior.
-
-Uma release distribuída para atualização in-place no futuro deve usar um keystore persistente fornecido de forma segura ao workflow. A chave privada não deve ser adicionada ao repositório.
-
-## Estado de validação
-
-O vídeo de hardware confirma o fluxo funcional Android → ELF → BinLoader → BGFT. A 3.3.1 é um hotfix de identidade/localização sobre esse mesmo núcleo e passou novamente por toda a validação automatizada. O próximo teste físico pode ser tratado como confirmação visual da correção das strings, não como revalidação do transporte dos provedores.
+O CI ainda usa uma chave descartável quando não recebe keystore persistente. Builds diferentes podem exigir desinstalar a versão anterior antes da instalação.

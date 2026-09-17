@@ -42,9 +42,6 @@ public static class UiPolish
             button.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName != "Text") return;
-                // Run after the original MainPage handler finishes its current
-                // state transition. This prevents transient English text from
-                // winning simply because the legacy handler writes it last.
                 button.Dispatcher.Dispatch(() => PolishButton(button));
             };
         }
@@ -90,7 +87,7 @@ public static class UiPolish
 
         var bottom = typeof(MainPage).GetField("lblBottomStatus", PrivateInstance)?.GetValue(page) as Label;
         if (bottom != null)
-            bottom.Text = "Tayson 3.3.1 • BGFT universal • BinLoader 9090";
+            bottom.Text = "Tayson 3.4.0 • BGFT universal • BinLoader 9090";
 
         View modernHome = UiHomeScreen.Build(page);
         Visit(modernHome);
@@ -218,7 +215,8 @@ public static class UiPolish
         if (value.IndexOf("PS4 Payload Generator", StringComparison.OrdinalIgnoreCase) >= 0 &&
             (value.IndexOf("Tayson 3.2.0", StringComparison.OrdinalIgnoreCase) >= 0 ||
              value.IndexOf("Tayson 3.3.0", StringComparison.OrdinalIgnoreCase) >= 0 ||
-             value.IndexOf("Tayson PS4 Payload Generator 3.3.1", StringComparison.OrdinalIgnoreCase) >= 0))
+             value.IndexOf("Tayson PS4 Payload Generator 3.3.1", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             value.IndexOf("Tayson PS4 Payload Generator 3.4.0", StringComparison.OrdinalIgnoreCase) >= 0))
         {
             label.IsVisible = false;
             label.HeightRequest = 0;
@@ -227,9 +225,12 @@ public static class UiPolish
         }
 
         if (value.IndexOf("Tayson 3.2.0", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            value.IndexOf("Tayson 3.3.0", StringComparison.OrdinalIgnoreCase) >= 0)
+            value.IndexOf("Tayson 3.3.0", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            value.IndexOf("Tayson 3.3.1", StringComparison.OrdinalIgnoreCase) >= 0)
         {
-            label.Text = value.Replace("Tayson 3.2.0", "Tayson 3.3.1").Replace("Tayson 3.3.0", "Tayson 3.3.1");
+            label.Text = value.Replace("Tayson 3.2.0", "Tayson 3.4.0")
+                              .Replace("Tayson 3.3.0", "Tayson 3.4.0")
+                              .Replace("Tayson 3.3.1", "Tayson 3.4.0");
             value = label.Text.Trim();
         }
 
