@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
+using Android.Content;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
@@ -11,8 +12,8 @@ namespace Tayson.Providers;
 
 /// <summary>
 /// Runtime fixes derived from the 3.4.0 hardware smoke test:
-///  - replace the first paste Button so its immediate failing handler is gone;
-///  - invoke Android paste only after the Entry has actually received focus;
+///  - replace the inherited paste Button so the old handler cannot run;
+///  - read Android's clipboard service directly, without focus/context-menu tricks;
 ///  - refresh artwork after MainPage commits _currentMeta;
 ///  - optionally enrich sparse PKGs with PS4 title-database artwork.
 /// </summary>
@@ -37,9 +38,9 @@ public static class UiRuntimeHotfixes
         Button paste = FindButton(page.Content, "Colar");
         if (paste != null && paste.AutomationId != "TaysonPasteDirect")
         {
-            // The original 3.4.0 button already owns a Clicked handler. Rather
-            // than stacking another handler on top of it, replace the visual
-            // button while preserving its grid slot and styling.
+            // UiHomeScreen's first 3.4.0 button owns an older Clicked handler.
+            // Replace the visual control entirely so only this direct Android
+            // clipboard implementation can run on hardware.
             if (paste.Parent is Grid grid)
             {
                 int column = Grid.GetColumn(paste);
@@ -76,7 +77,7 @@ public static class UiRuntimeHotfixes
                 paste.AutomationId = "TaysonPasteDirect";
             }
 
-            paste.Clicked += async (_, _) => await RetryNativePasteAsync(url, bottom);
+            paste.Clicked += (_, _) => PasteFromAndroidClipboard(url, bottom);
         }
 
         if (generate != null && generate.AutomationId != "TaysonArtworkRefresh")
@@ -103,50 +104,37 @@ public static class UiRuntimeHotfixes
         }
     }
 
-    static async Task RetryNativePasteAsync(Entry url, Label bottom)
+    static void PasteFromAndroidClipboard(Entry url, Label bottom)
     {
         if (url == null) return;
         try
         {
-            string before = url.Text ?? "";
-            url.Focus();
-            url.CursorPosition = 0;
-            url.SelectionLength = before.Length;
-
-            // Hardware test showed that invoking paste in the same click frame
-            // happens before Android transfers focus from the Button to EditText.
-            await Task.Delay(160);
-            object platform = url.Handler?.PlatformView;
-            if (platform == null)
+            Context context = Android.App.Application.Context;
+            var clipboard = context.GetSystemService(Context.ClipboardService) as Android.Content.ClipboardManager;
+            ClipData clip = clipboard?.PrimaryClip;
+            if (clip == null || clip.ItemCount < 1)
             {
-                if (bottom != null) bottom.Text = "Campo de link indisponível.";
+                if (bottom != null) bottom.Text = "A área de transferência está vazia.";
                 return;
             }
 
-            MethodInfo method = platform.GetType().GetMethod("OnTextContextMenuItem", new[] { typeof(int) });
-            object result = method?.Invoke(platform, new object[] { 16908322 }); // android.R.id.paste
-            await Task.Delay(80);
-
-            string after = url.Text ?? "";
-            bool nativeAccepted = !(result is bool ok) || ok;
-            bool changed = !string.Equals(after, before, StringComparison.Ordinal);
-            bool pasted = nativeAccepted && after.Length > 0 && (changed || before.Length == 0);
-
-            if (pasted)
+            ClipData.Item item = clip.GetItemAt(0);
+            string text = item?.CoerceToText(context)?.ToString()?.Trim() ?? "";
+            if (text.Length == 0)
             {
-                url.CursorPosition = after.Length;
-                url.SelectionLength = 0;
-                url.Unfocus();
-                if (bottom != null) bottom.Text = "Link colado. Toque em Validar PKG.";
+                if (bottom != null) bottom.Text = "A área de transferência não contém texto.";
+                return;
             }
-            else if (bottom != null)
-            {
-                bottom.Text = "Não foi possível colar automaticamente.";
-            }
+
+            url.Text = text;
+            url.CursorPosition = text.Length;
+            url.SelectionLength = 0;
+            url.Unfocus();
+            if (bottom != null) bottom.Text = "Link colado. Toque em Validar PKG.";
         }
-        catch
+        catch (Exception ex)
         {
-            if (bottom != null) bottom.Text = "Não foi possível ler a área de transferência.";
+            if (bottom != null) bottom.Text = "Falha ao colar: " + ex.GetType().Name;
         }
     }
 
