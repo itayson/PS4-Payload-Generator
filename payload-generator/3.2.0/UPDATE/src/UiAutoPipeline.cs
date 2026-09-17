@@ -154,19 +154,15 @@ public static class UiAutoPipeline
                     GenerateTriggered = true;
                 }
 
-                page.Dispatcher.Dispatch(() =>
+                Dispatch(page, () =>
                 {
                     if (bottom != null) bottom.Text = "PKG validado. Gerando ELF automaticamente...";
                 });
                 await Task.Delay(140).ConfigureAwait(false);
 
-                bool started = false;
-                page.Dispatcher.Dispatch(() => started = TriggerOriginalButton(generate));
-                await Task.Delay(40).ConfigureAwait(false);
+                bool started = await TriggerOnUiAsync(page, generate).ConfigureAwait(false);
                 if (!started)
-                {
                     Fail(bottom, "PKG validado, mas não foi possível iniciar a geração automática do ELF.");
-                }
                 return;
             }
 
@@ -187,19 +183,15 @@ public static class UiAutoPipeline
                     InjectTriggered = true;
                 }
 
-                page.Dispatcher.Dispatch(() =>
+                Dispatch(page, () =>
                 {
                     if (bottom != null) bottom.Text = "ELF pronto. Enviando automaticamente ao PS4:9090...";
                 });
                 await Task.Delay(140).ConfigureAwait(false);
 
-                bool started = false;
-                page.Dispatcher.Dispatch(() => started = TriggerOriginalButton(inject));
-                await Task.Delay(40).ConfigureAwait(false);
+                bool started = await TriggerOnUiAsync(page, inject).ConfigureAwait(false);
                 if (!started)
-                {
                     Fail(bottom, "ELF pronto, mas não foi possível iniciar o envio automático ao PS4.");
-                }
             }
         }
         finally
@@ -208,19 +200,29 @@ public static class UiAutoPipeline
         }
     }
 
+    static Task<bool> TriggerOnUiAsync(MainPage page, Button button)
+    {
+        var result = new TaskCompletionSource<bool>();
+        Dispatch(page, () =>
+        {
+            try { result.TrySetResult(TriggerOriginalButton(button)); }
+            catch (Exception ex) { result.TrySetException(ex); }
+        });
+        return result.Task;
+    }
+
+    static void Dispatch(MainPage page, Action action)
+    {
+        if (page?.Dispatcher != null) page.Dispatcher.Dispatch(action);
+        else action();
+    }
+
     static void Fail(Label bottom, string message)
     {
         Reset();
         if (bottom == null) return;
-        MainThreadDispatch(bottom, () => bottom.Text = message);
-    }
-
-    static void MainThreadDispatch(BindableObject owner, Action action)
-    {
-        if (owner is VisualElement visual && visual.Dispatcher != null)
-            visual.Dispatcher.Dispatch(action);
-        else
-            action();
+        if (bottom.Dispatcher != null) bottom.Dispatcher.Dispatch(() => bottom.Text = message);
+        else bottom.Text = message;
     }
 
     static void Reset()
@@ -260,8 +262,8 @@ public static class UiAutoPipeline
             if (platform == null) return false;
             MethodInfo perform = platform.GetType().GetMethod("PerformClick", Type.EmptyTypes);
             if (perform == null) return false;
-            object result = perform.Invoke(platform, null);
-            return !(result is bool ok) || ok;
+            object nativeResult = perform.Invoke(platform, null);
+            return !(nativeResult is bool ok) || ok;
         }
         catch
         {
