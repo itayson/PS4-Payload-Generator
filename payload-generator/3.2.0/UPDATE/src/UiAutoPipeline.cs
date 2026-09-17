@@ -174,7 +174,7 @@ public static class UiAutoPipeline
 
     static async Task SendToBinLoaderAsync(string host, byte[] payload)
     {
-        using var client = new TcpClient { NoDelay = true };
+        using var client = new TcpClient();
         Task connect = client.ConnectAsync(host, 9090);
         Task completed = await Task.WhenAny(connect, Task.Delay(6000));
         if (!ReferenceEquals(completed, connect))
