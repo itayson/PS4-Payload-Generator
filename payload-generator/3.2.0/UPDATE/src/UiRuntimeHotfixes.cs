@@ -11,10 +11,10 @@ using PS4RemotePkgMobile;
 namespace Tayson.Providers;
 
 /// <summary>
-/// Runtime fixes derived from the 3.4.0 hardware smoke test:
+/// Runtime fixes derived from the 3.4.0 hardware smoke tests:
 ///  - replace the inherited paste Button so the old handler cannot run;
-///  - read Android's clipboard service directly through JNI, avoiding bindings
-///    missing from the inherited/prebuilt Android runtime;
+///  - read Android's clipboard service directly through JNI;
+///  - automatically start PKG validation after a successful paste;
 ///  - refresh artwork after MainPage commits _currentMeta;
 ///  - optionally enrich sparse PKGs with PS4 title-database artwork.
 /// </summary>
@@ -25,6 +25,7 @@ public static class UiRuntimeHotfixes
     static readonly Color Stroke = Color.FromArgb("#135982");
     static readonly Color Surface2 = Color.FromArgb("#0A2238");
     static readonly HashSet<string> Enriching = new HashSet<string>(StringComparer.Ordinal);
+    static bool AutoValidationPending;
 
     static T Field<T>(MainPage page, string name) where T : class
         => typeof(MainPage).GetField(name, PrivateInstance)?.GetValue(page) as T;
@@ -35,6 +36,7 @@ public static class UiRuntimeHotfixes
         var url = Field<Entry>(page, "txtUrl");
         var bottom = Field<Label>(page, "lblBottomStatus");
         var generate = Field<Button>(page, "btnGerar");
+        var scan = Field<Button>(page, "btnScan");
 
         Button paste = FindButton(page.Content, "Colar");
         if (paste != null && paste.AutomationId != "TaysonPasteDirect")
@@ -75,7 +77,7 @@ public static class UiRuntimeHotfixes
                 paste.AutomationId = "TaysonPasteDirect";
             }
 
-            paste.Clicked += (_, _) => PasteFromAndroidClipboard(url, bottom);
+            paste.Clicked += async (_, _) => await PasteAndValidateAsync(url, bottom, scan);
         }
 
         if (generate != null && generate.AutomationId != "TaysonArtworkRefresh")
@@ -102,9 +104,53 @@ public static class UiRuntimeHotfixes
         }
     }
 
-    static void PasteFromAndroidClipboard(Entry url, Label bottom)
+    static async Task PasteAndValidateAsync(Entry url, Label bottom, Button scan)
     {
-        if (url == null) return;
+        if (url == null || AutoValidationPending) return;
+
+        string text = ReadAndroidClipboard(bottom);
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        text = text.Trim();
+        url.Text = text;
+        url.CursorPosition = text.Length;
+        url.SelectionLength = 0;
+        url.Unfocus();
+
+        if (scan == null)
+        {
+            if (bottom != null) bottom.Text = "Link colado. Toque em Validar PKG.";
+            return;
+        }
+
+        AutoValidationPending = true;
+        try
+        {
+            if (bottom != null) bottom.Text = "Link colado. Validando PKG automaticamente...";
+
+            // Give TextChanged/Invalidate one UI turn to finish before invoking
+            // the original, hardware-tested validation handler.
+            await Task.Delay(120);
+
+            if (!scan.IsEnabled)
+            {
+                if (bottom != null) bottom.Text = "Link colado. Validação já está em andamento.";
+                return;
+            }
+
+            if (!TriggerOriginalButton(scan))
+            {
+                if (bottom != null) bottom.Text = "Link colado. Toque em Validar PKG.";
+            }
+        }
+        finally
+        {
+            AutoValidationPending = false;
+        }
+    }
+
+    static string ReadAndroidClipboard(Label bottom)
+    {
         IntPtr serviceClass = IntPtr.Zero;
         IntPtr charsClass = IntPtr.Zero;
         IntPtr chars = IntPtr.Zero;
@@ -115,7 +161,7 @@ public static class UiRuntimeHotfixes
             if (service == null)
             {
                 if (bottom != null) bottom.Text = "Serviço da área de transferência indisponível.";
-                return;
+                return "";
             }
 
             serviceClass = JNIEnv.GetObjectClass(service.Handle);
@@ -123,14 +169,14 @@ public static class UiRuntimeHotfixes
             if (getText == IntPtr.Zero)
             {
                 if (bottom != null) bottom.Text = "Área de transferência incompatível.";
-                return;
+                return "";
             }
 
             chars = JNIEnv.CallObjectMethod(service.Handle, getText);
             if (chars == IntPtr.Zero)
             {
                 if (bottom != null) bottom.Text = "A área de transferência está vazia.";
-                return;
+                return "";
             }
 
             charsClass = JNIEnv.GetObjectClass(chars);
@@ -138,27 +184,52 @@ public static class UiRuntimeHotfixes
             IntPtr javaString = JNIEnv.CallObjectMethod(chars, toString);
             string text = javaString == IntPtr.Zero ? "" : JNIEnv.GetString(javaString, JniHandleOwnership.TransferLocalRef);
             text = (text ?? "").Trim();
-            if (text.Length == 0)
-            {
-                if (bottom != null) bottom.Text = "A área de transferência não contém texto.";
-                return;
-            }
-
-            url.Text = text;
-            url.CursorPosition = text.Length;
-            url.SelectionLength = 0;
-            url.Unfocus();
-            if (bottom != null) bottom.Text = "Link colado. Toque em Validar PKG.";
+            if (text.Length == 0 && bottom != null) bottom.Text = "A área de transferência não contém texto.";
+            return text;
         }
         catch (Exception ex)
         {
             if (bottom != null) bottom.Text = "Falha ao colar: " + ex.GetType().Name;
+            return "";
         }
         finally
         {
             if (charsClass != IntPtr.Zero) JNIEnv.DeleteLocalRef(charsClass);
             if (chars != IntPtr.Zero) JNIEnv.DeleteLocalRef(chars);
             if (serviceClass != IntPtr.Zero) JNIEnv.DeleteLocalRef(serviceClass);
+        }
+    }
+
+    static bool TriggerOriginalButton(Button button)
+    {
+        try
+        {
+            // Prefer MAUI's own event dispatcher when available. It reaches the
+            // already-wired MainPage handler without duplicating validation code.
+            Type type = button.GetType();
+            while (type != null)
+            {
+                MethodInfo send = type.GetMethod("SendClicked", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null);
+                if (send != null)
+                {
+                    send.Invoke(button, null);
+                    return true;
+                }
+                type = type.BaseType;
+            }
+
+            // Fallback to the Android native view. performClick() travels back
+            // through the MAUI handler and fires the same Clicked event.
+            object platform = button.Handler?.PlatformView;
+            if (platform == null) return false;
+            MethodInfo perform = platform.GetType().GetMethod("PerformClick", Type.EmptyTypes);
+            if (perform == null) return false;
+            object result = perform.Invoke(platform, null);
+            return !(result is bool ok) || ok;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -177,7 +248,7 @@ public static class UiRuntimeHotfixes
         {
             var merged = new List<byte[]>();
             AddUnique(merged, UiArtworkStore.Get(meta.ContentId));
-            if (merged.Count < 2)
+            if (merged.Count < 4)
                 AddUnique(merged, await TmdbArtworkClient.FetchAsync(meta.TitleId));
 
             if (merged.Count > 0)
