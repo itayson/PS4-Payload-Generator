@@ -13,17 +13,30 @@ internal static class QueueSelfTests
         if (total != 3) throw new Exception("Queue must de-duplicate and count valid URLs");
         if (UiSendQueue.PendingCount != 2) throw new Exception("Queue pending count mismatch");
 
-        if (!UiSendQueue.TryTakeNext(out string second, out int remaining) || second != "https://example.test/b.pkg" || remaining != 1)
-            throw new Exception("Queue second item mismatch");
-        if (!UiSendQueue.TryTakeNext(out string third, out remaining) || third != "https://example.test/c.pkg" || remaining != 0)
-            throw new Exception("Queue third item mismatch");
-        if (UiSendQueue.TryTakeNext(out _, out _)) throw new Exception("Queue should be empty");
+        if (!UiSendQueue.TryPeekNext(out string second, out int afterSecond) ||
+            second != "https://example.test/b.pkg" || afterSecond != 1)
+            throw new Exception("Queue peek mismatch");
+        if (UiSendQueue.PendingCount != 2)
+            throw new Exception("Peek must not consume the next PKG");
+        if (UiSendQueue.CommitNext("https://example.test/wrong.pkg", out _))
+            throw new Exception("Commit must reject a mismatched expected URL");
+        if (UiSendQueue.PendingCount != 2)
+            throw new Exception("Rejected commit must preserve the queue");
+        if (!UiSendQueue.CommitNext(second, out int remaining) || remaining != 1)
+            throw new Exception("Queue commit mismatch");
+
+        if (!UiSendQueue.TryPeekNext(out string third, out int afterThird) ||
+            third != "https://example.test/c.pkg" || afterThird != 0)
+            throw new Exception("Queue third item peek mismatch");
+        if (!UiSendQueue.CommitNext(third, out remaining) || remaining != 0)
+            throw new Exception("Queue third item commit mismatch");
+        if (UiSendQueue.TryPeekNext(out _, out _)) throw new Exception("Queue should be empty");
 
         string single = UiSendQueue.LoadClipboard("https://example.test/only.pkg", out total);
         if (single != "https://example.test/only.pkg" || total != 1 || UiSendQueue.PendingCount != 0)
             throw new Exception("Queue single-link behavior mismatch");
 
         UiSendQueue.Clear();
-        Console.WriteLine("PASS session queue self-test");
+        Console.WriteLine("PASS session queue transactional self-test");
     }
 }
