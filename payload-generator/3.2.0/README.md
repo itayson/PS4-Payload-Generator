@@ -11,7 +11,7 @@ Aplicativo Android para validar PKGs de PS4, preparar a rota BGFT, gerar um ELF 
 - leitura da tabela de entradas do PKG para localizar `icon0.png`, `pic0.png` e `pic1.png` quando presentes;
 - leitura opcional por HTTP Range dos assets de imagem sem baixar o pacote inteiro;
 - cache das imagens somente durante a sessão;
-- novo ícone Tayson para launcher Android e adaptive icon;
+- novo ícone Tayson fornecido para launcher Android e adaptive icon;
 - `versionName 3.4.0` e `versionCode 37`.
 
 Falhas ao carregar imagens extras não invalidam um PKG que já passou na validação principal.
@@ -27,7 +27,7 @@ Validação do PKG real
 Magic • Content ID • tamanho • HTTP Range
     ↓
 Metadados / artwork
-icon0 • pic0 • pic1
+icon0 • pic0 • pic1 • fallback PSN por Title ID
     ↓
 BGFT Route Planner
     ├── direto
@@ -99,10 +99,12 @@ Não são persistidos:
 Application label: Tayson PS4 Payload Generator
 Version name: 3.4.0
 Version code: 37
-Package: com.phoenixx.ps4remotepkg
+Package: com.tayson.ps4payloadgenerator
 ```
 
-O package ID permanece igual para preservar compatibilidade de instalação e dados locais.
+O package ID agora é próprio do projeto Tayson. Como o Android trata esse identificador como a identidade do aplicativo, esta build é instalada como um aplicativo diferente da versão antiga `com.phoenixx.ps4remotepkg`; os dados locais da instalação anterior não são migrados automaticamente.
+
+A classe herdada `com.phoenixx.ps4remotepkg.mono.MonoRuntimeProvider.__mono_init__` permanece com o namespace original porque ela pertence ao runtime MAUI/Xamarin compilado em `classes2.dex`; apenas a identidade pública do pacote, a permissão dinâmica e a authority do AndroidX Startup são alteradas.
 
 ## Compatibilidade preservada
 

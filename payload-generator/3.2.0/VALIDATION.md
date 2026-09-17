@@ -33,7 +33,7 @@ As imagens ficam somente em memória durante a sessão e não são gravadas no h
 
 ### Novo ícone Android
 
-O build substitui os 20 recursos de launcher da aplicação-base:
+O build substitui os 20 recursos de launcher da aplicação-base usando a arte oficial fornecida para o projeto:
 
 - `icone.png`;
 - `icone_round.png`;
@@ -42,6 +42,12 @@ O build substitui os 20 recursos de launcher da aplicação-base:
 - densidades mdpi, hdpi, xhdpi, xxhdpi e xxxhdpi.
 
 O adaptive icon continua usando os XMLs e resource IDs existentes; apenas os bitmaps são substituídos, evitando alterar a tabela de recursos compilada.
+
+### Identidade Android própria
+
+A etapa final do build altera a identidade pública do APK de `com.phoenixx.ps4remotepkg` para `com.tayson.ps4payloadgenerator`. Também são atualizadas a permissão dinâmica e a authority `androidx-startup`. A classe `com.phoenixx.ps4remotepkg.mono.MonoRuntimeProvider.__mono_init__` é preservada propositalmente porque o runtime MAUI/Xamarin compilado em `classes2.dex` ainda usa esse namespace.
+
+A troca do package ID significa que o Android considera a 3.4.0 Tayson um aplicativo diferente da instalação antiga; dados locais não migram automaticamente entre os dois IDs.
 
 ## Invariantes funcionais
 
@@ -63,7 +69,7 @@ Permanecem:
 application label: Tayson PS4 Payload Generator
 versionName: 3.4.0
 versionCode: 37
-package: com.phoenixx.ps4remotepkg
+package: com.tayson.ps4payloadgenerator
 ```
 
 ## CI 3.4.0
@@ -79,6 +85,8 @@ O pipeline exige:
 - `classes.dex` e `classes2.dex` preservados;
 - template ELF preservado;
 - substituição verificada dos 20 recursos de ícone;
+- `aapt` confirma o package `com.tayson.ps4payloadgenerator`;
+- classe MonoRuntimeProvider herdada preservada no namespace compilado original;
 - artifact `Tayson-PS4-Payload-Generator-3.4.0` com `build-info.json` e `SHA256SUMS.txt`.
 
 ## Smoke test recomendado
