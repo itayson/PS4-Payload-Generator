@@ -4,5 +4,6 @@
     <Compile Include="../src/DownloadCore.cs" Link="DownloadCore.cs" />
     <Compile Include="../src/BgftRoutePlanner.cs" Link="BgftRoutePlanner.cs" />
     <Compile Include="../src/UiArtworkStore.cs" Link="UiArtworkStore.cs" />
+    <Compile Include="../src/UiSendQueue.cs" Link="UiSendQueue.cs" />
   </ItemGroup>
 </Project>
