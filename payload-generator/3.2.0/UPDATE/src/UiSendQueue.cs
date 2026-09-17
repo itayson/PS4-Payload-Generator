@@ -7,6 +7,10 @@ namespace Tayson.Providers;
 /// Session-only queue for one-touch delivery. The queue stores only URLs in
 /// memory and is cleared when the app process exits; signed URLs are never
 /// persisted to Preferences/history.
+///
+/// Queue advancement is transactional: callers peek the next item first and
+/// commit it only after the next validation has actually been started. This
+/// prevents a transient busy UI from silently dropping a queued PKG.
 /// </summary>
 public static class UiSendQueue
 {
@@ -55,6 +59,42 @@ public static class UiSendQueue
         return urls.Count == 0 ? "" : urls[0];
     }
 
+    public static bool TryPeekNext(out string url, out int remainingAfterCurrent)
+    {
+        lock (Gate)
+        {
+            if (Pending.Count == 0)
+            {
+                url = "";
+                remainingAfterCurrent = 0;
+                return false;
+            }
+
+            url = Pending.Peek();
+            remainingAfterCurrent = Math.Max(0, Pending.Count - 1);
+            return true;
+        }
+    }
+
+    public static bool CommitNext(string expectedUrl, out int remaining)
+    {
+        lock (Gate)
+        {
+            if (Pending.Count == 0 ||
+                !string.Equals(Pending.Peek(), expectedUrl ?? "", StringComparison.Ordinal))
+            {
+                remaining = Pending.Count;
+                return false;
+            }
+
+            Pending.Dequeue();
+            remaining = Pending.Count;
+            return true;
+        }
+    }
+
+    // Kept for compatibility with older callers/tests. New queue-flow code
+    // should prefer TryPeekNext + CommitNext so failed starts cannot lose data.
     public static bool TryTakeNext(out string url, out int remaining)
     {
         lock (Gate)
