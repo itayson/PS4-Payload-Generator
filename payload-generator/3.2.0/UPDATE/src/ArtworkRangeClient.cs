@@ -19,6 +19,19 @@ public static class ArtworkRangeClient
     static string Header(HttpHeaders headers, string name)
         => headers.TryGetValues(name, out var values) ? string.Join(",", values) : "";
 
+    static bool ExactRange(string value, long expectedFrom, long expectedTo)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        value = value.Trim();
+        if (!value.StartsWith("bytes ", StringComparison.OrdinalIgnoreCase)) return false;
+        int dash = value.IndexOf('-', 6);
+        int slash = dash < 0 ? -1 : value.IndexOf('/', dash + 1);
+        if (dash <= 6 || slash <= dash + 1) return false;
+        if (!long.TryParse(value.Substring(6, dash - 6), out long from)) return false;
+        if (!long.TryParse(value.Substring(dash + 1, slash - dash - 1), out long to)) return false;
+        return from == expectedFrom && to == expectedTo;
+    }
+
     public static async Task<byte[]> ReadAsync(string value, long offset, int length, CancellationToken token = default)
     {
         if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
@@ -69,9 +82,7 @@ public static class ArtworkRangeClient
             string encoding = Header(response.Content.Headers, "Content-Encoding");
             if (encoding.Length > 0 && !encoding.Equals("identity", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Artwork retornou conteúdo comprimido.");
-
-            RangeInfo range = DownloadClient.ParseContentRangeForTests(Header(response.Content.Headers, "Content-Range"));
-            if (range.From != offset || range.To != to)
+            if (!ExactRange(Header(response.Content.Headers, "Content-Range"), offset, to))
                 throw new InvalidDataException("Artwork retornou intervalo diferente do solicitado.");
 
             using Stream stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
