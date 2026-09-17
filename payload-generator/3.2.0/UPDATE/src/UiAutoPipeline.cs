@@ -9,7 +9,7 @@ using PS4RemotePkgMobile;
 namespace Tayson.Providers;
 
 /// <summary>
-/// One-touch pipeline for the 3.4.0 Home screen.
+/// One-touch pipeline for the 3.5.0 Home screen.
 ///
 /// After Colar, the existing hardware-tested validation handler remains
 /// authoritative. As soon as the PKG is valid, this coordinator generates the
@@ -17,10 +17,9 @@ namespace Tayson.Providers;
 ///
 ///   Colar -> Validar PKG -> Gerar ELF em memoria -> PS4:9090 -> BGFT
 ///
-/// No Android file picker is opened and no ELF needs to be saved locally.
-/// Manual buttons remain available as fallback. Connection establishment may
-/// be retried, but once a TCP connection succeeds the payload itself is written
-/// only once, preventing duplicate BGFT registrations.
+/// Newline-separated clipboard links are processed sequentially by
+/// UiRuntimeHotfixes/UiSendQueue. The next item starts only after the current
+/// payload has been written successfully, preventing concurrent BinLoader use.
 /// </summary>
 public static class UiAutoPipeline
 {
@@ -82,8 +81,11 @@ public static class UiAutoPipeline
     }
 
     static void Arm(Entry url)
+        => ArmExternal((url?.Text ?? "").Trim());
+
+    public static void ArmExternal(string value)
     {
-        string value = (url?.Text ?? "").Trim();
+        value = (value ?? "").Trim();
         if (value.Length == 0) return;
 
         lock (Gate)
@@ -93,6 +95,7 @@ public static class UiAutoPipeline
             SendStarted = false;
             PendingUrl = value;
         }
+        UiDiagnostics.Add("AUTO", "Fluxo automático armado para um PKG.");
     }
 
     static async Task ContinueAsync(MainPage page)
@@ -117,14 +120,11 @@ public static class UiAutoPipeline
                 if (PendingUrl.Length == 0 || !string.Equals(PendingUrl, currentUrl, StringComparison.Ordinal))
                 {
                     Pending = false;
+                    UiDiagnostics.Add("AUTO", "Fluxo cancelado porque o link mudou antes do envio.");
                     return;
                 }
             }
 
-            // Validation is complete only after MainPage has committed metadata
-            // and enabled its existing Gerar button. We use the state as a signal
-            // only; we do NOT click Gerar, because that handler opens the Android
-            // save-file picker.
             PkgMetadata meta = Field<PkgMetadata>(page, "_currentMeta");
             if (meta == null || generate == null || !generate.IsEnabled) return;
 
@@ -141,40 +141,57 @@ public static class UiAutoPipeline
                 SendStarted = true;
             }
 
+            string kind = meta.PkgType == "PS4PATCH" ? "Atualização" : meta.PkgType == "PS4AC" ? "DLC" : "Jogo";
+            UiDiagnostics.Add("PKG", kind + " validado: " + (meta.TitleId ?? "sem Title ID") + ".");
             SetStatus(page, bottom, "PKG validado. Preparando envio direto ao PS4...");
 
             byte[] payload = await Integration.GenerateAsync(page);
             if (payload == null || payload.Length == 0)
                 throw new InvalidOperationException("O ELF gerado está vazio.");
 
-            // The ELF stays in memory. Nothing is written to Downloads and no
-            // Storage Access Framework/file-picker flow is invoked.
             SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
+            UiDiagnostics.Add("BINLOADER", "Iniciando conexão TCP 9090.");
             await SendToBinLoaderAsync(ps4Ip, payload);
 
+            UiDiagnostics.Add("BINLOADER", "ELF transmitido com sucesso; BGFT acionado.");
             SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
             Reset();
+
+            // Queue continuation happens only after the current ELF was fully
+            // written and flushed. This keeps GoldHEN work strictly sequential.
+            await Task.Delay(160);
+            await UiRuntimeHotfixes.MarkCurrentCompletedAndStartNextAsync(page);
         }
         catch (TimeoutException)
         {
-            Fail(bottom, "O PS4:9090 não respondeu após várias tentativas. Confirme que o GoldHEN BinLoader está ativado.");
+            UiDiagnostics.Add("BINLOADER", "Timeout ao conectar depois das tentativas configuradas.");
+            Fail(bottom, QueueSuffix("O PS4:9090 não respondeu após várias tentativas. Confirme que o GoldHEN BinLoader está ativado."));
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
         {
-            Fail(bottom, "PS4 recusou a conexão na porta 9090 após várias tentativas. Reative o GoldHEN BinLoader e tente novamente.");
+            UiDiagnostics.Add("BINLOADER", "ConnectionRefused após as tentativas de conexão.");
+            Fail(bottom, QueueSuffix("PS4 recusou a conexão na porta 9090 após várias tentativas. Reative o GoldHEN BinLoader e tente novamente."));
         }
         catch (SocketException ex)
         {
-            Fail(bottom, "Falha de rede ao conectar ao PS4:9090 (" + ex.SocketErrorCode + ").");
+            UiDiagnostics.Add("BINLOADER", "Falha de socket: " + ex.SocketErrorCode + ".");
+            Fail(bottom, QueueSuffix("Falha de rede ao conectar ao PS4:9090 (" + ex.SocketErrorCode + ")."));
         }
         catch (Exception ex)
         {
-            Fail(bottom, "Falha no envio automático: " + ex.Message);
+            UiDiagnostics.Add("AUTO", "Falha do fluxo: " + ex.GetType().Name + ": " + ex.Message);
+            Fail(bottom, QueueSuffix("Falha no envio automático: " + ex.Message));
         }
         finally
         {
             lock (Gate) Busy = false;
         }
+    }
+
+    static string QueueSuffix(string message)
+    {
+        int pending = UiSendQueue.PendingCount;
+        return pending > 0 ? message + " Fila pausada com " + pending + " item(ns) pendente(s)." : message;
     }
 
     static async Task SendToBinLoaderAsync(string host, byte[] payload)
@@ -191,6 +208,7 @@ public static class UiAutoPipeline
             client = new TcpClient();
             try
             {
+                UiDiagnostics.Add("BINLOADER", "Tentativa de conexão " + attempt + "/4.");
                 Task connect = client.ConnectAsync(host, 9090);
                 Task completed = await Task.WhenAny(connect, Task.Delay(2500));
                 if (!ReferenceEquals(completed, connect))
@@ -212,6 +230,7 @@ public static class UiAutoPipeline
             catch (SocketException ex) when (IsRetryableConnectError(ex.SocketErrorCode) && attempt < 4)
             {
                 lastSocket = ex;
+                UiDiagnostics.Add("BINLOADER", "Tentativa " + attempt + " falhou: " + ex.SocketErrorCode + ".");
                 client.Dispose();
                 client = null;
                 await Task.Delay(350 * attempt);
