@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Reflection;
 using Microsoft.Maui;
-using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
@@ -152,11 +151,18 @@ public static class UiHomeScreen
             FontSize = 13
         };
         StyleOutline(paste);
-        paste.Clicked += async (_, _) =>
+        paste.Clicked += (_, _) =>
         {
             try
             {
-                string value = await Clipboard.Default.GetTextAsync();
+                var clipboard = Android.App.Application.Context.GetSystemService(Android.Content.Context.ClipboardService) as Android.Content.ClipboardManager;
+                var clip = clipboard?.PrimaryClip;
+                if (clip == null || clip.ItemCount == 0)
+                {
+                    if (bottom != null) bottom.Text = "Área de transferência vazia.";
+                    return;
+                }
+                string value = clip.GetItemAt(0)?.CoerceToText(Android.App.Application.Context)?.ToString();
                 if (string.IsNullOrWhiteSpace(value))
                 {
                     if (bottom != null) bottom.Text = "Área de transferência vazia.";
