@@ -5,7 +5,7 @@
 <h1 align="center">Tayson PS4 Payload Generator</h1>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-3.3.1-1f6feb?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-3.4.0-1f6feb?style=for-the-badge">
   <img alt="Android" src="https://img.shields.io/badge/platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white">
   <img alt="PS4" src="https://img.shields.io/badge/target-PS4-006FCD?style=for-the-badge">
   <img alt="BGFT" src="https://img.shields.io/badge/BGFT-Universal-00AEEF?style=for-the-badge">
@@ -14,32 +14,37 @@
 <p align="center">
   <img alt="Worker" src="https://img.shields.io/badge/Worker-v8-FF8800?style=flat-square&logo=cloudflare&logoColor=white">
   <img alt="Providers" src="https://img.shields.io/badge/providers-5%2F5%20validated-2ea44f?style=flat-square">
-  <img alt="Hardware" src="https://img.shields.io/badge/PS4%20hardware-validated-2ea44f?style=flat-square">
   <img alt="BinLoader" src="https://img.shields.io/badge/BinLoader-TCP%209090-8250df?style=flat-square">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square">
 </p>
 
-<p align="center">
-  <strong>Mocha • VikingFile • FileKeeper • Rootz • AkiraBox</strong>
-</p>
+<p align="center"><strong>Mocha • VikingFile • FileKeeper • Rootz • AkiraBox</strong></p>
 
 <p align="center">
-  Gerador universal de payloads ELF para PS4 desbloqueado, com resolução de links, validação de PKG e roteamento BGFT compatível com múltiplos provedores.
+  Gerador universal de payloads ELF para PS4 desbloqueado, com validação de PKG, roteamento BGFT e interface Tayson.
 </p>
 
 ---
 
-## Visão geral
+## Tayson 3.4.0
 
-O **Tayson PS4 Payload Generator** simplifica um fluxo que normalmente exige várias etapas manuais: o aplicativo Android recebe o link do arquivo, resolve o provedor, valida o PKG, prepara a URL compatível com o BGFT, gera um ELF específico para aquela tarefa e envia o payload diretamente ao **GoldHEN BinLoader pela porta TCP `9090`**.
+A atualização 3.4.0 expande a interface sem alterar o núcleo BGFT já validado em hardware:
 
-Não utiliza Receiver, Remote Package Installer ou retransmissão integral do PKG pelo celular. Depois que o payload é enviado, o próprio PS4 registra a tarefa no BGFT e baixa o arquivo pela rota adequada.
+- botão **Colar** ao lado do campo de link;
+- galeria de metadados do PKG;
+- leitura estruturada da tabela de arquivos do PKG para localizar `icon0.png`, `pic0.png` e `pic1.png` quando disponíveis;
+- requisições HTTP Range pequenas e opcionais para carregar essas imagens sem baixar o PKG completo;
+- falhas de artwork não invalidam um PKG que já passou na validação principal;
+- novo ícone Tayson em todas as densidades Android, incluindo adaptive icon;
+- `versionName 3.4.0` / `versionCode 37`.
+
+A galeria é mantida somente em memória durante a sessão. URLs assinadas, cookies e tokens continuam fora do histórico persistente.
 
 ---
 
-## Status atual
+## Status
 
-| Componente / Provedor | Status |
+| Componente / Provedor | Estado |
 | --- | --- |
 | Mocha | ✅ Validado em PS4 real |
 | VikingFile | ✅ Validado em PS4 real |
@@ -49,245 +54,96 @@ Não utiliza Receiver, Remote Package Installer ou retransmissão integral do PK
 | Geração dinâmica de ELF | ✅ Funcional |
 | GoldHEN BinLoader TCP 9090 | ✅ Funcional |
 | Registro BGFT | ✅ Funcional |
-| Cloudflare Worker universal | ✅ v8 |
+| Universal Transport Worker | ✅ v8 |
 | Cloudflare KV `ROUTES` | ✅ Suportado |
-| Interface Tayson / PT-BR | ✅ 3.3.1 |
+| Interface Tayson / PT-BR | ✅ 3.4.0 |
 
-A compatibilidade acima foi validada com downloads reais iniciados pelo PS4, incluindo provedores com URLs temporárias, links assinados e restrições de sessão. O smoke test mais recente confirmou em hardware o caminho **Android → ELF → GoldHEN BinLoader → BGFT → Downloads** usando AkiraBox.
-
----
-
-## Como funciona
+O fluxo já validado permanece:
 
 ```text
-Link do usuário
-      │
-      ▼
-Resolver do provedor
-      │
-      ▼
-Validação do PKG
-Magic / Content ID / tamanho / HTTP Range
-      │
-      ▼
-BGFT Route Planner
-      │
-      ├── link direto compatível ───────────────┐
-      │                                         │
-      ├── Mocha → preserva query + fragmento   │
-      │                                         │
-      └── VikingFile / Rootz / AkiraBox        │
-             ↓                                  │
-      Universal Transport Worker v8            │
-             ↓                                  │
-      rota temporária `.pkg`                    │
-                                                ▼
-                                     Gerador de ELF
-                                                │
-                                                ▼
-                               GoldHEN BinLoader :9090
-                                                │
-                                                ▼
-                                      PS4 / BGFT
-                                                │
-                                                ▼
-                                         Download PKG
+Android
+→ resolve o provedor
+→ valida o PKG real
+→ lê metadados/artwork
+→ prepara a rota BGFT
+→ gera o ELF
+→ envia ao GoldHEN BinLoader :9090
+→ ELF registra a tarefa no BGFT
+→ PS4 baixa o PKG
 ```
 
-O aplicativo mantém separadas a **URL real do provedor** e a **URL de transporte entregue ao BGFT**. A URL original é usada para validação; somente depois dessa verificação a rota é adaptada para o PS4.
-
 ---
 
-## Recursos principais
+## Metadados e imagens do PKG
 
-- geração dinâmica de payload ELF a partir de cada PKG;
-- envio direto do ELF ao GoldHEN BinLoader pela porta `9090`;
-- validação de assinatura PKG antes da geração do payload;
-- leitura de Content ID e metadados básicos do pacote;
-- validação de tamanho e suporte a HTTP Range;
-- suporte a jogos, updates e DLCs conforme os metadados do PKG;
-- resolução automática de links de múltiplos provedores;
-- preservação de queries, tokens e assinaturas temporárias;
-- suporte a URLs AWS SigV4 / Cloudflare R2;
-- tratamento de links que exigem navegador, cookies ou contexto de sessão;
-- compatibilidade BGFT com URLs cuja extensão `.pkg` não aparece no final da string original;
-- Cloudflare Worker universal para normalizar `HEAD`, `GET` e `Range` quando necessário;
-- rotas curtas temporárias usando Cloudflare KV;
-- histórico persistente de validações, ELF gerados e payloads enviados;
-- Worker e IP do PS4 configuráveis e persistentes;
-- teste de `/health` do Worker e teste TCP do BinLoader `9090`;
-- interface Tayson em tema escuro/neon com estados principais e transitórios em PT-BR;
-- sem Receiver;
-- sem RPI;
-- sem relay do PKG pelo Android;
-- sem URL fixa de jogo no código.
+A validação continua usando requests limitadas por Range. Na 3.4.0, depois da validação principal, o aplicativo também tenta ler a tabela de entradas do PKG e localizar os assets de sistema mais úteis para apresentação.
 
----
+Prioridade da galeria:
 
-## Compatibilidade por provedor
+```text
+icon0.png
+pic0.png
+pic1.png
+shareoverlayimage.png
+save_data.png
+shareprivacyguardimage.png
+```
 
-### Mocha
-
-O link autenticado é preservado integralmente, incluindo parâmetros como token, expiração e nó. Para compatibilidade com a validação de extensão do BGFT, o gerador adiciona apenas um fragmento local terminado em `.pkg`, sem alterar a requisição HTTP enviada ao servidor.
-
-### VikingFile
-
-URLs finais R2 assinadas são reconhecidas automaticamente. Quando necessário, o aplicativo cria uma rota temporária através do Worker universal, que responde ao comportamento esperado pelo BGFT e mantém suporte a downloads por intervalo.
-
-### Rootz
-
-Links finais baseados em Cloudflare R2 / AWS SigV4 usam a mesma camada universal de transporte. O Worker mantém a URL assinada intacta e adapta as requisições do BGFT sem reconstruir a assinatura.
-
-### AkiraBox
-
-O aplicativo utiliza o fluxo de navegador quando necessário, captura a URL temporária `download.akirabox.com`, valida o PKG com o contexto de sessão e registra uma rota temporária no Worker. Cookies, Referer e User-Agent podem ser mantidos no KV e não precisam aparecer dentro do ELF.
-
-### FileKeeper
-
-Links compatíveis são resolvidos e validados pelo aplicativo antes da geração do payload. Quando o endereço final já funciona diretamente com o BGFT, nenhuma camada intermediária é adicionada.
+São exibidas no máximo cinco imagens por pacote. A busca de artwork é opcional: se um provedor recusar uma Range auxiliar, a validação do PKG continua normalmente.
 
 ---
 
 ## Universal Transport Worker v8
 
-O Worker é usado somente quando o endereço final do provedor não é adequado para acesso direto pelo BGFT.
+Endpoint padrão:
 
-Ele pode:
+```text
+https://drive.itaysondaniel.workers.dev
+```
 
-- criar URLs `.pkg` curtas e temporárias;
-- armazenar rotas no Cloudflare KV;
-- preservar URLs R2/SigV4 sem modificar sua assinatura;
-- transformar o `HEAD` do BGFT em uma pequena requisição `GET Range: bytes=0-0` quando o provedor não aceita `HEAD` da mesma forma;
-- encaminhar `GET`, `Range` e `If-Range`;
-- manter contexto de sessão do AkiraBox;
-- impedir uso como proxy genérico através de validação de hosts e formatos aceitos.
-
-### Binding KV
-
-No Cloudflare Worker, configure um binding KV com o nome exato:
+Binding KV esperado:
 
 ```text
 ROUTES
 ```
 
-O namespace pode ter qualquer nome, por exemplo:
+O Worker é usado quando o endereço final do provedor precisa de normalização para o BGFT. URLs R2/SigV4 são preservadas sem reconstrução da assinatura; o AkiraBox pode manter temporariamente cookies, Referer e User-Agent no KV.
+
+---
+
+## Interface
+
+A navegação principal é:
 
 ```text
-tayson-payload-routes
+Início · Histórico · Worker · Ajustes
 ```
 
-Configuração conceitual:
+A Home reúne conexão com PS4, link do PKG, botão **Colar**, provedor detectado, metadados, galeria, estágio do fluxo, geração do ELF e envio ao console.
 
-```text
-Worker
-  └── env.ROUTES
-          ↓
-      KV Namespace
-      tayson-payload-routes
-```
-
-Com o KV, o PS4 recebe somente uma rota temporária curta, como:
-
-```text
-https://seu-worker.workers.dev/a/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.pkg
-```
-
-em vez de carregar cookies, tokens ou URLs longas diretamente no ELF.
+O Histórico persiste somente metadados não sensíveis. Worker e IP do PS4 são configuráveis e persistentes.
 
 ---
 
-## Requisitos
-
-- PlayStation 4 desbloqueado;
-- GoldHEN com **BinLoader Server** habilitado;
-- porta TCP `9090` acessível na rede local;
-- celular Android e PS4 na mesma rede para o envio do ELF;
-- conexão com a internet para resolver e baixar os PKGs;
-- Cloudflare Worker v8 para os provedores que exigem transporte intermediário;
-- binding KV `ROUTES` recomendado para o modo universal completo.
-
----
-
-## Uso
-
-1. Ative **Enable BinLoader Server** no GoldHEN.
-2. Informe no aplicativo o IP local do PS4.
-3. Cole um link suportado ou abra o fluxo do provedor dentro do navegador integrado.
-4. Aguarde a resolução e a validação do PKG.
-5. Gere o payload.
-6. Envie o ELF para a porta `9090`.
-7. O ELF registra a tarefa no BGFT.
-8. O download passa a ser controlado pelo próprio PS4.
-
-Para links temporários, gere sempre um endereço novo quando o anterior estiver expirado.
-
----
-
-## O que o projeto não faz
-
-O Tayson PS4 Payload Generator **não** funciona como servidor de jogos, não hospeda PKGs e não distribui conteúdo protegido. Também não transforma o celular em Receiver/RPI.
-
-O aplicativo atua como ferramenta de resolução, validação, geração e envio de payloads para conteúdo que o próprio usuário forneça e tenha autorização para utilizar.
-
----
-
-## Arquitetura
-
-Os componentes principais do projeto são separados por responsabilidade:
-
-```text
-Provider Resolver
-      ↓
-PKG Validator / Scanner
-      ↓
-BGFT Route Planner
-      ↓
-Payload Patcher / ELF Generator
-      ↓
-BinLoader Sender :9090
-```
-
-Essa separação permite adicionar novos provedores sem alterar o código nativo do payload para cada site.
-
----
-
-## Segurança e integridade
-
-Antes de gerar o ELF, o aplicativo procura confirmar que o recurso realmente se comporta como um PKG de PS4. Páginas HTML, respostas JSON inesperadas, dados compactados incompatíveis, Content IDs inválidos e servidores que não oferecem comportamento de Range adequado são rejeitados.
-
-URLs assinadas são tratadas como valores opacos sempre que possível. O projeto evita reordenar ou reconstruir queries de autenticação, reduzindo o risco de invalidar tokens e assinaturas.
-
-As rotas salvas em KV são temporárias e devem expirar junto com o acesso original do provedor.
-
----
-
-## Release atual
-
-Versão atual: **3.3.1**
+## Release
 
 ```text
 Application label: Tayson PS4 Payload Generator
-Version name: 3.3.1
-Version code: 36
+Version name: 3.4.0
+Version code: 37
 Package: com.phoenixx.ps4remotepkg
 Worker: Universal Transport Worker v8
 BinLoader: TCP 9090
 ```
 
-A versão 3.3.1 inclui o hotfix final de localização identificado no smoke test: estados como validação e envio não devem mais retornar às strings inglesas herdadas da aplicação-base durante operações assíncronas.
+O package ID é mantido para preservar compatibilidade com a instalação e os dados locais existentes.
 
 ---
 
 ## Uso responsável
 
-Este projeto é destinado a desenvolvimento, homebrew, testes e gerenciamento de conteúdo autorizado em consoles do próprio usuário.
-
-O repositório não inclui jogos, chaves, licenças, credenciais de terceiros ou conteúdo protegido por direitos autorais. O usuário é responsável pelos links e arquivos utilizados.
-
-PlayStation, PS4 e marcas relacionadas pertencem aos seus respectivos proprietários. Este projeto é independente e não possui afiliação com a Sony Interactive Entertainment, GoldHEN ou com os provedores de hospedagem suportados.
-
----
+Destinado a desenvolvimento, homebrew, testes e gerenciamento de conteúdo que o usuário tenha autorização para utilizar. O projeto não distribui jogos, licenças, chaves ou conteúdo protegido.
 
 ## Licença
 
-Distribuído sob a licença **MIT**. Consulte [LICENSE](LICENSE).
+MIT. Consulte [LICENSE](LICENSE).
