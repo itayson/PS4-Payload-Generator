@@ -154,7 +154,7 @@ public static class TmdbArtworkClient
         string path = uri.AbsolutePath;
         int slash = path.LastIndexOf('/');
         if (slash < 0) return;
-        string sibling = uri.Scheme + "://" + uri.Authority + path.Substring(0, slash + 1) + filename;
+        string sibling = uri.Scheme + "://" + uri.IdnHost + path.Substring(0, slash + 1) + filename;
         AddUrl(urls, sibling);
     }
 
@@ -232,9 +232,6 @@ public static class TmdbArtworkClient
             {
                 string value = background.Groups[1].Value;
                 AddUrl(urls, value);
-                // Many PS4 title packages keep additional artwork beside pic0.
-                // Probe only a few bounded siblings; 404/403 simply means that
-                // particular title does not publish the extra image.
                 AddSibling(urls, value, "pic1.png");
                 AddSibling(urls, value, "pic2.png");
                 AddSibling(urls, value, "icon0.png");
