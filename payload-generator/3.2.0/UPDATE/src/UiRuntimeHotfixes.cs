@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
-using Android.Content;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
@@ -38,9 +37,6 @@ public static class UiRuntimeHotfixes
         Button paste = FindButton(page.Content, "Colar");
         if (paste != null && paste.AutomationId != "TaysonPasteDirect")
         {
-            // UiHomeScreen's first 3.4.0 button owns an older Clicked handler.
-            // Replace the visual control entirely so only this direct Android
-            // clipboard implementation can run on hardware.
             if (paste.Parent is Grid grid)
             {
                 int column = Grid.GetColumn(paste);
@@ -109,20 +105,12 @@ public static class UiRuntimeHotfixes
         if (url == null) return;
         try
         {
-            Context context = Android.App.Application.Context;
-            var clipboard = context.GetSystemService(Context.ClipboardService) as Android.Content.ClipboardManager;
-            ClipData clip = clipboard?.PrimaryClip;
-            if (clip == null || clip.ItemCount < 1)
-            {
-                if (bottom != null) bottom.Text = "A área de transferência está vazia.";
-                return;
-            }
-
-            ClipData.Item item = clip.GetItemAt(0);
-            string text = item?.CoerceToText(context)?.ToString()?.Trim() ?? "";
+            var context = Android.App.Application.Context;
+            var clipboard = context.GetSystemService("clipboard") as Android.Text.ClipboardManager;
+            string text = clipboard?.Text?.ToString()?.Trim() ?? "";
             if (text.Length == 0)
             {
-                if (bottom != null) bottom.Text = "A área de transferência não contém texto.";
+                if (bottom != null) bottom.Text = "A área de transferência está vazia.";
                 return;
             }
 
