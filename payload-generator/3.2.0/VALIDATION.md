@@ -1,8 +1,8 @@
-# Validação 3.4.0 — Tayson PS4 Payload Generator
+# Validação 3.5.0 — Tayson PS4 Payload Generator
 
-## Evidência em hardware já preservada
+## Evidência em hardware preservada
 
-Os cinco provedores principais já tiveram o fluxo funcional validado em PS4 real:
+Os cinco provedores principais já tiveram o núcleo Android → ELF → GoldHEN → BGFT validado em PS4 real na linha 3.4.x:
 
 - **Mocha:** query autenticada preservada e `#tayson.pkg` usado somente para compatibilidade BGFT;
 - **VikingFile:** R2 direto retornou HTTP 403 no BGFT; Worker v8 normalizou o transporte;
@@ -10,44 +10,58 @@ Os cinco provedores principais já tiveram o fluxo funcional validado em PS4 rea
 - **Rootz:** final R2/SigV4 validado via Universal Transport Worker;
 - **AkiraBox:** Worker v8 + KV `ROUTES` permitiu download real após o acesso direto ao BGFT ser recusado.
 
-A 3.4.0 não reescreve o núcleo desse fluxo.
+A 3.5.0 não redesenha esse núcleo. Ela adiciona confiabilidade, fila e diagnóstico ao redor dele.
 
-## Mudanças específicas da 3.4.0
+## Mudanças específicas da 3.5.0
 
-### Botão Colar
+### Fila automática transacional
 
-A Home adiciona um botão **Colar** ao lado da entrada de URL. A implementação aciona o comando nativo de colagem do campo Android, evitando dependência de APIs de clipboard removidas pelo linker da aplicação-base.
+O clipboard pode conter até 20 links HTTP/HTTPS, um por linha. Links repetidos são eliminados na sessão.
 
-### Artwork do PKG
+A fila obedece às seguintes invariantes:
 
-A camada de metadados agora:
+1. somente um PKG é validado/enviado por vez;
+2. o próximo link é consultado com `peek` sem ser removido;
+3. ele só é consumido depois que a validação realmente foi iniciada;
+4. se a UI ainda estiver ocupada, o item continua na fila;
+5. se o acionamento do botão de validação falhar, o item continua na fila;
+6. um novo **Colar** não substitui o estado enquanto uma validação ou envio automático estiver ativo;
+7. links da fila nunca são persistidos em `Preferences` ou histórico.
 
-1. mantém a leitura inicial limitada do PKG;
-2. procura imagens PNG/JPEG já presentes no prefixo;
-3. interpreta a tabela big-endian de entradas do PKG;
-4. prioriza `icon0.png`, `pic0.png` e `pic1.png`;
-5. pode solicitar pequenas faixas HTTP adicionais, limitadas a 2 MiB por imagem;
-6. trata falhas de artwork como opcionais, sem transformar um PKG válido em erro de validação.
+### Envio automático
 
-As imagens ficam somente em memória durante a sessão e não são gravadas no histórico.
+Depois da validação, o ELF é gerado em memória e enviado ao GoldHEN BinLoader TCP 9090 sem abrir o seletor Android de arquivo.
 
-### Novo ícone Android
+Retry é permitido apenas durante o estabelecimento da conexão TCP. Depois que uma conexão é estabelecida e o envio do payload começa, o ELF não é retransmitido automaticamente, evitando duplicar ou corromper registro BGFT em uma falha parcial.
 
-O build substitui os 20 recursos de launcher da aplicação-base usando a arte oficial fornecida para o projeto:
+### Diagnóstico de sessão
 
-- `icone.png`;
-- `icone_round.png`;
-- `icone_foreground.png`;
-- `icone_background.png`;
-- densidades mdpi, hdpi, xhdpi, xxhdpi e xxxhdpi.
+O journal em memória registra estágios como:
 
-O adaptive icon continua usando os XMLs e resource IDs existentes; apenas os bitmaps são substituídos, evitando alterar a tabela de recursos compilada.
+- fila;
+- validação PKG;
+- Worker;
+- geração do ELF;
+- conexão BinLoader;
+- erros de UI/artwork.
 
-### Identidade Android própria
+Antes de entrar no relatório, URLs com query string e campos como `token`, `cookie`, `authorization`, `signature` e `sig` são mascarados. O diagnóstico não é persistido e pode ser limpo em **Ajustes**.
 
-A etapa final do build altera a identidade pública do APK de `com.phoenixx.ps4remotepkg` para `com.tayson.ps4payloadgenerator`. Também são atualizadas a permissão dinâmica e a authority `androidx-startup`. A classe `com.phoenixx.ps4remotepkg.mono.MonoRuntimeProvider.__mono_init__` é preservada propositalmente porque o runtime MAUI/Xamarin compilado em `classes2.dex` ainda usa esse namespace.
+### Worker
 
-A troca do package ID significa que o Android considera a 3.4.0 Tayson um aplicativo diferente da instalação antiga; dados locais não migram automaticamente entre os dois IDs.
+A tela Worker consulta `/health`, mostra o resultado e mede a latência sem abrir a porta TCP 9090 do PS4.
+
+Não há varredura automática do BinLoader: uma conexão de teste pode consumir o listener do GoldHEN, portanto a 9090 é aberta somente durante o envio real do ELF.
+
+### Artwork e identidade Android
+
+Permanecem as funções da 3.4.0:
+
+- leitura de `icon0.png`, `pic0.png`, `pic1.png` e assets opcionais por pequenas faixas HTTP;
+- fallback de artwork por Title ID;
+- 20 recursos de launcher substituídos;
+- package público `com.tayson.ps4payloadgenerator`;
+- `MonoRuntimeProvider` herdado mantido no namespace compilado original.
 
 ## Invariantes funcionais
 
@@ -67,41 +81,45 @@ Permanecem:
 
 ```text
 application label: Tayson PS4 Payload Generator
-versionName: 3.4.0
-versionCode: 37
+versionName: 3.5.0
+versionCode: 38
 package: com.tayson.ps4payloadgenerator
 ```
 
-## CI 3.4.0
+## CI 3.5.0
 
 O pipeline exige:
 
-- **89 checks** aprovados;
-- testes adicionais para leitura da tabela de artwork e ordem `icon0 → pic0 → pic1`;
-- dependency audit do runtime empacotado;
-- ILRepack/patch preservando MVID/JNI TypeDef tokens críticos;
+- **89 checks** do núcleo aprovados;
+- teste transacional da fila, incluindo `peek`, commit esperado e preservação após commit inválido;
+- dependency audit com zero membros ausentes/trimmed;
+- ILRepack/patch preservando os tokens JNI críticos;
 - APK alinhado e assinado;
-- integridade ZIP aprovada;
-- `classes.dex` e `classes2.dex` preservados;
-- template ELF preservado;
-- substituição verificada dos 20 recursos de ícone;
-- `aapt` confirma o package `com.tayson.ps4payloadgenerator`;
-- classe MonoRuntimeProvider herdada preservada no namespace compilado original;
-- artifact `Tayson-PS4-Payload-Generator-3.4.0` com `build-info.json` e `SHA256SUMS.txt`.
+- assinatura v1/v2/v3 válida;
+- `aapt` confirma `com.tayson.ps4payloadgenerator` e `versionName 3.5.0`;
+- `versionCode 38` registrado em `build-info.json`;
+- runtime Mono herdado preservado;
+- artifact `Tayson-PS4-Payload-Generator-3.5.0` com APK, `build-info.json` e `SHA256SUMS.txt`.
 
-## Smoke test recomendado
+## Smoke test físico obrigatório antes da promoção para estável
 
-Para validar a 3.4.0 em aparelho real:
+Executar em Android + PS4 real:
 
-1. confirmar o novo ícone no launcher;
-2. abrir a Home e usar **Colar** sem pressionar/segurar o campo;
-3. validar um PKG que possua mais de uma imagem de sistema;
-4. confirmar a galeria horizontal abaixo dos metadados;
-5. gerar o ELF;
-6. enviar ao PS4;
-7. confirmar a tarefa no BGFT/Downloads;
-8. repetir com pelo menos um fluxo AkiraBox e um R2 (VikingFile ou Rootz).
+1. confirmar instalação, ícone e abertura da 3.5.0;
+2. configurar o IP do PS4 e confirmar que nenhuma conexão 9090 ocorre antes do envio;
+3. abrir **Worker** e confirmar `/health` e latência;
+4. colar um único PKG e confirmar validação → geração em memória → envio → BGFT;
+5. colar pelo menos **dois links válidos**, um por linha;
+6. confirmar que o segundo só começa depois do primeiro ELF ser transmitido;
+7. durante o primeiro item, tocar **Colar** novamente e confirmar que a fila ativa não é substituída;
+8. repetir a fila com pelo menos um fluxo R2 (VikingFile/Rootz) e, se disponível, AkiraBox;
+9. provocar uma falha de conexão 9090 antes do envio e confirmar que os itens ainda pendentes permanecem na fila;
+10. abrir **Ajustes → Copiar diagnóstico** e confirmar que query strings/tokens não aparecem em claro;
+11. confirmar histórico, artwork e galeria;
+12. confirmar no PS4 que cada tarefa foi registrada apenas uma vez.
+
+A branch só deve ser integrada à `main` após esse smoke test não revelar regressões.
 
 ## Assinatura de teste
 
-O CI ainda usa uma chave descartável quando não recebe keystore persistente. Builds diferentes podem exigir desinstalar a versão anterior antes da instalação.
+O CI usa a keystore de teste do projeto para produzir a build de validação. Antes de uma distribuição pública definitiva, a estratégia de assinatura deve permanecer consistente entre releases para permitir atualização normal pelo Android.
