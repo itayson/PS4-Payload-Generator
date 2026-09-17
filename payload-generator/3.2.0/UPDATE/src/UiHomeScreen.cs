@@ -1,6 +1,8 @@
 using System;
+using System.IO;
 using System.Reflection;
 using Microsoft.Maui;
+using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
@@ -77,8 +79,8 @@ public static class UiHomeScreen
         }
         if (icon != null)
         {
-            icon.HeightRequest = 82;
-            icon.WidthRequest = 82;
+            icon.HeightRequest = 92;
+            icon.WidthRequest = 92;
             icon.Aspect = Aspect.AspectFit;
         }
 
@@ -132,7 +134,49 @@ public static class UiHomeScreen
         var link = Card();
         var linkBody = new VerticalStackLayout { Spacing = 9 };
         linkBody.Children.Add(SectionTitle("Link do PKG", Cyan));
-        if (url != null) linkBody.Children.Add(url);
+
+        var linkRow = new Grid { ColumnSpacing = 8 };
+        linkRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        linkRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        if (url != null)
+        {
+            Grid.SetColumn(url, 0);
+            linkRow.Children.Add(url);
+        }
+        var paste = new Button
+        {
+            Text = "Colar",
+            WidthRequest = 86,
+            HeightRequest = 50,
+            Padding = new Thickness(12, 0),
+            FontSize = 13
+        };
+        StyleOutline(paste);
+        paste.Clicked += async (_, _) =>
+        {
+            try
+            {
+                string value = await Clipboard.Default.GetTextAsync();
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    if (bottom != null) bottom.Text = "Área de transferência vazia.";
+                    return;
+                }
+                if (url != null)
+                {
+                    url.Text = value.Trim();
+                    url.CursorPosition = url.Text.Length;
+                }
+                if (bottom != null) bottom.Text = "Link colado. Toque em Validar PKG.";
+            }
+            catch
+            {
+                if (bottom != null) bottom.Text = "Não foi possível ler a área de transferência.";
+            }
+        };
+        Grid.SetColumn(paste, 1);
+        linkRow.Children.Add(paste);
+        linkBody.Children.Add(linkRow);
 
         var actions = new Grid { ColumnSpacing = 8 };
         actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
@@ -178,6 +222,82 @@ public static class UiHomeScreen
         Grid.SetColumn(packageText, 1);
         packageGrid.Children.Add(packageText);
         packageBody.Children.Add(packageGrid);
+
+        var galleryTitle = new Label
+        {
+            Text = "Galeria do PKG",
+            TextColor = Cyan,
+            FontSize = 12,
+            FontAttributes = FontAttributes.Bold,
+            IsVisible = false
+        };
+        var galleryHost = new HorizontalStackLayout { Spacing = 8 };
+        var galleryScroll = new ScrollView
+        {
+            Orientation = ScrollOrientation.Horizontal,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
+            Content = galleryHost,
+            IsVisible = false
+        };
+        packageBody.Children.Add(galleryTitle);
+        packageBody.Children.Add(galleryScroll);
+
+        void RefreshArtwork()
+        {
+            galleryHost.Children.Clear();
+            var meta = Field<PkgMetadata>(page, "_currentMeta");
+            byte[][] artworks = meta == null ? Array.Empty<byte[]>() : UiArtworkStore.Get(meta.ContentId);
+            if (artworks.Length <= 1)
+            {
+                galleryTitle.IsVisible = false;
+                galleryScroll.IsVisible = false;
+                return;
+            }
+
+            galleryTitle.Text = "Galeria do PKG • " + artworks.Length + " imagens";
+            for (int i = 0; i < artworks.Length; i++)
+            {
+                byte[] bytes = artworks[i];
+                var thumb = new Image
+                {
+                    WidthRequest = i == 0 ? 92 : 132,
+                    HeightRequest = 78,
+                    Aspect = Aspect.AspectFill,
+                    Source = ImageSource.FromStream(() => new MemoryStream(bytes, false))
+                };
+                var thumbFrame = new Frame
+                {
+                    Padding = 2,
+                    CornerRadius = 12,
+                    BorderColor = i == 0 ? Cyan : Stroke,
+                    BackgroundColor = Surface2,
+                    HasShadow = false,
+                    Content = thumb
+                };
+                galleryHost.Children.Add(thumbFrame);
+            }
+            galleryTitle.IsVisible = true;
+            galleryScroll.IsVisible = true;
+        }
+
+        if (generate != null)
+            generate.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == "IsEnabled" && generate.IsEnabled) RefreshArtwork();
+            };
+        if (title != null)
+            title.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == "Text") RefreshArtwork();
+            };
+        if (url != null)
+            url.TextChanged += (_, _) =>
+            {
+                galleryHost.Children.Clear();
+                galleryTitle.IsVisible = false;
+                galleryScroll.IsVisible = false;
+            };
+
         package.Content = packageBody;
         body.Children.Add(package);
 
@@ -280,7 +400,7 @@ public static class UiHomeScreen
 
         body.Children.Add(new Label
         {
-            Text = "Dev. By TaySon  •  Tayson 3.3.1  •  BGFT universal",
+            Text = "Dev. By TaySon  •  Tayson 3.4.0  •  BGFT universal",
             TextColor = Muted,
             FontSize = 10,
             HorizontalTextAlignment = TextAlignment.Center,
