@@ -110,6 +110,12 @@ public static class UiRuntimeHotfixes
     static async Task PasteAndValidateAsync(Entry url, Label bottom, Button scan)
     {
         if (url == null || AutoValidationPending) return;
+        if (UiAutoPipeline.IsActive)
+        {
+            if (bottom != null) bottom.Text = "Já existe uma validação ou envio automático em andamento. Aguarde antes de substituir a fila.";
+            UiDiagnostics.Add("FILA", "Novo clipboard ignorado porque o fluxo automático ainda está ativo.");
+            return;
+        }
 
         string clipboard = ReadAndroidClipboard(bottom);
         if (string.IsNullOrWhiteSpace(clipboard)) return;
@@ -214,8 +220,12 @@ public static class UiRuntimeHotfixes
             return false;
         }
 
+        // Arm before dispatching the original handler so even an unusually fast
+        // validation cannot finish before the automatic-send state exists.
+        UiAutoPipeline.ArmExternal(next);
         if (!TriggerOriginalButton(scan))
         {
+            UiAutoPipeline.CancelPending(next);
             if (bottom != null) bottom.Text = "Fila pausada: não foi possível iniciar a próxima validação. O link foi preservado.";
             UiDiagnostics.Add("FILA", "Próximo item preservado porque o botão de validação não pôde ser acionado.");
             return false;
@@ -223,12 +233,12 @@ public static class UiRuntimeHotfixes
 
         if (!UiSendQueue.CommitNext(next, out int remaining))
         {
+            UiAutoPipeline.CancelPending(next);
             if (bottom != null) bottom.Text = "Fila pausada: o estado interno da fila mudou durante a validação.";
             UiDiagnostics.Add("FILA", "Falha ao confirmar avanço transacional da fila.");
             return false;
         }
 
-        UiAutoPipeline.ArmExternal(next);
         UiDiagnostics.Add("FILA", "Iniciando item " + current + "/" + BatchTotal + "; pendentes após este: " + remaining + ".");
         if (bottom != null)
             bottom.Text = "Fila " + current + "/" + BatchTotal + ": validando próximo PKG...";
