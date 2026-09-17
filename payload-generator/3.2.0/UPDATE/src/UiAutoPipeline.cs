@@ -31,6 +31,11 @@ public static class UiAutoPipeline
     static bool SendStarted;
     static string PendingUrl = "";
 
+    public static bool IsActive
+    {
+        get { lock (Gate) return Pending || Busy || SendStarted; }
+    }
+
     static T Field<T>(MainPage page, string name) where T : class
         => typeof(MainPage).GetField(name, PrivateInstance)?.GetValue(page) as T;
 
@@ -47,7 +52,12 @@ public static class UiAutoPipeline
         {
             // UiRuntimeHotfixes is attached first. It writes the clipboard URL
             // and starts validation; this handler only arms the direct-send step.
-            paste.Clicked += (_, _) => Arm(url);
+            // A second paste while a pipeline is active must never reset its
+            // Busy/SendStarted state.
+            paste.Clicked += (_, _) =>
+            {
+                if (!IsActive) Arm(url);
+            };
         }
 
         if (generate != null)
@@ -96,6 +106,19 @@ public static class UiAutoPipeline
             PendingUrl = value;
         }
         UiDiagnostics.Add("AUTO", "Fluxo automático armado para um PKG.");
+    }
+
+    public static void CancelPending(string value)
+    {
+        value = (value ?? "").Trim();
+        lock (Gate)
+        {
+            if (SendStarted || !Pending || !string.Equals(PendingUrl, value, StringComparison.Ordinal)) return;
+            Pending = false;
+            Busy = false;
+            PendingUrl = "";
+        }
+        UiDiagnostics.Add("AUTO", "Armamento automático cancelado antes do envio.");
     }
 
     static async Task ContinueAsync(MainPage page)
