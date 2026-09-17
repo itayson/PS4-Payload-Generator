@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Reflection;
+using Android.Runtime;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -211,10 +212,26 @@ public static class UiSettingsScreen
 
     static void CopyToAndroidClipboard(string text)
     {
-        var context = Android.App.Application.Context;
-        var manager = context.GetSystemService(Android.Content.Context.ClipboardService) as Android.Content.ClipboardManager;
-        if (manager == null) throw new InvalidOperationException("ClipboardManager indisponível");
-        manager.PrimaryClip = Android.Content.ClipData.NewPlainText("Tayson diagnóstico", text ?? "");
+        IntPtr serviceClass = IntPtr.Zero;
+        IntPtr javaString = IntPtr.Zero;
+        try
+        {
+            var context = Android.App.Application.Context;
+            Java.Lang.Object service = context.GetSystemService("clipboard");
+            if (service == null) throw new InvalidOperationException("Serviço de clipboard indisponível");
+
+            serviceClass = JNIEnv.GetObjectClass(service.Handle);
+            IntPtr setText = JNIEnv.GetMethodID(serviceClass, "setText", "(Ljava/lang/CharSequence;)V");
+            if (setText == IntPtr.Zero) throw new InvalidOperationException("Clipboard setText indisponível");
+
+            javaString = JNIEnv.NewString(text ?? "");
+            JNIEnv.CallVoidMethod(service.Handle, setText, new JValue(javaString));
+        }
+        finally
+        {
+            if (javaString != IntPtr.Zero) JNIEnv.DeleteLocalRef(javaString);
+            if (serviceClass != IntPtr.Zero) JNIEnv.DeleteLocalRef(serviceClass);
+        }
     }
 
     static View Hero(string title, string subtitle)
