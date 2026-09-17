@@ -1,4 +1,4 @@
-name: Tayson PS4 Payload Generator 3.3.1
+name: Tayson PS4 Payload Generator 3.4.0
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
       - main
       - feature/payload-generator-bgft-universal
       - feature/neon-ui-redesign
+      - feature/3.4.0-paste-metadata-icon
   pull_request:
     branches:
       - main
@@ -86,25 +87,25 @@ jobs:
           /tmp/tools/dotnet/dotnet run --project /tmp/payloadgen/UPDATE/tests/Tests.csproj -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
           grep -q 'RESULT: 87 checks passed' /tmp/out/tests.log
 
-      - name: Build Tayson 3.3.1
+      - name: Build Tayson 3.4.0
         shell: bash
         run: |
           set -euxo pipefail
           python3 /tmp/payloadgen/UPDATE/scripts/build.py --base /tmp/payloadgen --tools /tmp/tools --output /tmp/out | tee /tmp/out/build.log
-          test -s /tmp/out/PS4-Payload-Generator-3.3.1-TaySon.apk
+          test -s /tmp/out/PS4-Payload-Generator-3.4.0-TaySon.apk
           test -s /tmp/payloadgen/UPDATE/build/aligned.apk
-          cp /tmp/payloadgen/UPDATE/build/aligned.apk /tmp/out/PS4-Payload-Generator-3.3.1-aligned-unsigned.apk
+          cp /tmp/payloadgen/UPDATE/build/aligned.apk /tmp/out/PS4-Payload-Generator-3.4.0-aligned-unsigned.apk
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
-          cp payload-generator/3.2.0/README.md /tmp/out/README-3.3.1.md
-          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.3.1.md
-          sha256sum /tmp/out/PS4-Payload-Generator-3.3.1-TaySon.apk /tmp/out/PS4-Payload-Generator-3.3.1-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
+          cp payload-generator/3.2.0/README.md /tmp/out/README-3.4.0.md
+          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.4.0.md
+          sha256sum /tmp/out/PS4-Payload-Generator-3.4.0-TaySon.apk /tmp/out/PS4-Payload-Generator-3.4.0-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
 
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: Tayson-PS4-Payload-Generator-3.3.1
+          name: Tayson-PS4-Payload-Generator-3.4.0
           path: /tmp/out/*
           if-no-files-found: error
           retention-days: 30
