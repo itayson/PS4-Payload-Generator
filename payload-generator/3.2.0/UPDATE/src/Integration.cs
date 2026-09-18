@@ -241,7 +241,7 @@ public static class Integration
         using var handler = new HttpClientHandler { AllowAutoRedirect = false };
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.TryAddWithoutValidation("Range", "bytes=0-3");
+        request.Headers.TryAddWithoutValidation("Range", new[] { "bytes=0-3" });
 
         using HttpResponseMessage response = await http.SendAsync(
             request, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
