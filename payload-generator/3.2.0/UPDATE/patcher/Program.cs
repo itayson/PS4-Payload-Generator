@@ -69,7 +69,7 @@ void SetMessage(string property, string text)
 SetMessage("AlertSuccess", "Sucesso");
 SetMessage("AlertError", "Erro");
 SetMessage("AlertNetError", "Erro de rede");
-SetMessage("AlertInjected", "Payload enviado ao PS4. Isso confirma apenas o envio. Confira na TV se o download iniciou; se aparecer Registro: 0x..., fotografe o código completo. Versão Tayson 3.4.0.");
+SetMessage("AlertInjected", "Payload enviado ao PS4. Isso confirma apenas o envio do ELF. Confira na TV se a tarefa BGFT iniciou; se aparecer Registro: 0x... ou Erro Inicio: 0x..., fotografe o código completo. Versão Tayson 3.5.0.");
 SetMessage("BtnScan", "Validar PKG");
 SetMessage("BtnInject", "Enviar ao PS4");
 SetMessage("BtnSending", "Enviando…");
