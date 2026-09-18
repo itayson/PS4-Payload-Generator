@@ -20,13 +20,39 @@ Vídeo de validação em Android + PS4 confirmou na build 3.5.0:
 - validação automática do PKG sem seletor de arquivo;
 - geração do ELF em memória e envio direto ao GoldHEN BinLoader 9090;
 - PS4 exibindo **Payload received** para a conexão originada pelo Android;
-- app exibindo **Payload enviado ao PS4. Registro BGFT iniciado.**;
+- build inicial exibiu a mensagem **Payload enviado ao PS4. Registro BGFT iniciado.**; essa redação foi posteriormente corrigida porque o Android confirma apenas a entrega do ELF ao BinLoader;
 - histórico registrando o envio como **ENVIADO**;
 - artwork/metadados do pacote exibidos após a validação;
 - Worker v8 respondendo **Online • Worker v8 OK**, com latência observada de aproximadamente 49 ms;
 - interface, navegação entre Início/Histórico/Worker/Ajustes e identidade 3.5.0 funcionando durante o teste.
 
 Este vídeo valida o caminho de **envio único** e o health check do Worker. Ele não demonstra ainda a fila com dois links consecutivos, a preservação da fila sob falha 9090 nem a inspeção do conteúdo copiado pelo diagnóstico. Esses itens permanecem como bloqueadores antes do merge.
+
+
+## Investigação BGFT em hardware — 2026-09-17/18
+
+Vídeos consecutivos mostraram o mesmo padrão com um **Game (PS4GD)** do AkiraBox:
+
+- o Android valida o PKG e gera o ELF;
+- o Worker/rota BGFT passa pelo preflight;
+- GoldHEN exibe **Payload received from 192.168.1.232**;
+- não surge tarefa de download no PS4;
+- não aparece **Dev. By TaySon**, **Registro: 0x...** nem **Erro Inicio: 0x...**.
+
+Esse padrão localiza a falha depois da entrega TCP do ELF e antes de o payload retornar da chamada de registro/start BGFT.
+
+A inspeção do `template.elf` encontrou dois pontos nativos relevantes:
+
+1. Game/DLC agora resolvem o export dinâmico `sceBgftServiceDownloadRegisterTask`; Update mantém `sceBgftServiceIntDebugDownloadRegisterPkg`.
+2. O template herdado zerava `SceBgftDownloadParam`, mas deixava campos usados pelas implementações de referência como ponteiros `NULL`. A revisão atual monta explicitamente:
+   - `iconPath = ""`;
+   - `playgoScenarioId = "0"`;
+   - `packageSubType = ""`;
+   - `option = 0x10000` (`DISABLE_CDN_QUERY_PARAM`);
+   - `contentExUrl`, `skuId` e `releaseDate` permanecem `NULL`.
+
+O bloco novo ocupa exatamente o mesmo intervalo de código nativo (`0x674..0x6FA`) e o fluxo original de comparação de retorno, notificação de erro e `DownloadStartTask` continua a partir de `0x6FB`, sem deslocamento de offsets.
+
 
 
 ## Mudanças específicas da 3.5.0
@@ -116,7 +142,7 @@ package: com.tayson.ps4payloadgenerator
 
 O pipeline exige:
 
-- **91 checks** do núcleo aprovados;
+- **93 checks** do núcleo aprovados;
 - teste transacional da fila, incluindo `peek`, commit esperado e preservação após commit inválido;
 - dependency audit com zero membros ausentes/trimmed;
 - ILRepack/patch preservando os tokens JNI críticos;
