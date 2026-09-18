@@ -176,8 +176,8 @@ public static class UiAutoPipeline
             UiDiagnostics.Add("BINLOADER", "Iniciando conexão TCP 9090.");
             await SendToBinLoaderAsync(ps4Ip, payload);
 
-            UiDiagnostics.Add("BINLOADER", "ELF transmitido com sucesso; BGFT acionado.");
-            SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
+            UiDiagnostics.Add("BINLOADER", "ELF transmitido ao BinLoader; o resultado BGFT depende da execução no PS4.");
+            SetStatus(page, bottom, "Payload enviado ao PS4. Confirme a tarefa BGFT no console.");
             Reset();
 
             // Queue continuation happens only after the current ELF was fully
