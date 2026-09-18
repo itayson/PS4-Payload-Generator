@@ -1,0 +1,115 @@
+name: Tayson Worker v9 validation
+
+on:
+  push:
+    branches:
+      - feature/worker-v9-bgft-transport
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Preserve v8 baseline
+        shell: bash
+        run: |
+          set -euxo pipefail
+          BASE=b58ece326bb87d4fbb7535d03a3c48d7dac1dc95
+          git diff --exit-code "$BASE" -- \
+            payload-generator/3.2.0/UPDATE/cloudflare/universal_transport_worker_v8.js
+
+      - name: Parse v9 as an ES module
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp payload-generator/3.2.0/UPDATE/cloudflare/universal_transport_worker_v9.js /tmp/worker-v9.mjs
+          node --check /tmp/worker-v9.mjs
+
+      - name: Verify BGFT transport invariants
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('payload-generator/3.2.0/UPDATE/cloudflare/universal_transport_worker_v9.js')
+          s=p.read_text()
+          checks = {
+              'v9 version': 'v9-bgft-fixed-length' in s,
+              'fixed-length stream': 'new FixedLengthStream(length)' in s,
+              'strict range status': 'requestedRange && r.status !== 206' in s,
+              'content-range guard': '206 without Content-Range' in s,
+              'upstream no-store': 'cache: "no-store"' in s,
+              'identity encoding': 'Accept-Encoding", "identity"' in s,
+              'durable object class': 'export class RouteStore' in s,
+              'durable binding': 'env.ROUTE_STORE' in s,
+              'kv fallback': 'KV_EVENTUAL' in s,
+              'no transform': 'no-store, no-transform' in s,
+          }
+          failed=[name for name,ok in checks.items() if not ok]
+          for name,ok in checks.items():
+              print(('PASS ' if ok else 'FAIL ') + name)
+          if failed:
+              raise SystemExit('Missing invariants: ' + ', '.join(failed))
+          PY
+
+      - name: Test RouteStore lifecycle
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp payload-generator/3.2.0/UPDATE/cloudflare/universal_transport_worker_v9.js /tmp/worker-v9.mjs
+          cat >/tmp/test-route-store.mjs <<'JS'
+          import { RouteStore } from './worker-v9.mjs';
+
+          class Storage {
+            constructor(){ this.m = new Map(); this.alarm = null; }
+            async put(k,v){ this.m.set(k,v); }
+            async get(k){ return this.m.get(k); }
+            async deleteAll(){ this.m.clear(); }
+            async setAlarm(v){ this.alarm = v; }
+          }
+
+          const storage = new Storage();
+          const state = { storage };
+          const store = new RouteStore(state, {});
+          const expiresAt = Date.now() + 60_000;
+          const route = {
+            kind: 'akira',
+            url: 'https://download.akirabox.com/test.pkg?access=4070908800000.ABCDEFGHIJKLMNOP',
+            cookie: 'session=redacted',
+            referer: 'https://akirabox.to/',
+            userAgent: 'test',
+            remaining: 60
+          };
+
+          let r = await store.fetch(new Request('https://route-store/route', {
+            method: 'PUT',
+            headers: {'content-type':'application/json'},
+            body: JSON.stringify({version:1, route, expiresAt})
+          }));
+          if (r.status !== 200) throw new Error('PUT failed: '+r.status);
+
+          r = await store.fetch(new Request('https://route-store/route'));
+          if (r.status !== 200) throw new Error('GET failed: '+r.status);
+          const loaded = JSON.parse(await r.text());
+          if (loaded.kind !== 'akira' || loaded.cookie !== 'session=redacted')
+            throw new Error('route changed');
+
+          await store.alarm();
+          r = await store.fetch(new Request('https://route-store/route'));
+          if (r.status !== 410) throw new Error('expired route should return 410');
+
+          console.log('PASS RouteStore lifecycle');
+          JS
+          node /tmp/test-route-store.mjs
