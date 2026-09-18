@@ -1,0 +1,20 @@
+name = "drive-itaysondaniel"
+main = "universal_transport_worker_v9.js"
+compatibility_date = "2026-09-17"
+
+# Strongly-consistent route storage. Recommended for AkiraBox because the PS4
+# consumes a freshly-created route immediately after the Android app creates it.
+[[durable_objects.bindings]]
+name = "ROUTE_STORE"
+class_name = "RouteStore"
+
+[[migrations]]
+tag = "v9-route-store"
+new_sqlite_classes = ["RouteStore"]
+
+# Optional backward-compatible fallback. Keep the existing namespace binding
+# if the current deployment already has ROUTES configured.
+#
+# [[kv_namespaces]]
+# binding = "ROUTES"
+# id = "REPLACE_WITH_EXISTING_NAMESPACE_ID"
