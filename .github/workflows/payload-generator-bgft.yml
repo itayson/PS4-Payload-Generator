@@ -96,7 +96,7 @@ jobs:
           /tmp/tools/dotnet/dotnet run --project /tmp/payloadgen/UPDATE/tests/Tests.csproj -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
           grep -q 'PASS session queue transactional self-test' /tmp/out/tests.log
           grep -q 'PASS AkiraBox requires KV-backed Worker route' /tmp/out/tests.log
-          grep -q 'RESULT: 89 checks passed' /tmp/out/tests.log
+          grep -q 'RESULT: 91 checks passed' /tmp/out/tests.log
 
       - name: Build Tayson 3.5.0
         shell: bash
