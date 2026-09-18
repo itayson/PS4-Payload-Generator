@@ -271,7 +271,7 @@ public static class Integration
         if (expectedLength > 0 && contentRange.Length > 0)
         {
             int slash = contentRange.LastIndexOf('/');
-            if (slash >= 0 && long.TryParse(contentRange.Substring(slash + 1), out long totalLength) &&
+            if (slash >= 0 && long.TryParse(contentRange.Substring(slash + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long totalLength) &&
                 totalLength > 0 && totalLength != expectedLength)
                 throw new InvalidDataException(
                     "A rota BGFT do Worker aponta para um arquivo com tamanho diferente do PKG validado.");
