@@ -55,6 +55,29 @@ O bloco novo ocupa exatamente o mesmo intervalo de código nativo (`0x674..0x6FA
 
 
 
+## Build de diagnóstico nativo BGFT
+
+Como a revisão dos parâmetros BGFT ainda não iniciou a tarefa no PS4, a branch usa temporariamente uma instrumentação nativa do `template.elf` para localizar exatamente onde a execução para.
+
+O antigo corpo de `show_credits()` (`0x430..0x48F`) foi reutilizado como dois wrappers sem alterar o tamanho ou os offsets do ELF:
+
+- antes de **Register**, o PS4 recebe uma notificação com o nome da API de registro selecionada;
+- se Register retorna com sucesso, a execução chega ao wrapper de **Start** e o PS4 recebe uma segunda notificação com `sceBgftServiceIntDownloadStartTask`;
+- ponteiro de função nulo é convertido em `0x80990006`, permitindo que os handlers existentes mostrem `Registro: 0x...` ou `Erro Inicio: 0x...` em vez de ocorrer um crash silencioso.
+
+Interpretação do teste:
+
+- nenhuma notificação BGFT após **Payload received** → falha antes de Register (Init/AppInstUtil/UserService);
+- aparece apenas a API de Register → execução entrou no Register, mas não retornou;
+- aparece a API de Register e depois a API de Start → Register retornou com sucesso e a execução chegou ao Start;
+- aparece `Registro: 0x...` → Register retornou erro;
+- aparece `Erro Inicio: 0x...` → Start retornou erro;
+- aparece a API de Start, sem erro, e a tarefa surge → caminho BGFT concluído.
+
+O crédito **Dev. By TaySon** fica temporariamente suprimido somente nesta build de diagnóstico porque o espaço fixo de `show_credits()` foi usado pelos wrappers. Ele deve ser restaurado assim que o ponto de falha for identificado.
+
+
+
 ## Mudanças específicas da 3.5.0
 
 ### Fila automática transacional
@@ -142,7 +165,7 @@ package: com.tayson.ps4payloadgenerator
 
 O pipeline exige:
 
-- **93 checks** do núcleo aprovados;
+- **97 checks** do núcleo aprovados;
 - teste transacional da fila, incluindo `peek`, commit esperado e preservação após commit inválido;
 - dependency audit com zero membros ausentes/trimmed;
 - ILRepack/patch preservando os tokens JNI críticos;
