@@ -253,10 +253,19 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/" || url.pathname === "/health") {
-      return new Response("Tayson Payload Generator Universal Transport Worker v8: OK\n", {
-        status: 200,
-        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
-      });
+      const routesReady = !!(
+        env.ROUTES &&
+        typeof env.ROUTES.get === "function" &&
+        typeof env.ROUTES.put === "function"
+      );
+      return new Response(
+        "Tayson Payload Generator Universal Transport Worker v8: OK\n" +
+        "ROUTES: " + (routesReady ? "OK" : "MISSING") + "\n",
+        {
+          status: 200,
+          headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
+        }
+      );
     }
     if (url.pathname === "/api/routes") {
       if (request.method !== "POST") return new Response("Method not allowed\n", { status: 405 });
