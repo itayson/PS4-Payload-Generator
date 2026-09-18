@@ -68,7 +68,54 @@ assert patched[bgft_offset:bgft_offset + len(old_bgft)] == old_bgft
 patched[bgft_offset:bgft_offset + len(new_bgft)] = new_bgft
 patched[bgft_offset + len(new_bgft)] = 0x90
 
+# Temporary native stage instrumentation for the unresolved hardware BGFT
+# failure. Reuse show_credits() (vaddr 0x430..0x48f) as two small wrappers:
+#
+#   register wrapper:
+#     notify(symbol name) -> NULL guard -> call register
+#   start wrapper:
+#     notify(symbol name) -> NULL guard -> tail-call start
+#
+# The existing main() error handlers remain untouched. Therefore:
+# - if the register symbol is NULL, main reports Registro: 0x80990006;
+# - if Register returns an error, main reports Registro: 0x...;
+# - if Register returns successfully, the Start symbol notification appears;
+# - if Start is NULL/returns an error, main reports Erro Inicio: 0x....
+#
+# The normal credit notification is intentionally disabled in this diagnostic
+# build because its 96-byte function body is the safest fixed-size executable
+# area available without shifting any ELF offsets.
+stage_wrapper = bytes.fromhex(
+    '53488d35c8cd00006a015fe85000000048837de8007413'
+    '488dbd40ffffff488db53cffffffff55e85bc3b8060099805bc3'
+    '53488d35e6c900006a015fe81f00000048837de000740a'
+    '8bbd3cffffff5bff65e0b8060099805bc3'
+)
+assert len(stage_wrapper) == 89
+
+stage_offset = text_file_offset + 0x430
+assert patched[stage_offset:stage_offset + 4] == b'\x55\x48\x89\xe5'
+patched[stage_offset:stage_offset + 96] = stage_wrapper + b'\x90' * (96 - len(stage_wrapper))
+
+# Replace the native Register call setup with a fixed direct call to wrapper
+# vaddr 0x430. The wrapper reconstructs params/taskId from main()'s frame.
+register_call = text_file_offset + 0x6ed
+old_register_call = bytes.fromhex('4889d7488d72fcff55e8')
+assert patched[register_call:register_call + len(old_register_call)] == old_register_call
+patched[register_call:register_call + 10] = bytes.fromhex('e83efdffff') + b'\x90' * 5
+
+# Replace Start setup/call with wrapper vaddr 0x461.
+start_call = text_file_offset + 0x71f
+old_start_call = bytes.fromhex('488b45e08bbd3cffffffffd0')
+assert patched[start_call:start_call + len(old_start_call)] == old_start_call
+patched[start_call:start_call + 12] = bytes.fromhex('e83dfdffff') + b'\x90' * 7
+
+# show_credits() has been repurposed, so suppress its former success call.
+credit_call = text_file_offset + 0x752
+assert patched[credit_call:credit_call + 5] == bytes.fromhex('e8d9fcffff')
+patched[credit_call:credit_call + 5] = b'\x90' * 5
+
 patched = bytes(patched)
-assert hashlib.sha256(patched).hexdigest() == '2d6c6aff8159588eb8b5516f514be9a6d18337b6b58686a200987b6e029d6854'
+assert hashlib.sha256(patched).hexdigest() == 'e9e912b50868f7229fd2b1fe3e9c0025c1459c4c4cc64c46bc3932c1d4f6cd8e'
 (root / 'assets/template.elf').write_bytes(patched)
-print('Template patched: diagnostic/credit corrected and BGFT parameters completed for hardware registration.')
+print('Template patched: BGFT parameters completed and native Register/Start stage diagnostics enabled.')
