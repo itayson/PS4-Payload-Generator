@@ -187,6 +187,11 @@ public static class Integration
             bgftUrl = await router.PrepareAsync(current.Url.AbsoluteUri);
         }
 
+        string routeKind = DescribeBgftRoute(bgftUrl, worker);
+        UiDiagnostics.Add("BGFT", "Transporte selecionado: " + routeKind + ".");
+        await PreflightBgftRouteAsync(bgftUrl, worker, meta.ContentLength);
+        UiDiagnostics.Add("BGFT", "Rota final validada antes de gerar o ELF.");
+
         using Stream input = await FileSystem.OpenAppPackageFileAsync("template.elf");
         using var buffer = new MemoryStream();
         await input.CopyToAsync(buffer);
@@ -200,5 +205,78 @@ public static class Integration
         UiStateStore.Record(meta, "ELF GERADO", Field<Entry>(page, "txtIp").Text);
         UiDiagnostics.Add("ELF", "Payload gerado em memória com " + payload.Length + " bytes.");
         return payload;
+    }
+
+    static string DescribeBgftRoute(string url, string workerBase)
+    {
+        Uri route = LinkPolicy.Parse(url);
+        Uri worker = LinkPolicy.Parse(workerBase);
+        if (!route.Host.Equals(worker.Host, StringComparison.OrdinalIgnoreCase))
+            return "direto";
+
+        string path = route.AbsolutePath;
+        if (path.StartsWith("/a/", StringComparison.OrdinalIgnoreCase))
+            return "Worker AkiraBox KV";
+        if (path.Equals("/akira.pkg", StringComparison.OrdinalIgnoreCase))
+            return "Worker AkiraBox fallback sem KV";
+        if (path.StartsWith("/d/", StringComparison.OrdinalIgnoreCase))
+            return "Worker R2 KV";
+        if (path.Equals("/r2.pkg", StringComparison.OrdinalIgnoreCase) ||
+            path.Equals("/viking.pkg", StringComparison.OrdinalIgnoreCase))
+            return "Worker R2 inline";
+        return "Worker";
+    }
+
+    static async Task PreflightBgftRouteAsync(string url, string workerBase, long expectedLength)
+    {
+        Uri route = LinkPolicy.Parse(url);
+        Uri worker = LinkPolicy.Parse(workerBase);
+
+        // The original provider URL was already validated by DownloadClient or
+        // AkiraDownloadProbe. Here we validate only Worker-generated routes,
+        // because those are a separate transport that BGFT will actually fetch.
+        if (!route.Host.Equals(worker.Host, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        using var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.TryAddWithoutValidation("Range", "bytes=0-3");
+
+        using HttpResponseMessage response = await http.SendAsync(
+            request, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+
+        int status = (int)response.StatusCode;
+        if (status != 200 && status != 206)
+            throw new InvalidDataException(
+                "A rota BGFT preparada pelo Worker não está acessível (HTTP " + status + ").");
+
+        using Stream stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+        byte[] first = new byte[4];
+        int total = 0;
+        while (total < first.Length)
+        {
+            int n = await stream.ReadAsync(first, total, first.Length - total).ConfigureAwait(false);
+            if (n == 0) break;
+            total += n;
+        }
+
+        if (total != 4 ||
+            first[0] != 0x7f || first[1] != 0x43 ||
+            first[2] != 0x4e || first[3] != 0x54)
+            throw new InvalidDataException(
+                "A rota BGFT do Worker respondeu, mas não entregou o cabeçalho de um PKG de PS4.");
+
+        string contentRange = response.Content.Headers.ContentRange?.ToString() ?? "";
+        if (expectedLength > 0 && contentRange.Length > 0)
+        {
+            int slash = contentRange.LastIndexOf('/');
+            if (slash >= 0 && long.TryParse(contentRange.Substring(slash + 1), out long totalLength) &&
+                totalLength > 0 && totalLength != expectedLength)
+                throw new InvalidDataException(
+                    "A rota BGFT do Worker aponta para um arquivo com tamanho diferente do PKG validado.");
+        }
+
+        UiDiagnostics.Add("BGFT", "Pré-teste Worker HTTP " + status + " confirmou assinatura PKG.");
     }
 }
