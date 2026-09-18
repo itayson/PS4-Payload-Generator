@@ -257,6 +257,14 @@ public static class PayloadPatcher
         url = RegistrationUrl(url);
         if (size < 128) throw new InvalidDataException("Tamanho de PKG inválido.");
         byte[] output = (byte[])template.Clone();
+
+        // The inherited payload always resolved the fake-package/debug register
+        // API. That is appropriate for patches, but established PS4 BGFT
+        // implementations use the normal registration path for base games and
+        // add-on content. Switch only the exported symbol string in the loaded
+        // ELF image; no instruction, offset or control-flow change is required.
+        PatchBgftRegisterApi(output, type);
+
         Put(output, "###URL_PLACEHOLDER###", 2048, url, false);
         Put(output, "###CONTENT_ID_PLACEHOLDER###", 64, contentId, false);
         Put(output, "###NAME_PLACEHOLDER###", 128, name, true);
@@ -265,6 +273,39 @@ public static class PayloadPatcher
         int position = Unique(output, marker);
         for (int i = 0; i < 8; i++) output[position + i] = (byte)((ulong)size >> (8 * i));
         return output;
+    }
+
+    static void PatchBgftRegisterApi(byte[] output, string type)
+    {
+        if (string.Equals(type, "PS4PATCH", StringComparison.Ordinal)) return;
+
+        byte[] oldName = Encoding.ASCII.GetBytes("sceBgftServiceIntDebugDownloadRegisterPkg\0");
+        byte[] newName = Encoding.ASCII.GetBytes("sceBgftServiceIntDownloadRegisterTask\0");
+        if (newName.Length > oldName.Length)
+            throw new InvalidDataException("Nome da API BGFT excede o espaço reservado no template.");
+
+        // The same symbol text also appears later in DWARF debug strings. Only
+        // the loaded ELF image (before .debug_info) is relevant to sceKernelDlsym.
+        int searchLimit = Math.Min(output.Length, 0x18000);
+        int position = -1;
+        for (int i = 0; i <= searchLimit - oldName.Length; i++)
+        {
+            bool same = true;
+            for (int j = 0; j < oldName.Length; j++)
+            {
+                if (output[i + j] != oldName[j]) { same = false; break; }
+            }
+            if (!same) continue;
+            if (position != -1)
+                throw new InvalidDataException("Template contém múltiplos símbolos BGFT carregados.");
+            position = i;
+        }
+
+        if (position < 0)
+            throw new InvalidDataException("Template não contém a API BGFT esperada.");
+
+        Array.Clear(output, position, oldName.Length);
+        Array.Copy(newName, 0, output, position, newName.Length);
     }
 
     static void Put(byte[] output, string marker, int width, string value, bool truncateName)
