@@ -175,9 +175,15 @@ public static class UiRuntimeHotfixes
                 return;
             }
 
+            // Arm the one-touch pipeline here, in the same control flow that
+            // starts validation. Do not depend on a second Clicked handler or
+            // event ordering on the replacement Colar button.
+            UiAutoPipeline.ArmExternal(text);
             if (!TriggerOriginalButton(scan))
             {
+                UiAutoPipeline.CancelPending(text);
                 if (bottom != null) bottom.Text = "Link colado. Toque em Validar PKG.";
+                UiDiagnostics.Add("AUTO", "Validação automática não pôde ser iniciada; armamento cancelado.");
             }
         }
         finally
