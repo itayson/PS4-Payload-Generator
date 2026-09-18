@@ -191,6 +191,10 @@ public static class Integration
         UiDiagnostics.Add("BGFT", "Transporte selecionado: " + routeKind + ".");
         await PreflightBgftRouteAsync(bgftUrl, worker, meta.ContentLength);
         UiDiagnostics.Add("BGFT", "Rota final validada antes de gerar o ELF.");
+        UiDiagnostics.Add("BGFT", "API nativa de registro: " +
+            (meta.PkgType == "PS4PATCH"
+                ? "sceBgftServiceIntDebugDownloadRegisterPkg"
+                : "sceBgftServiceDownloadRegisterTask") + ".");
 
         using Stream input = await FileSystem.OpenAppPackageFileAsync("template.elf");
         using var buffer = new MemoryStream();
