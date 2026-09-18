@@ -35,7 +35,40 @@ for i, (old_byte, new_byte) in enumerate(zip(old_credit, new_credit)):
     assert patched[instruction + 3] == old_byte
     patched[instruction + 3] = new_byte
 
+# The inherited main() zeroed the BGFT parameter struct, but only populated
+# userId, entitlementType, id, URL, name, packageType and size. Established
+# PS4 BGFT implementations also provide a non-null iconPath, playgoScenarioId
+# "0", packageSubType "" and BGFT_TASK_OPT_DISABLE_CDN_QUERY_PARAM (0x10000).
+# A normal Game/DLC registration can dereference those string fields before it
+# returns, which matches the hardware symptom: GoldHEN reports "Payload
+# received" but the payload never reaches either success or error notification.
+#
+# Replace only the fixed main() struct-initialization window. The replacement
+# is 134 bytes plus one NOP, exactly fitting vaddr 0x674..0x6FA; the existing
+# compare/error/start control flow resumes untouched at 0x6FB.
+bgft_vaddr = 0x674
+bgft_offset = text_file_offset + bgft_vaddr
+old_bgft = bytes.fromhex(
+    '488dbd40ffffff31f6ba68000000e8c98900008b45c0898540ffffff'
+    'c78544ffffff05000000488d055f39010048898548ffffff488d0591390100'
+    '48898550ffffff488d058341010048898560ffffff488d05f541010048894590'
+    '488d05fa410100488b00488945a0c7853cffffffffffffff488dbd40ffffff'
+    '488db53cffffffff55e88945c4'
+)
+new_bgft = bytes.fromhex(
+    '488d9540ffffff31c04889421848894230488942488b45c08902c6420405'
+    '488d056739010048894208488d059c39010048894210488d059141010048894220'
+    '488d05b6cf00004889424048ffc04889422848894258c7423800000100'
+    '488d05e941010048894250488b05ee41010048894260c742fcffffffff'
+    '4889d7488d72fcff55e88945c4'
+)
+assert len(old_bgft) == 135
+assert len(new_bgft) == 134
+assert patched[bgft_offset:bgft_offset + len(old_bgft)] == old_bgft
+patched[bgft_offset:bgft_offset + len(new_bgft)] = new_bgft
+patched[bgft_offset + len(new_bgft)] = 0x90
+
 patched = bytes(patched)
-assert hashlib.sha256(patched).hexdigest() == 'ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc'
+assert hashlib.sha256(patched).hexdigest() == '2d6c6aff8159588eb8b5516f514be9a6d18337b6b58686a200987b6e029d6854'
 (root / 'assets/template.elf').write_bytes(patched)
-print('Template patched: diagnostic text corrected and fixed-width native credit changed to Dev. By TaySon.')
+print('Template patched: diagnostic/credit corrected and BGFT parameters completed for hardware registration.')
