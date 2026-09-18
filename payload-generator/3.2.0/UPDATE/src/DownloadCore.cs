@@ -280,7 +280,7 @@ public static class PayloadPatcher
         if (string.Equals(type, "PS4PATCH", StringComparison.Ordinal)) return;
 
         byte[] oldName = Encoding.ASCII.GetBytes("sceBgftServiceIntDebugDownloadRegisterPkg\0");
-        byte[] newName = Encoding.ASCII.GetBytes("sceBgftServiceIntDownloadRegisterTask\0");
+        byte[] newName = Encoding.ASCII.GetBytes("sceBgftServiceDownloadRegisterTask\0");
         if (newName.Length > oldName.Length)
             throw new InvalidDataException("Nome da API BGFT excede o espaço reservado no template.");
 
