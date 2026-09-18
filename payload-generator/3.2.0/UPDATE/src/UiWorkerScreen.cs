@@ -94,11 +94,31 @@ public static class UiWorkerScreen
                 if (compact.Length > 160) compact = compact.Substring(0, 160) + "…";
                 bool ok = compact.IndexOf("OK", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool v8 = compact.IndexOf("v8", StringComparison.OrdinalIgnoreCase) >= 0;
-                status.Text = ok ? (v8 ? "● Online • Worker v8 OK" : "● Online • health OK") : "● Resposta recebida";
-                status.TextColor = ok ? Green : Cyan;
-                response.Text = elapsed + " ms • " + (compact.Length == 0 ? "Resposta vazia." : compact);
-                response.TextColor = ok ? Green : Muted;
-                UiDiagnostics.Add("WORKER", (ok ? "Health OK" : "Health respondeu") + " em " + elapsed + " ms.");
+                bool routesOk = compact.IndexOf("ROUTES: OK", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool routesMissing = compact.IndexOf("ROUTES: MISSING", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                if (routesMissing)
+                {
+                    status.Text = "● Online • ROUTES ausente";
+                    status.TextColor = Red;
+                    response.Text = elapsed + " ms • Worker ativo, mas AkiraBox não pode preservar contexto sem o KV ROUTES.";
+                    response.TextColor = Red;
+                    UiDiagnostics.Add("WORKER", "Health online, porém binding ROUTES ausente.");
+                }
+                else
+                {
+                    status.Text = ok
+                        ? (routesOk ? "● Online • Worker v8 • ROUTES OK" :
+                           v8 ? "● Online • Worker v8 • KV não informado" :
+                           "● Online • health OK")
+                        : "● Resposta recebida";
+                    status.TextColor = routesOk ? Green : (ok ? Cyan : Muted);
+                    response.Text = elapsed + " ms • " + (compact.Length == 0 ? "Resposta vazia." : compact);
+                    response.TextColor = routesOk ? Green : Muted;
+                    UiDiagnostics.Add("WORKER",
+                        (routesOk ? "Health e ROUTES OK" : ok ? "Health OK; estado ROUTES não informado" : "Health respondeu") +
+                        " em " + elapsed + " ms.");
+                }
             }
             catch (Exception ex)
             {
