@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build:
@@ -133,6 +134,178 @@ jobs:
           cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-0e6b-baseline.md
           sha256sum /tmp/out/PS4-Payload-Generator-3.5.0-TaySon.apk /tmp/out/PS4-Payload-Generator-3.5.0-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
+
+      - name: Create exact-binary 0e6b baseline candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/known-good-197
+          curl -fL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/itayson/PS4-Payload-Generator/actions/artifacts/10522047295/zip \
+            -o /tmp/known-good-197.zip
+          unzip -q /tmp/known-good-197.zip -d /tmp/known-good-197
+
+          BASE=/tmp/known-good-197/PS4-Payload-Generator-3.4.0-TaySon.apk
+          echo '0e6b897b1f9cd60bc71f44e9eca6dd81ee721e39311f26e112c95b65c9e60ffe  '${BASE} | sha256sum -c -
+
+          python3 - "$BASE" /tmp/out/0e6b-version-patched-unaligned.apk <<'PY'
+          import struct, sys, zipfile
+          from pathlib import Path
+
+          source = Path(sys.argv[1])
+          target = Path(sys.argv[2])
+
+          def patch_manifest(blob):
+              data = bytearray(blob)
+              pos = 8
+              chunks = []
+              while pos < len(data):
+                  typ, header, size = struct.unpack_from('<HHI', data, pos)
+                  chunks.append((pos, typ, header, size))
+                  pos += size
+
+              pool_pos, _, _, pool_size = next(x for x in chunks if x[1] == 1)
+              pool = data[pool_pos:pool_pos + pool_size]
+              count, styles, flags, start, style_start = struct.unpack_from('<5I', pool, 8)
+              if flags & 0x100:
+                  raise SystemExit('Unexpected UTF-8 AndroidManifest string pool')
+
+              strings = []
+              string_positions = []
+              for i in range(count):
+                  off = struct.unpack_from('<I', pool, 28 + 4 * i)[0]
+                  p = start + off
+                  units = struct.unpack_from('<H', pool, p)[0]
+                  p += 2
+                  if units & 0x8000:
+                      units = ((units & 0x7fff) << 16) | struct.unpack_from('<H', pool, p)[0]
+                      p += 2
+                  raw_start = pool_pos + p
+                  text = data[raw_start:raw_start + units * 2].decode('utf-16-le')
+                  strings.append(text)
+                  string_positions.append((raw_start, units))
+
+              try:
+                  version_index = strings.index('3.4.0')
+              except ValueError:
+                  raise SystemExit('Known-good manifest no longer contains versionName 3.4.0')
+
+              raw_start, units = string_positions[version_index]
+              replacement = '3.5.0'.encode('utf-16-le')
+              if len(replacement) != units * 2:
+                  raise SystemExit('Version replacement must remain fixed-width')
+              data[raw_start:raw_start + len(replacement)] = replacement
+
+              map_pos, _, _, map_size = next(x for x in chunks if x[1] == 0x180)
+              ids = list(struct.unpack_from(
+                  '<' + 'I' * ((map_size - 8) // 4), data, map_pos + 8))
+
+              manifest_found = False
+              for chunk_pos, typ, header, size in chunks:
+                  if typ != 0x102:
+                      continue
+                  name_index = struct.unpack_from('<I', data, chunk_pos + 20)[0]
+                  if strings[name_index] != 'manifest':
+                      continue
+                  manifest_found = True
+                  attr_start, attr_size, attr_count = struct.unpack_from('<HHH', data, chunk_pos + 24)
+                  first = chunk_pos + 16 + attr_start
+                  for i in range(attr_count):
+                      attr = first + i * attr_size
+                      name_idx = struct.unpack_from('<I', data, attr + 4)[0]
+                      rid = ids[name_idx] if name_idx < len(ids) else 0
+                      if rid == 0x0101021b:  # android:versionCode
+                          dtype = data[attr + 15]
+                          if dtype != 0x10:
+                              raise SystemExit('Unexpected versionCode value type')
+                          old_code = struct.unpack_from('<I', data, attr + 16)[0]
+                          if old_code != 37:
+                              raise SystemExit(f'Expected versionCode 37, got {old_code}')
+                          struct.pack_into('<I', data, attr + 16, 38)
+                  break
+
+              if not manifest_found:
+                  raise SystemExit('Manifest start element not found')
+              return bytes(data)
+
+          def is_signature(name):
+              upper = name.upper()
+              if upper == 'META-INF/MANIFEST.MF':
+                  return True
+              return upper.startswith('META-INF/') and upper.endswith(('.SF', '.RSA', '.DSA', '.EC'))
+
+          with zipfile.ZipFile(source, 'r') as zin, zipfile.ZipFile(target, 'w') as zout:
+              for info in zin.infolist():
+                  if is_signature(info.filename):
+                      continue
+                  payload = zin.read(info.filename)
+                  if info.filename == 'AndroidManifest.xml':
+                      payload = patch_manifest(payload)
+                  zout.writestr(info, payload)
+
+          print(target)
+          PY
+
+          ZIPALIGN=/tmp/tools/android/android-15/zipalign
+          APKSIGNER=/tmp/tools/android/android-15/lib/apksigner.jar
+          "$ZIPALIGN" -f 4 /tmp/out/0e6b-version-patched-unaligned.apk /tmp/out/0e6b-version-patched-aligned.apk
+
+          KEY=/tmp/out/tayson-0e6b-rebuild.jks
+          keytool -genkeypair -noprompt \
+            -keystore "$KEY" -storepass android -keypass android \
+            -alias tayson-test -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname 'CN=TaySon PS4 Payload Generator'
+
+          java -jar "$APKSIGNER" sign \
+            --ks "$KEY" --ks-key-alias tayson-test \
+            --ks-pass pass:android --key-pass pass:android \
+            --out /tmp/out/PS4-Payload-Generator-3.5.0-EXACT-0e6b.apk \
+            /tmp/out/0e6b-version-patched-aligned.apk
+
+          java -jar "$APKSIGNER" verify --verbose /tmp/out/PS4-Payload-Generator-3.5.0-EXACT-0e6b.apk
+          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.5.0-EXACT-0e6b.apk \
+            | grep -q "package: name='com.tayson.ps4payloadgenerator' versionCode='38' versionName='3.5.0'"
+
+          python3 - "$BASE" /tmp/out/PS4-Payload-Generator-3.5.0-EXACT-0e6b.apk <<'PY'
+          import hashlib, sys, zipfile
+
+          base, rebuilt = sys.argv[1], sys.argv[2]
+
+          def ignored(name):
+              upper = name.upper()
+              return (
+                  name == 'AndroidManifest.xml' or
+                  upper == 'META-INF/MANIFEST.MF' or
+                  (upper.startswith('META-INF/') and upper.endswith(('.SF', '.RSA', '.DSA', '.EC')))
+              )
+
+          with zipfile.ZipFile(base) as a, zipfile.ZipFile(rebuilt) as b:
+              names_a = {n for n in a.namelist() if not ignored(n)}
+              names_b = {n for n in b.namelist() if not ignored(n)}
+              if names_a != names_b:
+                  raise SystemExit('Non-signature APK entry list changed')
+
+              changed = []
+              for name in sorted(names_a):
+                  ha = hashlib.sha256(a.read(name)).hexdigest()
+                  hb = hashlib.sha256(b.read(name)).hexdigest()
+                  if ha != hb:
+                      changed.append(name)
+
+              if changed:
+                  raise SystemExit('Unexpected binary differences: ' + ', '.join(changed))
+
+              print('Exact baseline content verified:', len(names_a), 'entries unchanged')
+              for name in ('assemblies/assemblies.blob', 'classes.dex', 'classes2.dex', 'assets/template.elf'):
+                  print(name, hashlib.sha256(a.read(name)).hexdigest())
+          PY
+
+          sha256sum /tmp/out/PS4-Payload-Generator-3.5.0-EXACT-0e6b.apk \
+            > /tmp/out/SHA256-EXACT-0e6b.txt
 
       - name: Upload build
         uses: actions/upload-artifact@v4
