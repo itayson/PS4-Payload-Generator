@@ -165,7 +165,7 @@ A identidade pública do aplicativo é `com.tayson.ps4payloadgenerator`. O names
 
 ## Validação
 
-O CI da 3.5.0 exige os 89 checks do núcleo, o teste transacional da fila, auditoria de dependências do runtime empacotado, assinatura APK e confirmação de `versionName`/package via `aapt`.
+O CI da 3.5.0 exige os 91 checks do núcleo, o teste transacional da fila, auditoria de dependências do runtime empacotado, assinatura APK e confirmação de `versionName`/package via `aapt`.
 
 A 3.5.0 só deve substituir a versão estável depois do smoke test físico Android + PS4, principalmente com dois ou mais PKGs consecutivos.
 
