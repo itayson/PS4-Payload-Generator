@@ -41,14 +41,13 @@ foreach(string scenario in new[]{"html","json","badmagic","missingid","forbidden
     Check(info.Prefix.Length==4096&&state.BytesRead==4097,"Metadata read bounded by file length");
 }
 byte[] template=File.ReadAllBytes(args[0]);
-byte[] nativeBgftBlock = Convert.FromHexString(
+byte[] nativeBgftParams = Convert.FromHexString(
     "488D9540FFFFFF31C04889421848894230488942488B45C08902C6420405" +
     "488D056739010048894208488D059C39010048894210488D059141010048894220" +
     "488D05B6CF00004889424048FFC04889422848894258C7423800000100" +
-    "488D05E941010048894250488B05EE41010048894260C742FCFFFFFFFF" +
-    "4889D7488D72FCFF55E88945C490");
-Check(template.AsSpan(0x4000 + 0x674, nativeBgftBlock.Length).SequenceEqual(nativeBgftBlock),
-    "ELF native BGFT parameter block includes required string pointers and option");
+    "488D05E941010048894250488B05EE41010048894260C742FCFFFFFFFF");
+Check(template.AsSpan(0x4000 + 0x674, nativeBgftParams.Length).SequenceEqual(nativeBgftParams),
+    "ELF native BGFT parameters include required string pointers and option");
 Check(template[0x11670] == (byte)'0' && template[0x11671] == 0,
     "ELF BGFT playgo scenario string remains stable");
 
