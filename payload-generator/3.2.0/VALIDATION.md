@@ -45,6 +45,15 @@ A fila obedece às seguintes invariantes:
 6. um novo **Colar** não substitui o estado enquanto uma validação ou envio automático estiver ativo;
 7. links da fila nunca são persistidos em `Preferences` ou histórico.
 
+### Registro BGFT por tipo
+
+O ELF gerado agora seleciona a API de registro conforme o tipo do pacote:
+
+- **PS4GD (Game)** e **PS4AC (DLC)** usam `sceBgftServiceIntDownloadRegisterTask`;
+- **PS4PATCH (Update)** preserva `sceBgftServiceIntDebugDownloadRegisterPkg`.
+
+A troca é feita somente no nome do símbolo resolvido por `sceKernelDlsym`; tamanho do ELF, instruções nativas e offsets permanecem inalterados. Esse comportamento segue implementações de referência de Remote PKG no PS4 e preserva o caminho de update que já havia sido validado em hardware.
+
 ### Envio automático
 
 Depois da validação, o ELF é gerado em memória e enviado ao GoldHEN BinLoader TCP 9090 sem abrir o seletor Android de arquivo.
@@ -107,7 +116,7 @@ package: com.tayson.ps4payloadgenerator
 
 O pipeline exige:
 
-- **89 checks** do núcleo aprovados;
+- **91 checks** do núcleo aprovados;
 - teste transacional da fila, incluindo `peek`, commit esperado e preservação após commit inválido;
 - dependency audit com zero membros ausentes/trimmed;
 - ILRepack/patch preservando os tokens JNI críticos;
