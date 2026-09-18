@@ -45,7 +45,7 @@ byte[] result=PayloadPatcher.Patch(template,signed,Fixture.Id,"Teste ação 🎮
 Check(result.Length==template.Length,"ELF size preserved");
 Check(Encoding.UTF8.GetString(result).Contains(signed+"#tayson.pkg"+'\0'),"ELF embeds full signed URL, compatibility fragment and terminator");
 string gameLoaded = Encoding.ASCII.GetString(result, 0, Math.Min(result.Length, 0x18000));
-Check(gameLoaded.Contains("sceBgftServiceIntDownloadRegisterTask"+'\0') &&
+Check(gameLoaded.Contains("sceBgftServiceDownloadRegisterTask"+'\0') &&
       !gameLoaded.Contains("sceBgftServiceIntDebugDownloadRegisterPkg"+'\0'),
       "Base game ELF uses normal BGFT register API");
 byte[] patchElf = PayloadPatcher.Patch(template,signed,Fixture.Id,"Update","PS4PATCH",4096);
