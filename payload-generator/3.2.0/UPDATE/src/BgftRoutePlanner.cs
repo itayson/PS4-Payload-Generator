@@ -140,7 +140,20 @@ public sealed class BgftRoutePlanner : IDisposable
             throw new InvalidDataException("O Worker AkiraBox respondeu HTTP " + status + ".");
         }
 
-        return ValidateWorkerRoute(text);
+        string route = ValidateWorkerRoute(text);
+
+        // AkiraBox requires the session context (cookie/Referer/User-Agent) to
+        // survive until the PS4 BGFT request. The Worker can only preserve that
+        // context when the ROUTES KV binding is available, which produces an
+        // opaque /a/<token>.pkg route. The URL-only /akira.pkg fallback drops
+        // the cookie and is not reliable enough for hardware delivery.
+        Uri routeUri = LinkPolicy.Parse(route);
+        if (!routeUri.AbsolutePath.StartsWith("/a/", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException(
+                "O Worker respondeu sem uma rota AkiraBox persistida no KV ROUTES. " +
+                "Configure o binding ROUTES antes de enviar ao PS4.");
+
+        return route;
     }
 
     string ValidateWorkerRoute(string text)
