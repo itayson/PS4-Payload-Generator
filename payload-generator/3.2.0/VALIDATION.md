@@ -49,10 +49,10 @@ A fila obedece às seguintes invariantes:
 
 O ELF gerado agora seleciona a API de registro conforme o tipo do pacote:
 
-- **PS4GD (Game)** e **PS4AC (DLC)** usam `sceBgftServiceIntDownloadRegisterTask`;
+- **PS4GD (Game)** e **PS4AC (DLC)** usam `sceBgftServiceDownloadRegisterTask`;
 - **PS4PATCH (Update)** preserva `sceBgftServiceIntDebugDownloadRegisterPkg`.
 
-A troca é feita somente no nome do símbolo resolvido por `sceKernelDlsym`; tamanho do ELF, instruções nativas e offsets permanecem inalterados. Esse comportamento segue implementações de referência de Remote PKG no PS4 e preserva o caminho de update que já havia sido validado em hardware.
+A troca é feita somente no nome do símbolo resolvido por `sceKernelDlsym`; para Game/DLC é usado o export normal `sceBgftServiceDownloadRegisterTask`, compatível com resolução dinâmica. Tamanho do ELF, instruções nativas e offsets permanecem inalterados. Esse comportamento segue implementações de referência de Remote PKG no PS4 e preserva o caminho de update que já havia sido validado em hardware.
 
 ### Envio automático
 
