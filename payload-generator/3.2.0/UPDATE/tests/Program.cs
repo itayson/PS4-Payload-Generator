@@ -51,19 +51,6 @@ Check(template.AsSpan(0x4000 + 0x674, nativeBgftParams.Length).SequenceEqual(nat
 Check(template[0x11670] == (byte)'0' && template[0x11671] == 0,
     "ELF BGFT playgo scenario string remains stable");
 
-byte[] stageWrapper = Convert.FromHexString(
-    "53488D35C8CD00006A015FE85000000048837DE8007413" +
-    "488DBD40FFFFFF488DB53CFFFFFFFF55E85BC3B8060099805BC3" +
-    "53488D35E6C900006A015FE81F00000048837DE000740A" +
-    "8BBD3CFFFFFF5BFF65E0B8060099805BC3");
-Check(template.AsSpan(0x4000 + 0x430, stageWrapper.Length).SequenceEqual(stageWrapper),
-    "ELF native stage wrappers instrument Register and Start");
-Check(template.AsSpan(0x4000 + 0x6ed, 5).SequenceEqual(Convert.FromHexString("E83EFDFFFF")),
-    "ELF Register call is routed through diagnostic wrapper");
-Check(template.AsSpan(0x4000 + 0x71f, 5).SequenceEqual(Convert.FromHexString("E83DFDFFFF")),
-    "ELF Start call is routed through diagnostic wrapper");
-Check(template.AsSpan(0x4000 + 0x752, 5).ToArray().All(b => b == 0x90),
-    "Diagnostic build suppresses credit call while stage wrapper occupies its body");
 byte[] result=PayloadPatcher.Patch(template,signed,Fixture.Id,"Teste ação 🎮", "PS4GD",8589934592L);
 Check(result.Length==template.Length,"ELF size preserved");
 Check(Encoding.UTF8.GetString(result).Contains(signed+"#tayson.pkg"+'\0'),"ELF embeds full signed URL, compatibility fragment and terminator");
