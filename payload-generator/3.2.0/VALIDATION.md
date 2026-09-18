@@ -165,7 +165,7 @@ package: com.tayson.ps4payloadgenerator
 
 O pipeline exige:
 
-- **97 checks** do núcleo aprovados;
+- **93 checks** do núcleo aprovados;
 - teste transacional da fila, incluindo `peek`, commit esperado e preservação após commit inválido;
 - dependency audit com zero membros ausentes/trimmed;
 - ILRepack/patch preservando os tokens JNI críticos;
