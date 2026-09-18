@@ -44,6 +44,14 @@ byte[] template=File.ReadAllBytes(args[0]);
 byte[] result=PayloadPatcher.Patch(template,signed,Fixture.Id,"Teste ação 🎮", "PS4GD",8589934592L);
 Check(result.Length==template.Length,"ELF size preserved");
 Check(Encoding.UTF8.GetString(result).Contains(signed+"#tayson.pkg"+'\0'),"ELF embeds full signed URL, compatibility fragment and terminator");
+string gameLoaded = Encoding.ASCII.GetString(result, 0, Math.Min(result.Length, 0x18000));
+Check(gameLoaded.Contains("sceBgftServiceIntDownloadRegisterTask"+'\0') &&
+      !gameLoaded.Contains("sceBgftServiceIntDebugDownloadRegisterPkg"+'\0'),
+      "Base game ELF uses normal BGFT register API");
+byte[] patchElf = PayloadPatcher.Patch(template,signed,Fixture.Id,"Update","PS4PATCH",4096);
+string patchLoaded = Encoding.ASCII.GetString(patchElf, 0, Math.Min(patchElf.Length, 0x18000));
+Check(patchLoaded.Contains("sceBgftServiceIntDebugDownloadRegisterPkg"+'\0'),
+      "Update ELF preserves debug BGFT register API");
 Check(template.SequenceEqual(File.ReadAllBytes(args[0])),"Original template remains unchanged");
 int urlOffset=Encoding.ASCII.GetString(template).IndexOf("###URL_PLACEHOLDER###",StringComparison.Ordinal);
 string exact="https://example.test/"+new string('a',2047-"https://example.test/".Length-4)+".pkg";
