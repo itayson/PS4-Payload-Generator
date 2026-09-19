@@ -170,7 +170,7 @@ Artefatos publicados:
 APK SHA-256 validado:
 
 ```text
-0a07d1809efb3479f6984dd12704507cefea1b768a82c0803c4806e6abf6fd0b
+a251efb5fbdcc48acf402d0d54ed2a91b21fec058f563436a54f6b3ff5ae526e
 ```
 
 ## Uso responsável
