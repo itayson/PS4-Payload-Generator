@@ -1,18 +1,18 @@
-# Tayson PS4 Payload Generator 3.4.0
+# Tayson PS4 Payload Generator 3.4.3
 
 Aplicativo Android para validar PKGs de PS4, preparar a rota BGFT, gerar um ELF específico para a tarefa e enviá-lo diretamente ao **GoldHEN BinLoader TCP 9090**.
 
 **Não usa Receiver, Remote Package Installer nem retransmite o PKG inteiro pelo celular.**
 
-## Novidades da 3.4.0
+## Novidades da 3.4.3
 
-- botão **Colar** ao lado do campo de link;
-- galeria de artwork do PKG;
-- leitura da tabela de entradas do PKG para localizar `icon0.png`, `pic0.png` e `pic1.png` quando presentes;
-- leitura opcional por HTTP Range dos assets de imagem sem baixar o pacote inteiro;
-- cache das imagens somente durante a sessão;
-- novo ícone Tayson fornecido para launcher Android e adaptive icon;
-- `versionName 3.4.0` e `versionCode 37`.
+- preserva o botão **Colar**, artwork e validação por Range da linha 3.4.x;
+- roteamento unificado no Worker para Mocha, FileKeeper e VikingFile;
+- FileKeeper reconhece o transporte real por `dlproxy.uk`;
+- a identidade do provedor é preservada até a geração do ELF;
+- o BGFT recebe FileKeeper sempre por uma URL curta terminada em `.pkg`;
+- Worker estável **v11.2**;
+- `versionName 3.4.3` e `versionCode 40`.
 
 Falhas ao carregar imagens extras não invalidam um PKG que já passou na validação principal.
 
@@ -30,9 +30,13 @@ Metadados / artwork
 icon0 • pic0 • pic1 • fallback PSN por Title ID
     ↓
 BGFT Route Planner
-    ├── direto
-    ├── Mocha + #tayson.pkg
-    └── Worker v8 / KV ROUTES
+    ├── direto quando compatível
+    └── Worker v11.2 / KV ROUTES
+        ├── AkiraBox   /a/<token>.pkg
+        ├── Rootz/R2   /d/<token>.pkg
+        ├── Mocha      /m/<token>.pkg
+        ├── FileKeeper /f/<token>.pkg
+        └── VikingFile /v/<token>.pkg
     ↓
 PayloadPatcher
     ↓
@@ -47,15 +51,15 @@ BGFT do PS4
 
 | Provedor | Transporte BGFT | Estado |
 | --- | --- | --- |
-| Mocha | URL autenticada preservada + fragmento local `.pkg` | Validado |
-| VikingFile | R2/SigV4 via Worker v8 | Validado |
-| FileKeeper | Direto quando compatível | Validado |
-| Rootz | R2/SigV4 via Worker v8 | Validado |
-| AkiraBox | rota temporária Worker v8 com contexto de sessão no KV | Validado |
+| Mocha | rota curta Worker `/m/<token>.pkg` | Validado |
+| VikingFile | R2/SigV4 via Worker `/v/<token>.pkg` | Validado |
+| FileKeeper | rota curta Worker `/f/<token>.pkg`, incluindo `dlproxy.uk` | Validado |
+| Rootz | R2/SigV4 via Worker `/d/<token>.pkg` | Validado |
+| AkiraBox | rota temporária Worker `/a/<token>.pkg` com contexto de sessão no KV | Validado |
 
 O fluxo Android → ELF → GoldHEN → BGFT já foi confirmado em hardware real, inclusive com AkiraBox.
 
-## Universal Transport Worker v8
+## Universal Transport Worker v11.2
 
 Worker padrão:
 
@@ -97,7 +101,7 @@ Não são persistidos:
 
 ```text
 Application label: Tayson PS4 Payload Generator
-Version name: 3.4.0
+Version name: 3.4.3
 Version code: 37
 Package: com.tayson.ps4payloadgenerator
 ```
@@ -108,7 +112,7 @@ A classe herdada `com.phoenixx.ps4remotepkg.mono.MonoRuntimeProvider.__mono_init
 
 ## Compatibilidade preservada
 
-A reconstrução continua preservando `classes.dex`, `classes2.dex`, `assets/template.elf`, integração JNI/MAUI, PayloadPatcher, Worker v8 e BinLoader 9090.
+A reconstrução continua preservando `classes.dex`, `classes2.dex`, `assets/template.elf`, integração JNI/MAUI, PayloadPatcher, Worker v11.2 e BinLoader 9090.
 
 ## Uso responsável
 
