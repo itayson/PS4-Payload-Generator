@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
@@ -126,20 +126,21 @@ jobs:
           sha256sum /tmp/out/PS4-Payload-Generator-3.4.1-TaySon.apk /tmp/out/PS4-Payload-Generator-3.4.1-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
 
-      - name: Free quota from superseded experimental artifacts
+      - name: Publish 3.4.1 provider-routes prerelease
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          for ID in 10525507507 10526591884 10526733330 10526924888; do
-            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$ID" || true
-          done
-
-      - name: Upload build
-        uses: actions/upload-artifact@v4
-        with:
-          name: Tayson-PS4-Payload-Generator-3.4.1-provider-routes
-          path: /tmp/out/*
-          if-no-files-found: error
-          retention-days: 30
+          TAG='v3.4.1-provider-routes-test'
+          gh release delete "$TAG" --cleanup-tag -y || true
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title 'Tayson 3.4.1 — Mocha, FileKeeper e Viking via Worker' \
+            --notes 'Candidato de teste físico. Base 3.4.0 conhecida; Mocha, FileKeeper e VikingFile passam por rotas curtas do Worker v11. Não promover para main antes da validação no PS4.' \
+            --prerelease
+          gh release upload "$TAG" \
+            /tmp/out/PS4-Payload-Generator-3.4.1-TaySon.apk \
+            /tmp/out/universal_transport_worker_v11.js \
+            /tmp/out/SHA256SUMS.txt \
+            --clobber
