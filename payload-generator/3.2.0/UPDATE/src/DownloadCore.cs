@@ -42,7 +42,7 @@ public static class LinkPolicy
         if (Domain(h, "akirabox.com")) return Provider.AkiraBox;
         if (Domain(h, "rootz.so")) return Provider.Rootz;
         if (Domain(h, "mocha.my")) return Provider.Mocha;
-        if (Domain(h, "filekeeper.net")) return Provider.FileKeeper;
+        if (Domain(h, "filekeeper.net") || Domain(h, "dlproxy.uk")) return Provider.FileKeeper;
         if (Domain(h, "mediafire.com")) return Provider.MediaFire;
         return Provider.Direct;
     }
