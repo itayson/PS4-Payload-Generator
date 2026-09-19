@@ -81,6 +81,15 @@ jobs:
         run: |
           python3 /tmp/payloadgen/UPDATE/scripts/prepare.py --base /tmp/payloadgen --tools /tmp/tools
 
+      - name: Validate Worker v11
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node --check /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11.js
+          grep -q '/api/mocha-routes' /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11.js
+          grep -q '/api/filek-routes' /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11.js
+          grep -q '/api/viking-routes' /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11.js
+
       - name: Run core tests
         shell: bash
         run: |
