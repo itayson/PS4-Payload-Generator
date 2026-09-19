@@ -40,10 +40,25 @@ public sealed class BgftRoutePlanner : IDisposable
     public void Dispose() { }
 
     public Task<string> PrepareAsync(string upstreamUrl, CancellationToken token = default) =>
-        PrepareAsync(upstreamUrl, "", "", "", token);
+        PrepareAsync(upstreamUrl, Provider.Direct, "", "", "", token);
+
+    public Task<string> PrepareAsync(
+        string upstreamUrl,
+        Provider providerHint,
+        CancellationToken token = default) =>
+        PrepareAsync(upstreamUrl, providerHint, "", "", "", token);
+
+    public Task<string> PrepareAsync(
+        string upstreamUrl,
+        string cookie,
+        string referer,
+        string userAgent,
+        CancellationToken token = default) =>
+        PrepareAsync(upstreamUrl, Provider.Direct, cookie, referer, userAgent, token);
 
     public async Task<string> PrepareAsync(
         string upstreamUrl,
+        Provider providerHint,
         string cookie,
         string referer,
         string userAgent,
@@ -53,18 +68,18 @@ public sealed class BgftRoutePlanner : IDisposable
         ValidateTemporalParameters(uri);
         string exact = upstreamUrl.Trim();
 
-        if (IsAkiraAccessUrl(uri))
+        if (providerHint == Provider.AkiraBox || IsAkiraAccessUrl(uri))
             return await CreateAkiraWorkerRouteAsync(exact, cookie, referer, userAgent, token).ConfigureAwait(false);
 
-        if (IsMochaDownloadUrl(uri))
+        if (providerHint == Provider.Mocha || IsMochaDownloadUrl(uri))
             return await CreateProviderWorkerRouteAsync(
                 exact, "/api/mocha-routes", "Mocha", false, token).ConfigureAwait(false);
 
-        if (IsFileKeeperDownloadUrl(uri))
+        if (providerHint == Provider.FileKeeper || IsFileKeeperDownloadUrl(uri))
             return await CreateProviderWorkerRouteAsync(
                 exact, "/api/filek-routes", "FileKeeper", false, token).ConfigureAwait(false);
 
-        if (IsVikingR2(uri))
+        if (providerHint == Provider.VikingFile || IsVikingR2(uri))
             return await CreateProviderWorkerRouteAsync(
                 exact, "/api/viking-routes", "VikingFile", true, token).ConfigureAwait(false);
 
@@ -242,15 +257,13 @@ public sealed class BgftRoutePlanner : IDisposable
     public static bool IsMochaDownloadUrl(Uri uri)
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
-        return LinkPolicy.Domain(uri.IdnHost.TrimEnd('.'), "mocha.my") &&
-            uri.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase);
+        return LinkPolicy.Domain(uri.IdnHost.TrimEnd('.'), "mocha.my");
     }
 
     public static bool IsFileKeeperDownloadUrl(Uri uri)
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
-        return LinkPolicy.Domain(uri.IdnHost.TrimEnd('.'), "filekeeper.net") &&
-            uri.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase);
+        return LinkPolicy.Domain(uri.IdnHost.TrimEnd('.'), "filekeeper.net");
     }
 
     public static bool IsAkiraAccessUrl(Uri uri)
