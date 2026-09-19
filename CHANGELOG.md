@@ -39,7 +39,7 @@ Baseline validado em PS4 real.
 - template ELF SHA-256:
   `ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc`;
 - APK SHA-256:
-  `0a07d1809efb3479f6984dd12704507cefea1b768a82c0803c4806e6abf6fd0b`;
+  `a251efb5fbdcc48acf402d0d54ed2a91b21fec058f563436a54f6b3ff5ae526e`;
 - aplicativo 3.4.3 + Worker v11.2 confirmados funcionando em hardware real.
 
 ## 3.4.2 — prerelease
