@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   build:
@@ -124,6 +125,16 @@ jobs:
           cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.4.1.md
           sha256sum /tmp/out/PS4-Payload-Generator-3.4.1-TaySon.apk /tmp/out/PS4-Payload-Generator-3.4.1-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
+
+      - name: Free quota from superseded experimental artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          for ID in 10525507507 10526591884 10526733330 10526924888; do
+            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$ID" || true
+          done
 
       - name: Upload build
         uses: actions/upload-artifact@v4
