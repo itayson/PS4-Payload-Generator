@@ -22,13 +22,18 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p /tmp/tayson-343
-          gh release download v3.4.3-filek-dlproxy-test \
-            --repo "$GITHUB_REPOSITORY" \
-            --dir /tmp/tayson-343
+          BASE='https://github.com/itayson/PS4-Payload-Generator/releases/download/v3.4.3-filek-dlproxy-test'
+          curl -fL "$BASE/PS4-Payload-Generator-3.4.3-TaySon.apk" \
+            -o /tmp/tayson-343/PS4-Payload-Generator-3.4.3-TaySon.apk
+          curl -fL "$BASE/universal_transport_worker_v11_2.js" \
+            -o /tmp/tayson-343/universal_transport_worker_v11_2.js
+          curl -fL "$BASE/SHA256SUMS.txt" \
+            -o /tmp/tayson-343/SHA256SUMS.txt
           ls -lh /tmp/tayson-343
           cd /tmp/tayson-343
-          sha256sum -c SHA256SUMS.txt
           echo '88e340f6db250c20506e570832c7a3ba9800181dd4390e372b022bae59527e6e  PS4-Payload-Generator-3.4.3-TaySon.apk' | sha256sum -c -
+          test -s universal_transport_worker_v11_2.js
+          test -s SHA256SUMS.txt
 
       - name: Write stable release notes
         shell: bash
