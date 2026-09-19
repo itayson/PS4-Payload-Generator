@@ -1,4 +1,4 @@
-# Validação 3.4.0 — Tayson PS4 Payload Generator
+# Validação 3.4.3 — Tayson PS4 Payload Generator
 
 ## Evidência em hardware já preservada
 
@@ -10,7 +10,7 @@ Os cinco provedores principais já tiveram o fluxo funcional validado em PS4 rea
 - **Rootz:** final R2/SigV4 validado via Universal Transport Worker;
 - **AkiraBox:** Worker v8 + KV `ROUTES` permitiu download real após o acesso direto ao BGFT ser recusado.
 
-A 3.4.0 não reescreve o núcleo desse fluxo.
+A 3.4.3 mantém o núcleo BGFT/ELF validado e altera somente o roteamento por provedor.
 
 ## Mudanças específicas da 3.4.0
 
@@ -58,7 +58,7 @@ Permanecem:
 - preservação de queries autenticadas quando necessário;
 - detecção de Cloudflare R2/AWS SigV4;
 - `BgftRoutePlanner` separado da URL original;
-- Universal Transport Worker v8 + KV `ROUTES`;
+- Universal Transport Worker v11.2 + KV `ROUTES`;
 - `PayloadPatcher` e template ELF existentes;
 - envio ao GoldHEN BinLoader TCP 9090;
 - nenhum Receiver/RPI.
@@ -67,16 +67,16 @@ Permanecem:
 
 ```text
 application label: Tayson PS4 Payload Generator
-versionName: 3.4.0
-versionCode: 37
+versionName: 3.4.3
+versionCode: 40
 package: com.tayson.ps4payloadgenerator
 ```
 
-## CI 3.4.0
+## CI 3.4.3
 
 O pipeline exige:
 
-- **89 checks** aprovados;
+- **103 checks** aprovados;
 - testes adicionais para leitura da tabela de artwork e ordem `icon0 → pic0 → pic1`;
 - dependency audit do runtime empacotado;
 - ILRepack/patch preservando MVID/JNI TypeDef tokens críticos;
@@ -87,7 +87,23 @@ O pipeline exige:
 - substituição verificada dos 20 recursos de ícone;
 - `aapt` confirma o package `com.tayson.ps4payloadgenerator`;
 - classe MonoRuntimeProvider herdada preservada no namespace compilado original;
-- artifact `Tayson-PS4-Payload-Generator-3.4.0` com `build-info.json` e `SHA256SUMS.txt`.
+- release `v3.4.3` com `build-info.json` e `SHA256SUMS.txt`.
+
+
+## Validação física final 3.4.3
+
+A combinação promovida a baseline estável foi confirmada em PS4 real:
+
+- aplicativo **3.4.3**;
+- Worker **v11.2**;
+- FileKeeper via `dlproxy.uk` reconhecido como `Provider.FileKeeper`;
+- rota FileKeeper normalizada para `/f/<token>.pkg`;
+- Mocha e VikingFile permanecem nas rotas dedicadas do Worker;
+- Rootz e AkiraBox preservam os fluxos já funcionais;
+- template ELF preservado com SHA-256:
+  `ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc`;
+- APK estável SHA-256:
+  `88e340f6db250c20506e570832c7a3ba9800181dd4390e372b022bae59527e6e`.
 
 ## Smoke test recomendado
 
