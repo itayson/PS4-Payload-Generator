@@ -5,14 +5,14 @@
 <h1 align="center">Tayson PS4 Payload Generator</h1>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-3.4.0-1f6feb?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-3.4.3-1f6feb?style=for-the-badge">
   <img alt="Android" src="https://img.shields.io/badge/platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white">
   <img alt="PS4" src="https://img.shields.io/badge/target-PS4-006FCD?style=for-the-badge">
   <img alt="BGFT" src="https://img.shields.io/badge/BGFT-Universal-00AEEF?style=for-the-badge">
 </p>
 
 <p align="center">
-  <img alt="Worker" src="https://img.shields.io/badge/Worker-v8-FF8800?style=flat-square&logo=cloudflare&logoColor=white">
+  <img alt="Worker" src="https://img.shields.io/badge/Worker-v11.2-FF8800?style=flat-square&logo=cloudflare&logoColor=white">
   <img alt="Providers" src="https://img.shields.io/badge/providers-5%2F5%20validated-2ea44f?style=flat-square">
   <img alt="BinLoader" src="https://img.shields.io/badge/BinLoader-TCP%209090-8250df?style=flat-square">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square">
@@ -26,17 +26,21 @@
 
 ---
 
-## Tayson 3.4.0
+## Tayson 3.4.3
 
-A atualização 3.4.0 expande a interface sem alterar o núcleo BGFT já validado em hardware:
+A 3.4.3 é o baseline estável validado em PS4 real. Ela preserva o núcleo BGFT/ELF conhecido e consolida o roteamento por provedor:
 
-- botão **Colar** ao lado do campo de link;
-- galeria de metadados do PKG;
-- leitura estruturada da tabela de arquivos do PKG para localizar `icon0.png`, `pic0.png` e `pic1.png` quando disponíveis;
-- requisições HTTP Range pequenas e opcionais para carregar essas imagens sem baixar o PKG completo;
-- falhas de artwork não invalidam um PKG que já passou na validação principal;
-- novo ícone Tayson em todas as densidades Android, incluindo adaptive icon;
-- `versionName 3.4.0` / `versionCode 37`.
+- botão **Colar** e pipeline automático de validação;
+- galeria de metadados/artwork do PKG;
+- Mocha via rota curta do Worker;
+- VikingFile via rota dedicada do Worker para R2/SigV4;
+- FileKeeper com reconhecimento de `filekeeper.net` e do transporte real `dlproxy.uk`;
+- Rootz preservado via Worker/R2;
+- AkiraBox preservado com contexto temporário no KV `ROUTES`;
+- FileKeeper mantém a identidade do provedor mesmo após redirects/resolução;
+- o BGFT recebe sempre uma URL curta terminada em `.pkg` para FileKeeper;
+- `versionName 3.4.3` / `versionCode 40`;
+- Worker estável: **v11.2**.
 
 A galeria é mantida somente em memória durante a sessão. URLs assinadas, cookies e tokens continuam fora do histórico persistente.
 
@@ -54,9 +58,9 @@ A galeria é mantida somente em memória durante a sessão. URLs assinadas, cook
 | Geração dinâmica de ELF | ✅ Funcional |
 | GoldHEN BinLoader TCP 9090 | ✅ Funcional |
 | Registro BGFT | ✅ Funcional |
-| Universal Transport Worker | ✅ v8 |
+| Universal Transport Worker | ✅ v11.2 |
 | Cloudflare KV `ROUTES` | ✅ Suportado |
-| Interface Tayson / PT-BR | ✅ 3.4.0 |
+| Interface Tayson / PT-BR | ✅ 3.4.3 |
 
 O fluxo já validado permanece:
 
@@ -93,7 +97,7 @@ São exibidas no máximo cinco imagens por pacote. A busca de artwork é opciona
 
 ---
 
-## Universal Transport Worker v8
+## Universal Transport Worker v11.2
 
 Endpoint padrão:
 
@@ -107,7 +111,19 @@ Binding KV esperado:
 ROUTES
 ```
 
-O Worker é usado quando o endereço final do provedor precisa de normalização para o BGFT. URLs R2/SigV4 são preservadas sem reconstrução da assinatura; o AkiraBox pode manter temporariamente cookies, Referer e User-Agent no KV.
+O Worker normaliza os provedores para URLs compatíveis com BGFT e mantém o binding `ROUTES`.
+
+Rotas estáveis:
+
+```text
+AkiraBox   → /a/<token>.pkg
+Rootz/R2   → /d/<token>.pkg
+Mocha      → /m/<token>.pkg
+FileKeeper → /f/<token>.pkg
+VikingFile → /v/<token>.pkg
+```
+
+O FileKeeper reconhece também `dlproxy.uk`, host real observado no transporte do provedor. URLs R2/SigV4 continuam preservadas sem reconstrução da assinatura.
 
 ---
 
@@ -129,16 +145,33 @@ O Histórico persiste somente metadados não sensíveis. Worker e IP do PS4 são
 
 ```text
 Application label: Tayson PS4 Payload Generator
-Version name: 3.4.0
-Version code: 37
-Package: com.phoenixx.ps4remotepkg
-Worker: Universal Transport Worker v8
+Version name: 3.4.3
+Version code: 40
+Package: com.tayson.ps4payloadgenerator
+Worker: Universal Transport Worker v11.2
 BinLoader: TCP 9090
 ```
 
-O package ID é mantido para preservar compatibilidade com a instalação e os dados locais existentes.
+O package ID público atual é `com.tayson.ps4payloadgenerator`.
 
 ---
+
+
+## Download estável
+
+A release estável atual é **v3.4.3**.
+
+Artefatos publicados:
+
+- `PS4-Payload-Generator-3.4.3-TaySon.apk`;
+- `universal_transport_worker_v11_2.js`;
+- `SHA256SUMS.txt`.
+
+APK SHA-256 validado:
+
+```text
+88e340f6db250c20506e570832c7a3ba9800181dd4390e372b022bae59527e6e
+```
 
 ## Uso responsável
 
