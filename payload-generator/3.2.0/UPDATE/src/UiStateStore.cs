@@ -135,7 +135,7 @@ public static class UiStateStore
         if (value.Contains("vikingfile") || value.Contains("r2.cloudflarestorage.com")) return "VikingFile / R2";
         if (value.Contains("rootz")) return "Rootz";
         if (value.Contains("mocha")) return "Mocha";
-        if (value.Contains("filekeeper")) return "FileKeeper";
+        if (value.Contains("filekeeper") || value.Contains("dlproxy")) return "FileKeeper";
         return "Link direto";
     }
 
