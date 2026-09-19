@@ -12,6 +12,8 @@ async Task Reject(Func<Task> action,string name)
 }
 foreach(var item in new[]{("vikingfile.com",Provider.VikingFile),("download.vikingfile.com",Provider.VikingFile),
     ("akirabox.com",Provider.AkiraBox),("rootz.so",Provider.Rootz),("mocha.my",Provider.Mocha),
+    ("filekeeper.net",Provider.FileKeeper),("cdn.filekeeper.net",Provider.FileKeeper),
+    ("tunnel1.dlproxy.uk",Provider.FileKeeper),
     ("mocha.my.attacker.example",Provider.Direct),("evilrootz.so",Provider.Direct)})
     Check(LinkPolicy.Detect(LinkPolicy.Parse("https://"+item.Item1+"/file"))==item.Item2,"Host "+item.Item1);
 foreach(string bad in new[]{"file:///tmp/file.pkg","javascript:alert(1)","https://user:pass@example.test/a.pkg","https://e.test/a\r\nb","https://e.test/a#fragment"})
@@ -93,12 +95,23 @@ string r2 = "https://vikingfile.04b3d96d52475741e6b10f97f0a84a16.r2.cloudflarest
     "&X-Amz-Date=20990101T000000Z&X-Amz-SignedHeaders=host&X-Amz-Expires=21600" +
     "&X-Amz-Signature=" + new string('a',64);
 Check(BgftRoutePlanner.IsVikingR2(LinkPolicy.Parse(r2)), "Recognize final VikingFile R2 presigned URL");
+Check(BgftRoutePlanner.IsMochaDownloadUrl(LinkPolicy.Parse("https://cdn.mocha.my/game.pkg?token=x&expires=4070908800")),
+    "Recognize final Mocha PKG URL");
+Check(BgftRoutePlanner.IsFileKeeperDownloadUrl(LinkPolicy.Parse("https://cdn.filekeeper.net/a/game.pkg?x=1")),
+    "Recognize final FileKeeper PKG URL");
+Check(BgftRoutePlanner.IsFileKeeperDownloadUrl(LinkPolicy.Parse("https://s1.filekeeper.net/download/abc123?token=x")),
+    "Recognize FileKeeper final URL without .pkg extension");
+Check(BgftRoutePlanner.IsFileKeeperDownloadUrl(LinkPolicy.Parse("https://tunnel1.dlproxy.uk/download/abc123?token=x")),
+    "Recognize FileKeeper dlproxy transport URL");
+Check(BgftRoutePlanner.IsMochaDownloadUrl(LinkPolicy.Parse("https://cdn.mocha.my/download/abc123?token=x&expires=4070908800")),
+    "Recognize Mocha final URL without .pkg extension");
 {
     var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/d/abc123.pkg\n");
     using var router = new BgftRoutePlanner(()=>routeHandler);
     string route = await router.PrepareAsync(r2);
     Check(route == "https://drive.itaysondaniel.workers.dev/d/abc123.pkg", "VikingFile uses short Worker route");
     Check(routeHandler.PostedBody == r2, "Worker receives exact signed R2 URL without reserialization");
+    Check(routeHandler.LastPath == "/api/viking-routes", "VikingFile uses dedicated v11 route endpoint");
 }
 {
     var routeHandler = new RouteHandler(HttpStatusCode.NotFound, "missing");
@@ -118,8 +131,42 @@ await Reject(async()=>
     using var router = new BgftRoutePlanner(()=>new RouteHandler(HttpStatusCode.OK,"unused"));
     string direct = "https://cdn.example.test/game.pkg";
     Check(await router.PrepareAsync(direct) == direct, "Ordinary direct PKG bypasses Worker");
+}
+{
     string mocha = "https://cdn.mocha.my/game.pkg?token=abc&expires=4070908800&node=sugar";
-    Check(await router.PrepareAsync(mocha) == mocha, "Mocha transport stays direct before ELF fragment patch");
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/m/abc123.pkg\n");
+    using var router = new BgftRoutePlanner(()=>routeHandler);
+    string route = await router.PrepareAsync(mocha);
+    Check(route == "https://drive.itaysondaniel.workers.dev/m/abc123.pkg", "Mocha uses short Worker route");
+    Check(routeHandler.LastPath == "/api/mocha-routes" && routeHandler.PostedBody == mocha,
+        "Mocha Worker receives exact authenticated URL");
+}
+{
+    string filek = "https://cdn.filekeeper.net/abc123/game.pkg?token=XYZ";
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/f/def456.pkg\n");
+    using var router = new BgftRoutePlanner(()=>routeHandler);
+    string route = await router.PrepareAsync(filek);
+    Check(route == "https://drive.itaysondaniel.workers.dev/f/def456.pkg", "FileKeeper uses short Worker route");
+    Check(routeHandler.LastPath == "/api/filek-routes" && routeHandler.PostedBody == filek,
+        "FileKeeper Worker receives exact final URL");
+}
+{
+    string opaqueFinal = "https://downloads.example.test/get/abc123?token=XYZ";
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/f/context123.pkg\n");
+    using var router = new BgftRoutePlanner(()=>routeHandler);
+    string route = await router.PrepareAsync(opaqueFinal, Provider.FileKeeper);
+    Check(routeHandler.LastPath == "/api/filek-routes" && route == "https://drive.itaysondaniel.workers.dev/f/context123.pkg",
+        "Preserved FileKeeper provider context forces .pkg Worker route after resolver host change");
+}
+{
+    string dlproxy = "https://tunnel1.dlproxy.uk/download/j974CvvJb3EFHa_LkH?token=XYZ";
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/f/dlproxy123.pkg\n");
+    using var router = new BgftRoutePlanner(()=>routeHandler);
+    string route = await router.PrepareAsync(dlproxy);
+    Check(routeHandler.LastPath == "/api/filek-routes" &&
+          routeHandler.PostedBody == dlproxy &&
+          route == "https://drive.itaysondaniel.workers.dev/f/dlproxy123.pkg",
+        "Direct FileKeeper dlproxy link is normalized to .pkg Worker route");
 }
 string badDateR2 = r2.Replace("20990101T000000Z", "2099-01-01T00Z");
 await Reject(async()=>{using var router=new BgftRoutePlanner(()=>new RouteHandler(HttpStatusCode.OK,"unused"));await router.PrepareAsync(badDateR2);},
@@ -218,8 +265,10 @@ sealed class CountedStream(byte[] bytes,Action<int> count):MemoryStream(bytes)
 sealed class RouteHandler(HttpStatusCode status,string reply):HttpMessageHandler
 {
     public string PostedBody="";
+    public string LastPath="";
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token)
     {
+        LastPath=request.RequestUri?.AbsolutePath ?? "";
         if(request.Content!=null) PostedBody=await request.Content.ReadAsStringAsync(token);
         return new HttpResponseMessage(status){RequestMessage=request,Content=new StringContent(reply)};
     }

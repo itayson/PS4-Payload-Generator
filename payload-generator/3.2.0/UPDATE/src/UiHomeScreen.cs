@@ -528,7 +528,7 @@ public static class UiHomeScreen
         if (url.Contains("vikingfile")) return "VikingFile";
         if (url.Contains("rootz")) return "Rootz";
         if (url.Contains("mocha")) return "Mocha";
-        if (url.Contains("filekeeper")) return "FileKeeper";
+        if (url.Contains("filekeeper") || url.Contains("dlproxy")) return "FileKeeper";
         return "Link direto";
     }
 

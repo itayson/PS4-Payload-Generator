@@ -40,10 +40,25 @@ public sealed class BgftRoutePlanner : IDisposable
     public void Dispose() { }
 
     public Task<string> PrepareAsync(string upstreamUrl, CancellationToken token = default) =>
-        PrepareAsync(upstreamUrl, "", "", "", token);
+        PrepareAsync(upstreamUrl, Provider.Direct, "", "", "", token);
+
+    public Task<string> PrepareAsync(
+        string upstreamUrl,
+        Provider providerHint,
+        CancellationToken token = default) =>
+        PrepareAsync(upstreamUrl, providerHint, "", "", "", token);
+
+    public Task<string> PrepareAsync(
+        string upstreamUrl,
+        string cookie,
+        string referer,
+        string userAgent,
+        CancellationToken token = default) =>
+        PrepareAsync(upstreamUrl, Provider.Direct, cookie, referer, userAgent, token);
 
     public async Task<string> PrepareAsync(
         string upstreamUrl,
+        Provider providerHint,
         string cookie,
         string referer,
         string userAgent,
@@ -53,10 +68,22 @@ public sealed class BgftRoutePlanner : IDisposable
         ValidateTemporalParameters(uri);
         string exact = upstreamUrl.Trim();
 
-        if (IsAkiraAccessUrl(uri))
+        if (providerHint == Provider.AkiraBox || IsAkiraAccessUrl(uri))
             return await CreateAkiraWorkerRouteAsync(exact, cookie, referer, userAgent, token).ConfigureAwait(false);
 
-        if (!IsSupportedR2(uri))
+        if (providerHint == Provider.Mocha || IsMochaDownloadUrl(uri))
+            return await CreateProviderWorkerRouteAsync(
+                exact, "/api/mocha-routes", "Mocha", false, token).ConfigureAwait(false);
+
+        if (providerHint == Provider.FileKeeper || IsFileKeeperDownloadUrl(uri))
+            return await CreateProviderWorkerRouteAsync(
+                exact, "/api/filek-routes", "FileKeeper", false, token).ConfigureAwait(false);
+
+        if (providerHint == Provider.VikingFile || IsVikingR2(uri))
+            return await CreateProviderWorkerRouteAsync(
+                exact, "/api/viking-routes", "VikingFile", true, token).ConfigureAwait(false);
+
+        if (!IsRootzR2(uri))
             return exact;
 
         Exception routeError = null;
@@ -71,13 +98,63 @@ public sealed class BgftRoutePlanner : IDisposable
             routeError = ex;
         }
 
-        string inline = workerBase + "/viking.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
+        string inline = workerBase + "/r2.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
         string registration = PayloadPatcher.RegistrationUrl(inline);
         if (Encoding.UTF8.GetByteCount(registration) > PayloadUrlLimit)
             throw new InvalidDataException(
                 "A URL R2 assinada é longa demais para o payload. Configure o binding KV ROUTES no Worker para gerar uma rota curta." +
                 (routeError == null ? "" : " O registro de rota também falhou: " + routeError.Message));
         return inline;
+    }
+
+    async Task<string> CreateProviderWorkerRouteAsync(
+        string exactUpstream,
+        string endpoint,
+        string providerName,
+        bool allowVikingInlineFallback,
+        CancellationToken token)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(12));
+        using var http = new HttpClient(factory()) { Timeout = TimeSpan.FromSeconds(15) };
+        using var request = new HttpRequestMessage(HttpMethod.Post, workerBase + endpoint);
+        request.Content = new StringContent(exactUpstream, Encoding.UTF8, "text/plain");
+        using HttpResponseMessage response = await http.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            timeout.Token).ConfigureAwait(false);
+        string text = await ReadBoundedAsync(
+            response.Content,
+            RouteReplyLimit,
+            timeout.Token).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode)
+            return ValidateWorkerRoute(text);
+
+        int status = (int)response.StatusCode;
+        if (allowVikingInlineFallback && (status == 404 || status == 405 || status >= 500))
+        {
+            string inline = workerBase + "/viking.pkg?u=" +
+                Base64Url(Encoding.UTF8.GetBytes(exactUpstream));
+            if (Encoding.UTF8.GetByteCount(PayloadPatcher.RegistrationUrl(inline)) > PayloadUrlLimit)
+                throw new InvalidDataException(
+                    "A URL VikingFile é longa demais para o payload e o Worker não gerou uma rota curta.");
+            return inline;
+        }
+
+        if (status == 404 || status == 405)
+            throw new InvalidDataException(
+                "O Worker publicado ainda não suporta " + providerName +
+                ". Publique o Universal Transport Worker v11.");
+
+        if (status == 400 || status == 401 || status == 403 || status == 410 || status == 503)
+            throw new InvalidDataException(
+                string.IsNullOrWhiteSpace(text)
+                    ? "O Worker recusou a URL " + providerName + " (HTTP " + status + ")."
+                    : text.Trim());
+
+        throw new InvalidDataException(
+            "O Worker " + providerName + " respondeu HTTP " + status + ".");
     }
 
     async Task<string> CreateR2WorkerRouteAsync(string exactUpstream, CancellationToken token)
@@ -177,6 +254,20 @@ public sealed class BgftRoutePlanner : IDisposable
     public static bool IsRootzR2(Uri uri) => IsR2WithPrefix(uri, "rootz-files.");
     public static bool IsSupportedR2(Uri uri) => IsVikingR2(uri) || IsRootzR2(uri);
 
+    public static bool IsMochaDownloadUrl(Uri uri)
+    {
+        if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
+        return LinkPolicy.Domain(uri.IdnHost.TrimEnd('.'), "mocha.my");
+    }
+
+    public static bool IsFileKeeperDownloadUrl(Uri uri)
+    {
+        if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
+        string host = uri.IdnHost.TrimEnd('.');
+        return LinkPolicy.Domain(host, "filekeeper.net") ||
+            LinkPolicy.Domain(host, "dlproxy.uk");
+    }
+
     public static bool IsAkiraAccessUrl(Uri uri)
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
@@ -219,7 +310,7 @@ public sealed class BgftRoutePlanner : IDisposable
     /// <summary>
     /// Performs format/range validation without using DateTimeOffset APIs that
     /// are absent from the trimmed Xamarin runtime embedded in the original V3.
-    /// Actual clock-expiry enforcement is performed by Worker v8.
+    /// Actual clock-expiry enforcement is performed by the published Worker.
     /// </summary>
     public static void ValidateTemporalParameters(Uri uri)
     {
