@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -16,6 +17,11 @@ public static class Integration
 {
     static readonly DownloadClient Client = new DownloadClient();
     static readonly BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
+    static readonly object ProviderHintGate = new object();
+    static readonly Dictionary<string, Provider> ProviderByResolvedUrl =
+        new Dictionary<string, Provider>(StringComparer.Ordinal);
+    static readonly Dictionary<string, Provider> ProviderByContentId =
+        new Dictionary<string, Provider>(StringComparer.Ordinal);
     static T Field<T>(MainPage page, string name) => (T)typeof(MainPage).GetField(name, PrivateInstance).GetValue(page);
 
     public static void Initialize(MainPage page)
@@ -25,7 +31,7 @@ public static class Integration
         var bottom = Field<Label>(page, "lblBottomStatus");
 
         entry.Placeholder = "Mocha, VikingFile, FileKeeper, Rootz, AkiraBox ou link direto";
-        bottom.Text = "Tayson 3.4.0 • BGFT universal • BinLoader 9090";
+        bottom.Text = "Tayson 3.4.2 • contexto FileK/Mocha/Viking • BinLoader 9090";
 
         string savedIp = UiStateStore.LoadPs4Ip();
         if (!string.IsNullOrWhiteSpace(savedIp)) ip.Text = savedIp;
@@ -72,13 +78,67 @@ public static class Integration
             : Client.ProbeAsync(url, limit);
     }
 
+    static string RememberResolvedProvider(string resolvedUrl, Provider provider)
+    {
+        if (provider == Provider.Direct || string.IsNullOrWhiteSpace(resolvedUrl)) return resolvedUrl;
+        lock (ProviderHintGate)
+        {
+            if (ProviderByResolvedUrl.Count > 128) ProviderByResolvedUrl.Clear();
+            ProviderByResolvedUrl[resolvedUrl] = provider;
+        }
+        return resolvedUrl;
+    }
+
+    static Provider ResolvedProvider(string requestedUrl, string finalUrl)
+    {
+        lock (ProviderHintGate)
+        {
+            if (!string.IsNullOrWhiteSpace(finalUrl) &&
+                ProviderByResolvedUrl.TryGetValue(finalUrl, out Provider byFinal))
+                return byFinal;
+            if (!string.IsNullOrWhiteSpace(requestedUrl) &&
+                ProviderByResolvedUrl.TryGetValue(requestedUrl, out Provider byRequested))
+                return byRequested;
+        }
+
+        try
+        {
+            Provider detected = LinkPolicy.Detect(LinkPolicy.Parse(finalUrl ?? requestedUrl));
+            if (detected != Provider.Direct) return detected;
+        }
+        catch { }
+        return Provider.Direct;
+    }
+
+    static void RememberContentProvider(string contentId, Provider provider)
+    {
+        if (provider == Provider.Direct || string.IsNullOrWhiteSpace(contentId)) return;
+        lock (ProviderHintGate)
+        {
+            if (ProviderByContentId.Count > 128) ProviderByContentId.Clear();
+            ProviderByContentId[contentId] = provider;
+        }
+    }
+
+    static Provider ContentProvider(string contentId, string currentUrl)
+    {
+        lock (ProviderHintGate)
+            if (!string.IsNullOrWhiteSpace(contentId) &&
+                ProviderByContentId.TryGetValue(contentId, out Provider provider))
+                return provider;
+
+        try { return LinkPolicy.Detect(LinkPolicy.Parse(currentUrl)); }
+        catch { return Provider.Direct; }
+    }
+
     public static async Task<string> ResolveAsync(MainPage page, string value)
     {
         Uri uri = LinkPolicy.Parse(value);
         Provider provider = LinkPolicy.Detect(uri);
         bool knownProviderPage = provider != Provider.Direct || ProviderResolvers.IsAkiraBox(uri);
+        string Remember(string resolved) => RememberResolvedProvider(resolved, provider);
 
-        try { return (await ProbeForProviderAsync(uri.AbsoluteUri)).Url.AbsoluteUri; }
+        try { return Remember((await ProbeForProviderAsync(uri.AbsoluteUri)).Url.AbsoluteUri); }
         catch (Exception ex) when (ex is InvalidDataException || ex is HttpRequestException || ex is OperationCanceledException)
         {
             if (!knownProviderPage) throw;
@@ -89,7 +149,7 @@ public static class Integration
             string proxy = ProviderResolvers.RootzProxyUrl(uri);
             if (!string.IsNullOrEmpty(proxy))
             {
-                try { return (await Client.ProbeAsync(proxy)).Url.AbsoluteUri; }
+                try { return Remember((await Client.ProbeAsync(proxy)).Url.AbsoluteUri); }
                 catch (Exception ex) when (ex is InvalidDataException || ex is HttpRequestException || ex is OperationCanceledException) { }
             }
         }
@@ -106,20 +166,23 @@ public static class Integration
                     if (href.Success)
                     {
                         string target = new Uri(uri, WebUtility.HtmlDecode(href.Groups[1].Value)).AbsoluteUri;
-                        return (await Client.ProbeAsync(target)).Url.AbsoluteUri;
+                        return Remember((await Client.ProbeAsync(target)).Url.AbsoluteUri);
                     }
                 }
             }
             catch (Exception ex) when (ex is InvalidDataException || ex is HttpRequestException || ex is OperationCanceledException) { }
         }
 
-        return await ProviderBrowser.ResolveAsync(page, uri, Client);
+        return Remember(await ProviderBrowser.ResolveAsync(page, uri, Client));
     }
 
     public static async Task<PkgMetadata> AnalyzeAsync(MainPage page, string url, int limit)
     {
         int metadataLimit = Math.Min(2097152, Math.Max(1048576, limit));
         DownloadInfo info = await ProbeForProviderAsync(url, metadataLimit);
+        Provider sourceProvider = ResolvedProvider(url, info.Url.AbsoluteUri);
+        RememberResolvedProvider(info.Url.AbsoluteUri, sourceProvider);
+        RememberContentProvider(info.ContentId, sourceProvider);
         var sfo = ((string Title, string Category))typeof(MainPage).GetMethod("ExtractMetadataFromSfo", PrivateInstance)
             .Invoke(page, new object[] { info.Prefix });
         string title = sfo.Title;
@@ -167,18 +230,21 @@ public static class Integration
 
         string bgftUrl;
         Uri currentUri = LinkPolicy.Parse(current.Url.AbsoluteUri);
-        if (BgftRoutePlanner.IsAkiraAccessUrl(currentUri))
+        Provider sourceProvider = ContentProvider(meta.ContentId, current.Url.AbsoluteUri);
+
+        if (sourceProvider == Provider.AkiraBox || BgftRoutePlanner.IsAkiraAccessUrl(currentUri))
         {
             string cookie = AkiraDownloadProbe.GetCookieHeader(current.Url.AbsoluteUri);
             bgftUrl = await router.PrepareAsync(
                 current.Url.AbsoluteUri,
+                sourceProvider,
                 cookie,
                 AkiraDownloadProbe.DefaultReferer,
                 AkiraDownloadProbe.BrowserUserAgent);
         }
         else
         {
-            bgftUrl = await router.PrepareAsync(current.Url.AbsoluteUri);
+            bgftUrl = await router.PrepareAsync(current.Url.AbsoluteUri, sourceProvider);
         }
 
         using Stream input = await FileSystem.OpenAppPackageFileAsync("template.elf");
