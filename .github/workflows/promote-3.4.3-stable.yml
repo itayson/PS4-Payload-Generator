@@ -22,12 +22,21 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p /tmp/tayson-343
-          BASE='https://github.com/itayson/PS4-Payload-Generator/releases/download/v3.4.3-filek-dlproxy-test'
-          curl -fL "$BASE/PS4-Payload-Generator-3.4.3-TaySon.apk" \
+          API='https://api.github.com/repos/itayson/PS4-Payload-Generator/releases/assets'
+          curl -fL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/octet-stream" \
+            "$API/575300898" \
             -o /tmp/tayson-343/PS4-Payload-Generator-3.4.3-TaySon.apk
-          curl -fL "$BASE/universal_transport_worker_v11_2.js" \
+          curl -fL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/octet-stream" \
+            "$API/575300900" \
             -o /tmp/tayson-343/universal_transport_worker_v11_2.js
-          curl -fL "$BASE/SHA256SUMS.txt" \
+          curl -fL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/octet-stream" \
+            "$API/575300901" \
             -o /tmp/tayson-343/SHA256SUMS.txt
           ls -lh /tmp/tayson-343
           cd /tmp/tayson-343
