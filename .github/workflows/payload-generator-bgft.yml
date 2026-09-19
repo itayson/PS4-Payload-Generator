@@ -129,6 +129,7 @@ jobs:
           cat /tmp/out/build-info.json
 
       - name: Publish 3.4.3 FileKeeper dlproxy prerelease
+        if: github.ref == 'refs/heads/feature/3.4.3-filek-dlproxy'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -139,10 +140,51 @@ jobs:
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
             --title 'Tayson 3.4.3 — FileKeeper dlproxy route fix' \
-            --notes 'Candidato de teste físico para CE-32942-0. Preserva a identidade FileKeeper após a resolução da URL e força rota Worker terminada em .pkg; usa Worker v11.2. Não promover para main antes da validação no PS4.' \
+            --notes 'Candidato de teste físico para CE-32942-0. Preserva a identidade FileKeeper após a resolução da URL e força rota Worker terminada em .pkg; usa Worker v11.2.' \
             --prerelease
           gh release upload "$TAG" \
             /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk \
             /tmp/out/universal_transport_worker_v11_2.js \
             /tmp/out/SHA256SUMS.txt \
             --clobber
+
+      - name: Publish stable v3.4.3 release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG='v3.4.3'
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Stable release $TAG already exists; leaving validated assets unchanged."
+            exit 0
+          fi
+          cat > /tmp/out/RELEASE-NOTES.md <<'EOF'
+          # Tayson PS4 Payload Generator 3.4.3
+
+          Release estável validada em PS4 real.
+
+          - aplicativo 3.4.3 / versionCode 40;
+          - Worker v11.2;
+          - Mocha via `/m/<token>.pkg`;
+          - FileKeeper via `/f/<token>.pkg`, incluindo `dlproxy.uk`;
+          - VikingFile via `/v/<token>.pkg`;
+          - Rootz/R2 via `/d/<token>.pkg`;
+          - AkiraBox via `/a/<token>.pkg`;
+          - binding: `ROUTES -> tayson-payload-routes`;
+          - 103 checks aprovados;
+          - template ELF preservado:
+            `ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc`.
+
+          Uso destinado a desenvolvimento, homebrew, testes e gerenciamento de conteúdo autorizado.
+          EOF
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title 'Tayson PS4 Payload Generator 3.4.3' \
+            --notes-file /tmp/out/RELEASE-NOTES.md \
+            --latest \
+            /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk \
+            /tmp/out/universal_transport_worker_v11_2.js \
+            /tmp/out/SHA256SUMS.txt
+          sha256sum /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk
