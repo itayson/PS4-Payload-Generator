@@ -13,6 +13,7 @@ async Task Reject(Func<Task> action,string name)
 foreach(var item in new[]{("vikingfile.com",Provider.VikingFile),("download.vikingfile.com",Provider.VikingFile),
     ("akirabox.com",Provider.AkiraBox),("rootz.so",Provider.Rootz),("mocha.my",Provider.Mocha),
     ("filekeeper.net",Provider.FileKeeper),("cdn.filekeeper.net",Provider.FileKeeper),
+    ("tunnel1.dlproxy.uk",Provider.FileKeeper),
     ("mocha.my.attacker.example",Provider.Direct),("evilrootz.so",Provider.Direct)})
     Check(LinkPolicy.Detect(LinkPolicy.Parse("https://"+item.Item1+"/file"))==item.Item2,"Host "+item.Item1);
 foreach(string bad in new[]{"file:///tmp/file.pkg","javascript:alert(1)","https://user:pass@example.test/a.pkg","https://e.test/a\r\nb","https://e.test/a#fragment"})
@@ -100,6 +101,8 @@ Check(BgftRoutePlanner.IsFileKeeperDownloadUrl(LinkPolicy.Parse("https://cdn.fil
     "Recognize final FileKeeper PKG URL");
 Check(BgftRoutePlanner.IsFileKeeperDownloadUrl(LinkPolicy.Parse("https://s1.filekeeper.net/download/abc123?token=x")),
     "Recognize FileKeeper final URL without .pkg extension");
+Check(BgftRoutePlanner.IsFileKeeperDownloadUrl(LinkPolicy.Parse("https://tunnel1.dlproxy.uk/download/abc123?token=x")),
+    "Recognize FileKeeper dlproxy transport URL");
 Check(BgftRoutePlanner.IsMochaDownloadUrl(LinkPolicy.Parse("https://cdn.mocha.my/download/abc123?token=x&expires=4070908800")),
     "Recognize Mocha final URL without .pkg extension");
 {
@@ -154,6 +157,16 @@ await Reject(async()=>
     string route = await router.PrepareAsync(opaqueFinal, Provider.FileKeeper);
     Check(routeHandler.LastPath == "/api/filek-routes" && route == "https://drive.itaysondaniel.workers.dev/f/context123.pkg",
         "Preserved FileKeeper provider context forces .pkg Worker route after resolver host change");
+}
+{
+    string dlproxy = "https://tunnel1.dlproxy.uk/download/j974CvvJb3EFHa_LkH?token=XYZ";
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/f/dlproxy123.pkg\n");
+    using var router = new BgftRoutePlanner(()=>routeHandler);
+    string route = await router.PrepareAsync(dlproxy);
+    Check(routeHandler.LastPath == "/api/filek-routes" &&
+          routeHandler.PostedBody == dlproxy &&
+          route == "https://drive.itaysondaniel.workers.dev/f/dlproxy123.pkg",
+        "Direct FileKeeper dlproxy link is normalized to .pkg Worker route");
 }
 string badDateR2 = r2.Replace("20990101T000000Z", "2099-01-01T00Z");
 await Reject(async()=>{using var router=new BgftRoutePlanner(()=>new RouteHandler(HttpStatusCode.OK,"unused"));await router.PrepareAsync(badDateR2);},
