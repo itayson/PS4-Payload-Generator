@@ -40,7 +40,7 @@ jobs:
             -o /tmp/tayson-343/SHA256SUMS.txt
           ls -lh /tmp/tayson-343
           cd /tmp/tayson-343
-          echo '88e340f6db250c20506e570832c7a3ba9800181dd4390e372b022bae59527e6e  PS4-Payload-Generator-3.4.3-TaySon.apk' | sha256sum -c -
+          echo '0a07d1809efb3479f6984dd12704507cefea1b768a82c0803c4806e6abf6fd0b  PS4-Payload-Generator-3.4.3-TaySon.apk' | sha256sum -c -
           test -s universal_transport_worker_v11_2.js
           test -s SHA256SUMS.txt
 
@@ -76,7 +76,7 @@ jobs:
           APK SHA-256:
 
           ```text
-          88e340f6db250c20506e570832c7a3ba9800181dd4390e372b022bae59527e6e
+          0a07d1809efb3479f6984dd12704507cefea1b768a82c0803c4806e6abf6fd0b
           ```
 
           Template ELF SHA-256:
