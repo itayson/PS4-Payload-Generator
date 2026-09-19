@@ -263,7 +263,9 @@ public sealed class BgftRoutePlanner : IDisposable
     public static bool IsFileKeeperDownloadUrl(Uri uri)
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
-        return LinkPolicy.Domain(uri.IdnHost.TrimEnd('.'), "filekeeper.net");
+        string host = uri.IdnHost.TrimEnd('.');
+        return LinkPolicy.Domain(host, "filekeeper.net") ||
+            LinkPolicy.Domain(host, "dlproxy.uk");
     }
 
     public static bool IsAkiraAccessUrl(Uri uri)
