@@ -1,4 +1,4 @@
-name: Tayson PS4 Payload Generator 3.4.1 Provider Routes
+name: Tayson PS4 Payload Generator 3.4.2 FileKeeper Context
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
       - feature/neon-ui-redesign
       - feature/3.4.0-paste-metadata-icon
       - feature/3.4.1-unified-provider-routes
+      - feature/3.4.2-filek-provider-context
   pull_request:
     branches:
       - main
@@ -82,23 +83,23 @@ jobs:
         run: |
           python3 /tmp/payloadgen/UPDATE/scripts/prepare.py --base /tmp/payloadgen --tools /tmp/tools
 
-      - name: Validate Worker v11
+      - name: Validate Worker v11.1
         shell: bash
         run: |
           set -euxo pipefail
-          node --check /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11.js
-          grep -q '/api/mocha-routes' /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11.js
-          grep -q '/api/filek-routes' /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11.js
-          grep -q '/api/viking-routes' /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11.js
+          node --check /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11_1.js
+          grep -q '/api/mocha-routes' /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11_1.js
+          grep -q '/api/filek-routes' /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11_1.js
+          grep -q '/api/viking-routes' /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11_1.js
 
       - name: Run core tests
         shell: bash
         run: |
           set -euxo pipefail
           /tmp/tools/dotnet/dotnet run --project /tmp/payloadgen/UPDATE/tests/Tests.csproj -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
-          grep -q 'RESULT: 97 checks passed' /tmp/out/tests.log
+          grep -q 'RESULT: 100 checks passed' /tmp/out/tests.log
 
-      - name: Build Tayson 3.4.1
+      - name: Build Tayson 3.4.2
         shell: bash
         run: |
           set -euxo pipefail
@@ -108,39 +109,39 @@ jobs:
           python3 /tmp/payloadgen/UPDATE/scripts/apply_release_identity.py \
             --apk /tmp/payloadgen/UPDATE/build/aligned.apk \
             --icon-source /tmp/payloadgen/UPDATE/assets/tayson-launcher.jpg \
-            --output /tmp/out/PS4-Payload-Generator-3.4.1-TaySon.apk \
-            --unsigned-output /tmp/out/PS4-Payload-Generator-3.4.1-aligned-unsigned.apk \
+            --output /tmp/out/PS4-Payload-Generator-3.4.2-TaySon.apk \
+            --unsigned-output /tmp/out/PS4-Payload-Generator-3.4.2-aligned-unsigned.apk \
             --tools /tmp/tools \
             --keystore /tmp/payloadgen/UPDATE/signing/tayson-test.jks \
             --build-info /tmp/out/build-info.json
 
-          test -s /tmp/out/PS4-Payload-Generator-3.4.1-TaySon.apk
-          test -s /tmp/out/PS4-Payload-Generator-3.4.1-aligned-unsigned.apk
-          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.4.1-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
+          test -s /tmp/out/PS4-Payload-Generator-3.4.2-TaySon.apk
+          test -s /tmp/out/PS4-Payload-Generator-3.4.2-aligned-unsigned.apk
+          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.4.2-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
 
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
-          cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11.js /tmp/out/
-          cp payload-generator/3.2.0/README.md /tmp/out/README-3.4.1.md
-          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.4.1.md
-          sha256sum /tmp/out/PS4-Payload-Generator-3.4.1-TaySon.apk /tmp/out/PS4-Payload-Generator-3.4.1-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
+          cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11_1.js /tmp/out/
+          cp payload-generator/3.2.0/README.md /tmp/out/README-3.4.2.md
+          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.4.2.md
+          sha256sum /tmp/out/PS4-Payload-Generator-3.4.2-TaySon.apk /tmp/out/PS4-Payload-Generator-3.4.2-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
 
-      - name: Publish 3.4.1 provider-routes prerelease
+      - name: Publish 3.4.2 FileKeeper prerelease
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          TAG='v3.4.1-provider-routes-test'
+          TAG='v3.4.2-filek-context-test'
           gh release delete "$TAG" --cleanup-tag -y || true
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
-            --title 'Tayson 3.4.1 — Mocha, FileKeeper e Viking via Worker' \
-            --notes 'Candidato de teste físico. Base 3.4.0 conhecida; Mocha, FileKeeper e VikingFile passam por rotas curtas do Worker v11. Não promover para main antes da validação no PS4.' \
+            --title 'Tayson 3.4.2 — FileKeeper .pkg route/context fix' \
+            --notes 'Candidato de teste físico para CE-32942-0. Preserva a identidade FileKeeper após a resolução da URL e força rota Worker terminada em .pkg; usa Worker v11.1. Não promover para main antes da validação no PS4.' \
             --prerelease
           gh release upload "$TAG" \
-            /tmp/out/PS4-Payload-Generator-3.4.1-TaySon.apk \
-            /tmp/out/universal_transport_worker_v11.js \
+            /tmp/out/PS4-Payload-Generator-3.4.2-TaySon.apk \
+            /tmp/out/universal_transport_worker_v11_1.js \
             /tmp/out/SHA256SUMS.txt \
             --clobber
