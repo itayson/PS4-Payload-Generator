@@ -1,0 +1,72 @@
+name: Worker v11.3 AkiraBox regional hosts
+
+on:
+  push:
+    branches:
+      - hotfix/worker-v11.3-akira-hosts
+    paths:
+      - payload-generator/3.2.0/UPDATE/cloudflare/universal_transport_worker_v11_3.js
+      - .github/workflows/worker-v11.3-akira-hotfix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate Worker v11.3
+        shell: bash
+        run: |
+          set -euxo pipefail
+          FILE='payload-generator/3.2.0/UPDATE/cloudflare/universal_transport_worker_v11_3.js'
+          node --check "$FILE"
+          grep -q 'v11.3-akira-regional-hosts' "$FILE"
+          grep -q 'AKIRA_REGIONAL_HOSTS: ON' "$FILE"
+          grep -q 'akirabox\\.(?:com|to)' "$FILE"
+
+          node <<'NODE'
+          const re = /^(?:[a-z0-9-]+\.)*akirabox\.(?:com|to)$/i;
+          const yes = [
+            'download.akirabox.com',
+            'download.akirabox.to',
+            'eeur1.akirabox.com',
+            'eus2.akirabox.com',
+            'us1.akirabox.to',
+            'akirabox.com'
+          ];
+          const no = [
+            'akirabox.com.evil.example',
+            'evilakirabox.com',
+            'akirabox.example',
+            'download.akirabox.net'
+          ];
+          for (const h of yes) if (!re.test(h)) throw new Error('should accept '+h);
+          for (const h of no) if (re.test(h)) throw new Error('should reject '+h);
+          console.log('AkiraBox host allowlist checks passed');
+          NODE
+
+      - name: Publish Worker v11.3 prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          TAG='worker-v11.3-akira-hotfix-test'
+          FILE='payload-generator/3.2.0/UPDATE/cloudflare/universal_transport_worker_v11_3.js'
+          sha256sum "$FILE" > /tmp/WORKER-V11.3-SHA256.txt
+          gh release delete "$TAG" --cleanup-tag -y || true
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title 'Worker v11.3 — AkiraBox regional hosts hotfix' \
+            --notes 'Hotfix para o erro: Invalid AkiraBox route: not an approved AkiraBox download host. Mantém o app 3.4.3 e amplia apenas a allowlist do Worker para subdomínios oficiais akirabox.com/akirabox.to, preservando validação de URL assinada e extensão PKG.' \
+            --prerelease
+          gh release upload "$TAG" \
+            "$FILE" \
+            /tmp/WORKER-V11.3-SHA256.txt \
+            --clobber
