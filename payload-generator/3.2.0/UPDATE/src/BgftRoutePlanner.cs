@@ -71,9 +71,11 @@ public sealed class BgftRoutePlanner : IDisposable
         if (providerHint == Provider.AkiraBox || IsAkiraAccessUrl(uri))
             return await CreateAkiraWorkerRouteAsync(exact, cookie, referer, userAgent, token).ConfigureAwait(false);
 
+        // Mocha signed CDN URLs are already BGFT-compatible when preserved
+        // byte-for-byte. Keep them direct; PayloadPatcher.RegistrationUrl()
+        // appends only the local #tayson.pkg fragment when a query is present.
         if (providerHint == Provider.Mocha || IsMochaDownloadUrl(uri))
-            return await CreateProviderWorkerRouteAsync(
-                exact, "/api/mocha-routes", "Mocha", false, token).ConfigureAwait(false);
+            return exact;
 
         if (providerHint == Provider.FileKeeper || IsFileKeeperDownloadUrl(uri))
             return await CreateProviderWorkerRouteAsync(
