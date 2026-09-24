@@ -1,4 +1,4 @@
-name: Tayson PS4 Payload Generator 3.4.3 FileKeeper dlproxy
+name: Tayson PS4 Payload Generator 3.4.4 Mocha direct
 
 on:
   push:
@@ -10,6 +10,7 @@ on:
       - feature/3.4.1-unified-provider-routes
       - feature/3.4.2-filek-provider-context
       - feature/3.4.3-filek-dlproxy
+      - hotfix/3.4.4-mocha-direct-bgft
   pull_request:
     branches:
       - main
@@ -98,9 +99,9 @@ jobs:
         run: |
           set -euxo pipefail
           /tmp/tools/dotnet/dotnet run --project /tmp/payloadgen/UPDATE/tests/Tests.csproj -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
-          grep -q 'RESULT: 103 checks passed' /tmp/out/tests.log
+          grep -q 'RESULT: 104 checks passed' /tmp/out/tests.log
 
-      - name: Build Tayson 3.4.3
+      - name: Build Tayson 3.4.4
         shell: bash
         run: |
           set -euxo pipefail
@@ -110,22 +111,22 @@ jobs:
           python3 /tmp/payloadgen/UPDATE/scripts/apply_release_identity.py \
             --apk /tmp/payloadgen/UPDATE/build/aligned.apk \
             --icon-source /tmp/payloadgen/UPDATE/assets/tayson-launcher.jpg \
-            --output /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk \
-            --unsigned-output /tmp/out/PS4-Payload-Generator-3.4.3-aligned-unsigned.apk \
+            --output /tmp/out/PS4-Payload-Generator-3.4.4-TaySon.apk \
+            --unsigned-output /tmp/out/PS4-Payload-Generator-3.4.4-aligned-unsigned.apk \
             --tools /tmp/tools \
             --keystore /tmp/payloadgen/UPDATE/signing/tayson-test.jks \
             --build-info /tmp/out/build-info.json
 
-          test -s /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk
-          test -s /tmp/out/PS4-Payload-Generator-3.4.3-aligned-unsigned.apk
-          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
+          test -s /tmp/out/PS4-Payload-Generator-3.4.4-TaySon.apk
+          test -s /tmp/out/PS4-Payload-Generator-3.4.4-aligned-unsigned.apk
+          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.4.4-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
 
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11_2.js /tmp/out/
-          cp payload-generator/3.2.0/README.md /tmp/out/README-3.4.3.md
-          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.4.3.md
-          sha256sum /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk /tmp/out/PS4-Payload-Generator-3.4.3-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
+          cp payload-generator/3.2.0/README.md /tmp/out/README-3.4.4.md
+          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.4.4.md
+          sha256sum /tmp/out/PS4-Payload-Generator-3.4.4-TaySon.apk /tmp/out/PS4-Payload-Generator-3.4.4-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
 
       - name: Publish 3.4.3 FileKeeper dlproxy prerelease
@@ -143,7 +144,7 @@ jobs:
             --notes 'Candidato de teste físico para CE-32942-0. Preserva a identidade FileKeeper após a resolução da URL e força rota Worker terminada em .pkg; usa Worker v11.2.' \
             --prerelease
           gh release upload "$TAG" \
-            /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk \
+            /tmp/out/PS4-Payload-Generator-3.4.4-TaySon.apk \
             /tmp/out/universal_transport_worker_v11_2.js \
             /tmp/out/SHA256SUMS.txt \
             --clobber
@@ -184,7 +185,26 @@ jobs:
             --title 'Tayson PS4 Payload Generator 3.4.3' \
             --notes-file /tmp/out/RELEASE-NOTES.md \
             --latest \
-            /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk \
+            /tmp/out/PS4-Payload-Generator-3.4.4-TaySon.apk \
             /tmp/out/universal_transport_worker_v11_2.js \
             /tmp/out/SHA256SUMS.txt
-          sha256sum /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk
+          sha256sum /tmp/out/PS4-Payload-Generator-3.4.4-TaySon.apk
+
+      - name: Publish 3.4.4 Mocha direct test release
+        if: github.ref == 'refs/heads/hotfix/3.4.4-mocha-direct-bgft'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG='v3.4.4-mocha-direct-test'
+          gh release delete "$TAG" --cleanup-tag -y || true
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title 'Tayson 3.4.4 — Mocha direct transport hotfix' \
+            --notes 'Teste físico: restaura o transporte direto para URLs assinadas Mocha. Nenhum token ou URL de usuário é incluído nesta release.' \
+            --prerelease
+          gh release upload "$TAG" \
+            /tmp/out/PS4-Payload-Generator-3.4.4-TaySon.apk \
+            /tmp/out/SHA256SUMS.txt \
+            --clobber
