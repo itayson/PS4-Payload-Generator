@@ -134,12 +134,13 @@ await Reject(async()=>
 }
 {
     string mocha = "https://cdn.mocha.my/game.pkg?token=abc&expires=4070908800&node=sugar";
-    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/m/abc123.pkg\n");
+    var routeHandler = new RouteHandler(HttpStatusCode.InternalServerError, "worker must not be called");
     using var router = new BgftRoutePlanner(()=>routeHandler);
-    string route = await router.PrepareAsync(mocha);
-    Check(route == "https://drive.itaysondaniel.workers.dev/m/abc123.pkg", "Mocha uses short Worker route");
-    Check(routeHandler.LastPath == "/api/mocha-routes" && routeHandler.PostedBody == mocha,
-        "Mocha Worker receives exact authenticated URL");
+    string route = await router.PrepareAsync(mocha, Provider.Mocha);
+    Check(route == mocha, "Mocha preserves exact signed CDN URL");
+    Check(routeHandler.LastPath == "", "Mocha bypasses Worker route creation");
+    Check(PayloadPatcher.RegistrationUrl(route) == mocha + "#tayson.pkg",
+        "Mocha registration keeps query and appends local .pkg compatibility fragment");
 }
 {
     string filek = "https://cdn.filekeeper.net/abc123/game.pkg?token=XYZ";
