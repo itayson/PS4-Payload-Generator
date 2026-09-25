@@ -432,10 +432,8 @@ static int handle_client(int fd)
         return 0;
     }
 
-    if (starts(line, "PULL ")) {
-        handle_pull(fd, line);
-        return 0;
-    }
+    if (starts(line, "PULL "))
+        return handle_pull(fd, line);
 
     if (starts(line, "PUT ")) {
         char *p = line + 4;
