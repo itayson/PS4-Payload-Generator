@@ -47,6 +47,21 @@ public static class PackageTransferClient
             !value.Equals("identity", StringComparison.OrdinalIgnoreCase);
     }
 
+    static bool Decimal(string text, out long value)
+    {
+        value = 0;
+        if (string.IsNullOrEmpty(text)) return false;
+        foreach (char c in text)
+        {
+            int digit = c - '0';
+            if (digit < 0 || digit > 9 ||
+                value > (long.MaxValue - digit) / 10)
+                return false;
+            value = value * 10 + digit;
+        }
+        return true;
+    }
+
     static long RangeLength(HttpContentHeaders headers)
     {
         string value = Header(headers, "Content-Range");
@@ -55,8 +70,8 @@ public static class PackageTransferClient
             RegexOptions.None).Match(value);
 
         if (!m.Success ||
-            !long.TryParse(m.Groups[1].Value, out long last) ||
-            !long.TryParse(m.Groups[2].Value, out long total) ||
+            !Decimal(m.Groups[1].Value, out long last) ||
+            !Decimal(m.Groups[2].Value, out long total) ||
             total <= 0 || last != total - 1)
             throw new InvalidDataException(
                 "O servidor retornou um Content-Range incompatível com a transferência.");
