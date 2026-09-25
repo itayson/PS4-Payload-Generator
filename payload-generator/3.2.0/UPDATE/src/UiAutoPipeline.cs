@@ -11,14 +11,13 @@ namespace Tayson.Providers;
 /// <summary>
 /// One-touch pipeline for Tayson 4.0 receiver architecture.
 ///
-/// Phase 1 intentionally stops after bringing the PS4 receiver online:
+/// Phase 2 streams the validated PKG through Android into the PS4 Receiver:
 ///
-///   Colar -> Validar PKG -> bootstrap receiver via BinLoader 9090
-///         -> PING receiver 9091 -> ready
+///   Colar -> Validar PKG -> Receiver 9091
+///         -> HTTP provider stream -> Android -> PS4 inbox
 ///
-/// No BGFT registration is performed in this branch. The full PKG transfer and
-/// local installation are introduced only after this receiver bootstrap is
-/// validated on real hardware.
+/// BGFT remains disabled. Installation is intentionally not started in this
+/// phase; the goal is to validate full-file transfer and receiver storage first.
 /// </summary>
 public static class UiAutoPipeline
 {
@@ -139,15 +138,50 @@ public static class UiAutoPipeline
                 SendStarted = true;
             }
 
-            SetStatus(page, bottom, "PKG validado. Iniciando Tayson Receiver no PS4...");
+            SetStatus(page, bottom, "PKG validado. Preparando Tayson Receiver...");
 
             string receiverVersion = await ReceiverClient.EnsureReadyAsync(ps4Ip);
+            SetStatus(page, bottom, "Receiver conectado (" + receiverVersion + "). Abrindo origem do PKG...");
+
+            Provider provider = Integration.ProviderFor(meta);
+            using var source = await PackageTransferClient.OpenAsync(
+                meta.Url,
+                provider,
+                meta.ContentLength);
+
+            string fileName = ReceiverClient.SafeFileName(
+                meta.TitleId + "-" + meta.PkgType + ".pkg");
+
+            long lastUi = 0;
+            long total = meta.ContentLength;
+            var progress = new Progress<long>(sent =>
+            {
+                if (sent != total && sent - lastUi < 16L * 1024L * 1024L)
+                    return;
+                lastUi = sent;
+
+                double percent = total > 0 ? (sent * 100.0 / total) : 0;
+                SetStatus(
+                    page,
+                    bottom,
+                    "Transferindo para o PS4: " +
+                    percent.ToString("0.0") + "% • " +
+                    HumanSize(sent) + " / " + HumanSize(total));
+            });
+
+            SetStatus(page, bottom, "Transferindo PKG para o armazenamento local do PS4...");
+            await ReceiverClient.UploadAsync(
+                ps4Ip,
+                fileName,
+                source.Stream,
+                source.Length,
+                progress);
 
             SetStatus(
                 page,
                 bottom,
-                "Tayson Receiver conectado (" + receiverVersion + "). BGFT desativado; pronto para a etapa de transferência local.");
-            UiStateStore.Record(meta, "RECEIVER ATIVO", ps4Ip);
+                "Transferência concluída. PKG armazenado no PS4; instalação automática ainda está desativada.");
+            UiStateStore.Record(meta, "TRANSFERIDO AO PS4", ps4Ip);
             Reset();
         }
         catch (TimeoutException)
@@ -204,7 +238,8 @@ public static class UiAutoPipeline
     }
 
     static bool LooksSuccessful(string text)
-        => Contains(text, "receiver conectado") || Contains(text, "receiver ativo");
+        => Contains(text, "transferência concluída") ||
+           Contains(text, "transferido ao ps4");
 
     static bool LooksValidated(string text)
         => Contains(text, "analisado com sucesso") || Contains(text, "validado com sucesso") ||
@@ -217,6 +252,15 @@ public static class UiAutoPipeline
 
     static bool Contains(string text, string value)
         => (text ?? "").IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
+
+    static string HumanSize(long bytes)
+    {
+        if (bytes < 1024) return bytes + " B";
+        double mb = bytes / 1024d / 1024d;
+        if (mb < 1024) return mb.ToString("0.0") + " MB";
+        return (mb / 1024d).ToString("0.00") + " GB";
+    }
+
 
     static Button FindPasteButton(View view)
     {
