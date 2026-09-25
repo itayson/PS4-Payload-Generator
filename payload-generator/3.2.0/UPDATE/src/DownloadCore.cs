@@ -240,6 +240,24 @@ public sealed class DownloadClient : IDisposable
 
 public static class PayloadPatcher
 {
+    /// <summary>
+    /// Converts the UI/package classification to the package_type string expected
+    /// by PS4 BGFT. A game update is still a GD package at the BGFT transport
+    /// layer; "PS4PATCH" is not a valid package_type token for registration.
+    /// Patch semantics are handled by the debug package registration API in the
+    /// inherited 3.4.3 ELF, not by inventing a separate package_type string.
+    /// </summary>
+    public static string BgftPackageType(string type)
+    {
+        if (string.Equals(type, "PS4PATCH", StringComparison.Ordinal)) return "PS4GD";
+        if (string.Equals(type, "PS4GD", StringComparison.Ordinal) ||
+            string.Equals(type, "PS4AC", StringComparison.Ordinal) ||
+            string.Equals(type, "PS4AL", StringComparison.Ordinal) ||
+            string.Equals(type, "PS4DP", StringComparison.Ordinal))
+            return type;
+        throw new InvalidDataException("Tipo de pacote não suportado pelo BGFT.");
+    }
+
     public static string RegistrationUrl(string url)
     {
         Uri uri = LinkPolicy.Parse(url);
@@ -256,6 +274,7 @@ public static class PayloadPatcher
         if (template == null || template.Length < 64 || template[0] != 0x7f || template[1] != 69 || template[2] != 76 || template[3] != 70)
             throw new InvalidDataException("Template ELF inválido.");
         url = RegistrationUrl(url);
+        type = BgftPackageType(type);
         if (size < 128) throw new InvalidDataException("Tamanho de PKG inválido.");
         byte[] output = (byte[])template.Clone();
         Put(output, "###URL_PLACEHOLDER###", 2048, url, false);
