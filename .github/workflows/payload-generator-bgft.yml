@@ -96,6 +96,14 @@ jobs:
           strings -a -t x "$ELF" | grep -Eai 'registro|bgft|download|task|erro|error|start|payload|sucesso|falha|dev\. by|http' || true
           echo '--- placeholders ---'
           strings -a -t x "$ELF" | grep -Ea 'URL_PLACEHOLDER|CONTENT_ID_PLACEHOLDER|NAME_PLACEHOLDER|###TYPE###' || true
+          echo '--- native symbols ---'
+          nm -n "$ELF" | grep -Eai 'main|bgft|notify|download|register|start|error|task' || true
+          echo '--- main disassembly ---'
+          objdump -d -Mintel "$ELF" | sed -n '/<main>:/,/^$/p' || true
+          echo '--- notify_error disassembly ---'
+          objdump -d -Mintel "$ELF" | sed -n '/<notify_error>:/,/^$/p' || true
+          echo '--- bgft source lines ---'
+          readelf --debug-dump=decodedline "$ELF" | grep -Eai 'main.c|bgft|download|register|notify' | head -n 240 || true
 
       - name: Validate Worker v11.2
         shell: bash
