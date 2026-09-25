@@ -100,7 +100,7 @@ public static class ReceiverClient
         string fileName,
         Stream input,
         long length,
-        IProgress<long> progress = null,
+        Action<long> progress = null,
         CancellationToken token = default)
     {
         if (input == null || !input.CanRead)
@@ -138,7 +138,7 @@ public static class ReceiverClient
 
             await stream.WriteAsync(buffer, 0, n, token).ConfigureAwait(false);
             sent += n;
-            progress?.Report(sent);
+            progress?.Invoke(sent);
         }
 
         await stream.FlushAsync(token).ConfigureAwait(false);
