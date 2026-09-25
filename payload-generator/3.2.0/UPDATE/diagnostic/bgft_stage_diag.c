@@ -5,13 +5,17 @@
 #include "struct.h"
 
 /*
- * Tayson 3.4.5 BGFT stage diagnostic, aligned to the inherited 3.4.3 contract.
+ * Tayson 3.4.5 BGFT stage diagnostic.
  *
- * This payload intentionally reports only stage names and integer return
- * codes. It never prints the PKG URL, cookies, tokens or other credentials.
+ * Product behavior remains the 3.4.3 flow. Only the native registration
+ * backend is being exercised here:
+ *   - resolve the active user like known-working PS4 payloads;
+ *   - initialize AppInstUtil when available;
+ *   - prefer sceBgftServiceDownloadRegisterTask;
+ *   - fall back to sceBgftServiceIntDebugDownloadRegisterPkg.
  *
- * The four metadata buffers and the 0xBB size marker are patched by the
- * Android app before the ELF is sent to GoldHEN BinLoader.
+ * The payload reports stage names and integer return codes only. It never
+ * prints the PKG URL, cookies, tokens or other credentials.
  */
 
 __attribute__((used)) char PKG_CONTENT_ID[64] = "###CONTENT_ID_PLACEHOLDER###";
@@ -21,12 +25,16 @@ __attribute__((used)) char PKG_TYPE[16] = "###TYPE###";
 __attribute__((used)) volatile unsigned long PKG_SIZE = 0xBBBBBBBBBBBBBBBBULL;
 
 #define BGFT_INVALID_TASK_ID (-1)
+#define USER_ID_FALLBACK 0x10000000
+
 typedef int (*notify_fn)(int, const char *);
 typedef int (*bgft_init_fn)(struct bgft_init_params *);
 typedef int (*bgft_register_fn)(struct bgft_download_param *, int *);
 typedef int (*bgft_start_fn)(int);
-typedef int (*user_service_init_fn)(void *);
-typedef int (*user_service_get_initial_user_fn)(int *);
+typedef int (*user_service_init_fn)(OrbisUserServiceInitializeParams *);
+typedef int (*user_service_get_user_fn)(int *);
+typedef int (*user_service_term_fn)(void);
+typedef int (*appinst_init_fn)(void);
 
 static notify_fn g_notify = 0;
 
@@ -75,6 +83,81 @@ static int setup_cred(void)
     return 0;
 }
 
+static int resolve_user_id(void)
+{
+    int user_id = USER_ID_FALLBACK;
+    void *user_service = dlopen("/system/common/lib/libSceUserService.sprx", 0);
+    if (!user_service) {
+        notify_text("Tayson BGFT D3 USER LOAD SKIP");
+        notify_code("D3 USER", user_id);
+        return user_id;
+    }
+
+    user_service_init_fn user_init =
+        (user_service_init_fn)dlsym(user_service, "sceUserServiceInitialize");
+    user_service_get_user_fn get_foreground_user =
+        (user_service_get_user_fn)dlsym(user_service, "sceUserServiceGetForegroundUser");
+    user_service_get_user_fn get_initial_user =
+        (user_service_get_user_fn)dlsym(user_service, "sceUserServiceGetInitialUser");
+    user_service_term_fn user_term =
+        (user_service_term_fn)dlsym(user_service, "sceUserServiceTerminate");
+
+    if (!user_init) {
+        notify_text("Tayson BGFT D3 USER INIT SYM SKIP");
+        notify_code("D3 USER", user_id);
+        return user_id;
+    }
+
+    OrbisUserServiceInitializeParams init_params = {
+        .priority = ORBIS_KERNEL_PRIO_FIFO_NORMAL
+    };
+
+    int init_rc = user_init(&init_params);
+    notify_code("D3 USER INIT", init_rc);
+
+    int get_rc = -1;
+    if (get_foreground_user) {
+        get_rc = get_foreground_user(&user_id);
+        notify_code("D3 USER FG", get_rc);
+    }
+
+    if (get_rc != 0 && get_initial_user) {
+        user_id = USER_ID_FALLBACK;
+        get_rc = get_initial_user(&user_id);
+        notify_code("D3 USER INITIAL", get_rc);
+    }
+
+    if (get_rc != 0) {
+        user_id = USER_ID_FALLBACK;
+        notify_text("Tayson BGFT D3 USER FALLBACK");
+    }
+
+    notify_code("D3 USER", user_id);
+    if (user_term) {
+        int term_rc = user_term();
+        notify_code("D3 USER TERM", term_rc);
+    }
+    return user_id;
+}
+
+static void init_appinst_if_available(void)
+{
+    void *appinst = dlopen("/system/common/lib/libSceAppInstUtil.sprx", 0);
+    if (!appinst) {
+        notify_text("Tayson BGFT D4 APPINST LOAD SKIP");
+        return;
+    }
+
+    appinst_init_fn appinst_init =
+        (appinst_init_fn)dlsym(appinst, "sceAppInstUtilInitialize");
+    if (!appinst_init) {
+        notify_text("Tayson BGFT D4 APPINST SYM SKIP");
+        return;
+    }
+
+    notify_code("D4 APPINST INIT", appinst_init());
+}
+
 int main(void)
 {
     int rc = setup_cred();
@@ -99,7 +182,9 @@ int main(void)
 
     bgft_init_fn bgft_init =
         (bgft_init_fn)dlsym(bgft, "sceBgftServiceIntInit");
-    bgft_register_fn bgft_register =
+    bgft_register_fn bgft_register_normal =
+        (bgft_register_fn)dlsym(bgft, "sceBgftServiceDownloadRegisterTask");
+    bgft_register_fn bgft_register_debug =
         (bgft_register_fn)dlsym(bgft, "sceBgftServiceIntDebugDownloadRegisterPkg");
     bgft_start_fn bgft_start =
         (bgft_start_fn)dlsym(bgft, "sceBgftServiceIntDownloadStartTask");
@@ -108,7 +193,7 @@ int main(void)
         notify_text("Tayson BGFT D2 INIT SYM FAIL");
         return -102;
     }
-    if (!bgft_register) {
+    if (!bgft_register_normal && !bgft_register_debug) {
         notify_text("Tayson BGFT D2 REGISTER SYM FAIL");
         return -103;
     }
@@ -118,39 +203,17 @@ int main(void)
     }
     notify_text("Tayson BGFT D2 SYMBOLS OK");
 
-    /*
-     * The inherited 3.4.3 payload resolves the active PS4 user through
-     * libSceUserService and falls back to 0x10000000 when unavailable.
-     * Errors here are deliberately non-fatal, matching that behavior.
-     */
-    int user_id = 0x10000000;
-    void *user_service = dlopen("/system/common/lib/libSceUserService.sprx", 0);
-    if (!user_service) {
-        notify_text("Tayson BGFT D3 USER LOAD SKIP");
-    } else {
-        user_service_init_fn user_init =
-            (user_service_init_fn)dlsym(user_service, "sceUserServiceInitialize");
-        user_service_get_initial_user_fn get_initial_user =
-            (user_service_get_initial_user_fn)dlsym(user_service, "sceUserServiceGetInitialUser");
-
-        if (!user_init || !get_initial_user) {
-            notify_text("Tayson BGFT D3 USER SYM SKIP");
-        } else {
-            int user_init_rc = user_init(0);
-            int user_get_rc = get_initial_user(&user_id);
-            notify_code("D3 USER INIT", user_init_rc);
-            notify_code("D3 USER GET", user_get_rc);
-        }
-    }
+    int user_id = resolve_user_id();
+    init_appinst_if_available();
 
     void *heap = mmap(NULL, 0x100000,
                       PROT_READ | PROT_WRITE,
                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (!heap || heap == (void *)-1) {
-        notify_text("Tayson BGFT D4 HEAP FAIL");
+        notify_text("Tayson BGFT D5 HEAP FAIL");
         return -107;
     }
-    notify_text("Tayson BGFT D4 HEAP OK");
+    notify_text("Tayson BGFT D5 HEAP OK");
 
     struct bgft_init_params init_params = {
         .mem = heap,
@@ -158,12 +221,12 @@ int main(void)
     };
 
     rc = bgft_init(&init_params);
-    notify_code("D5 INIT", rc);
-    /* Inherited 3.4.3 records no branch on the init return value. */
+    notify_code("D6 INIT", rc);
+
     /*
-     * Keep the 104-byte download parameter contract equivalent to 3.4.3:
-     * zero every optional field, then populate only the fields written by
-     * the inherited payload.
+     * Preserve the 104-byte 3.4.3 parameter ABI, while filling the optional
+     * fields used by the known-working DPI BGFT path. In particular,
+     * DISABLE_CDN_QUERY_PARAM prevents BGFT from mutating signed URLs.
      */
     struct bgft_download_param params = {0};
     params.user_id = user_id;
@@ -171,18 +234,42 @@ int main(void)
     params.id = PKG_CONTENT_ID;
     params.content_url = PKG_URL;
     params.content_name = PKG_NAME;
+    params.icon_path = "";
+    params.option = BGFT_TASK_OPTION_DISABLE_CDN_QUERY_PARAM;
+    params.playgo_scenario_id = "0";
     params.package_type = PKG_TYPE;
+    params.package_sub_type = "";
     params.package_size = (unsigned long)PKG_SIZE;
 
     int task = BGFT_INVALID_TASK_ID;
-    rc = bgft_register(&params, &task);
-    notify_code("D6 REGISTER", rc);
-    notify_code("D7 TASK", task);
-    if (rc < 0 || task == BGFT_INVALID_TASK_ID) return rc ? rc : -108;
+
+    if (bgft_register_normal) {
+        rc = bgft_register_normal(&params, &task);
+        notify_code("D7 REGISTER", rc);
+        notify_code("D7 TASK", task);
+    } else {
+        rc = -105;
+        notify_text("Tayson BGFT D7 REGISTER SYM SKIP");
+    }
+
+    if (rc != 0 || task == BGFT_INVALID_TASK_ID) {
+        if (!bgft_register_debug) {
+            return rc ? rc : -108;
+        }
+
+        task = BGFT_INVALID_TASK_ID;
+        rc = bgft_register_debug(&params, &task);
+        notify_code("D7 DEBUG", rc);
+        notify_code("D7 DEBUG TASK", task);
+    }
+
+    if (rc != 0 || task == BGFT_INVALID_TASK_ID) {
+        return rc ? rc : -108;
+    }
 
     rc = bgft_start(task);
     notify_code("D8 START", rc);
-    if (rc < 0) return rc;
+    if (rc != 0) return rc;
 
     notify_text("Tayson BGFT D9 DONE");
     return 0;
