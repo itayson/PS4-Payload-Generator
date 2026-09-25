@@ -102,6 +102,8 @@ static int resolve_user_id(void)
         (user_service_init_fn)dlsym(user_service, "sceUserServiceInitialize");
     user_service_get_user_fn get_initial_user =
         (user_service_get_user_fn)dlsym(user_service, "sceUserServiceGetInitialUser");
+    user_service_get_user_fn get_foreground_user =
+        (user_service_get_user_fn)dlsym(user_service, "sceUserServiceGetForegroundUser");
 
     if (!user_init || !get_initial_user) {
         notify_text("Tayson BGFT D3 USER SYM SKIP");
@@ -115,7 +117,29 @@ static int resolve_user_id(void)
     int get_rc = get_initial_user(&user_id);
     notify_code("D3 USER INITIAL", get_rc);
 
-    if (get_rc != 0) {
+    /*
+     * Physical-console capture showed a successful GetInitialUser call
+     * returning ORBIS_USER_SERVICE_USER_ID_INVALID (-1). A success return
+     * alone is therefore not enough; reject the invalid output before it
+     * reaches BGFT, otherwise registration returns 0x80990004.
+     */
+    if (get_rc != 0 || user_id == -1) {
+        if (user_id == -1) {
+            notify_text("Tayson BGFT D3 INITIAL INVALID");
+        }
+
+        if (get_foreground_user) {
+            int foreground_user = -1;
+            int fg_rc = get_foreground_user(&foreground_user);
+            notify_code("D3 USER FG", fg_rc);
+            notify_code("D3 USER FG ID", foreground_user);
+            if (fg_rc == 0 && foreground_user != -1) {
+                user_id = foreground_user;
+            }
+        }
+    }
+
+    if (user_id == -1) {
         user_id = USER_ID_FALLBACK;
         notify_text("Tayson BGFT D3 USER FALLBACK");
     }
