@@ -348,7 +348,7 @@ public static class UiRedesign
 
         body.Children.Add(KpiRow(
             ("KV", "ROUTES", Green),
-            ("WORKER", "v8", Cyan),
+            ("WORKER", "v12", Cyan),
             ("RANGE", "206", Blue)));
 
         body.Children.Add(InfoCard("Rotas suportadas", "VikingFile R2 • Rootz R2 • AkiraBox sessão • Mocha fragment • FileKeeper direto"));
@@ -413,7 +413,7 @@ public static class UiRedesign
         };
         body.Children.Add(connection);
 
-        body.Children.Add(InfoCard("Cloudflare Worker", WorkerEndpoint + "\nWorker v8 • KV binding ROUTES"));
+        body.Children.Add(InfoCard("Cloudflare Worker", WorkerEndpoint + "\nWorker v12 • BGFT 9.x–12.x • KV ROUTES"));
         body.Children.Add(ToggleCard("Tema escuro", "Interface Tayson neon", true));
         body.Children.Add(ToggleCard("Validação automática de PKG", "Confirma magic, Content ID, tamanho e Range antes do ELF", true));
         body.Children.Add(ToggleCard("Navegador interno", "Usado em fluxos AkiraBox/Rootz quando necessário", true));
