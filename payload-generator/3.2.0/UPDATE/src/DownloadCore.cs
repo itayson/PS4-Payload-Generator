@@ -39,7 +39,7 @@ public static class LinkPolicy
     {
         string h = uri.IdnHost.TrimEnd('.');
         if (Domain(h, "vikingfile.com")) return Provider.VikingFile;
-        if (Domain(h, "akirabox.com")) return Provider.AkiraBox;
+        if (Domain(h, "akirabox.com") || Domain(h, "akirabox.to")) return Provider.AkiraBox;
         if (Domain(h, "rootz.so")) return Provider.Rootz;
         if (Domain(h, "mocha.my")) return Provider.Mocha;
         if (Domain(h, "filekeeper.net") || Domain(h, "dlproxy.uk")) return Provider.FileKeeper;
