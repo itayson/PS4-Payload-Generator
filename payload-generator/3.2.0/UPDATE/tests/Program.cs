@@ -11,7 +11,7 @@ async Task Reject(Func<Task> action,string name)
     throw new Exception("Unexpected success: "+name);
 }
 foreach(var item in new[]{("vikingfile.com",Provider.VikingFile),("download.vikingfile.com",Provider.VikingFile),
-    ("akirabox.com",Provider.AkiraBox),("rootz.so",Provider.Rootz),("mocha.my",Provider.Mocha),
+    ("akirabox.com",Provider.AkiraBox),("akirabox.to",Provider.AkiraBox),("eeur.akirabox.com",Provider.AkiraBox),("rootz.so",Provider.Rootz),("mocha.my",Provider.Mocha),
     ("filekeeper.net",Provider.FileKeeper),("cdn.filekeeper.net",Provider.FileKeeper),
     ("tunnel1.dlproxy.uk",Provider.FileKeeper),
     ("mocha.my.attacker.example",Provider.Direct),("evilrootz.so",Provider.Direct)})
@@ -111,7 +111,7 @@ Check(BgftRoutePlanner.IsMochaDownloadUrl(LinkPolicy.Parse("https://cdn.mocha.my
     string route = await router.PrepareAsync(r2);
     Check(route == "https://drive.itaysondaniel.workers.dev/d/abc123.pkg", "VikingFile uses short Worker route");
     Check(routeHandler.PostedBody == r2, "Worker receives exact signed R2 URL without reserialization");
-    Check(routeHandler.LastPath == "/api/viking-routes", "VikingFile uses dedicated v11 route endpoint");
+    Check(routeHandler.LastPath == "/api/viking-routes", "VikingFile uses dedicated v12 route endpoint");
 }
 {
     var routeHandler = new RouteHandler(HttpStatusCode.NotFound, "missing");
@@ -121,6 +121,20 @@ Check(BgftRoutePlanner.IsMochaDownloadUrl(LinkPolicy.Parse("https://cdn.mocha.my
         "Worker registration failure falls back to inline route");
     Check(PayloadPatcher.RegistrationUrl(route).EndsWith("#tayson.pkg", StringComparison.Ordinal),
         "Inline Viking route is BGFT-compatible");
+}
+{
+    string rootz = r2.Replace("vikingfile.", "rootz-files.");
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/z/rootz123.pkg\n");
+    using var router = new BgftRoutePlanner(()=>routeHandler);
+    string route = await router.PrepareAsync(rootz);
+    Check(route == "https://drive.itaysondaniel.workers.dev/z/rootz123.pkg", "Rootz uses dedicated Worker v12 route");
+    Check(routeHandler.LastPath == "/api/rootz-routes" && routeHandler.PostedBody == rootz,
+        "Rootz Worker receives the exact signed R2 URL");
+}
+{
+    string akira = "https://eeur.akirabox.com/game.pkg?access=4070908800000.ABCDEFGHIJKLMNOPQRSTUVWX";
+    Check(BgftRoutePlanner.IsAkiraAccessUrl(LinkPolicy.Parse(akira)),
+        "Recognize regional AkiraBox access URL");
 }
 await Reject(async()=>
 {
