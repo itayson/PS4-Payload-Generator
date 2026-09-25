@@ -37,7 +37,7 @@ jobs:
           node --check "$WORKER"
           grep -q 'v12.0-pull-engine' "$WORKER"
           grep -q '/api/pull-jobs' "$WORKER"
-          grep -q 'prefix = "j"' "$WORKER"
+          grep -q 'origin, "j"' "$WORKER"
           grep -q 'createPullJob' "$WORKER"
           grep -q 'PULL_ENGINE: ON' "$WORKER"
           ! grep -E 'console\.log\([^)]*(cookie|token|body\.url)' "$WORKER"
