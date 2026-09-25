@@ -1,4 +1,4 @@
-name: Tayson PS4 Payload Generator 3.5.0 Mega BGFT Worker v12
+name: Tayson PS4 Payload Generator 3.5.1 BGFT Update Fix / Worker v12
 
 on:
   push:
@@ -107,9 +107,9 @@ jobs:
         run: |
           set -euxo pipefail
           /tmp/tools/dotnet/dotnet run --project /tmp/payloadgen/UPDATE/tests/Tests.csproj -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
-          grep -q 'RESULT: 108 checks passed' /tmp/out/tests.log
+          grep -q 'RESULT: 111 checks passed' /tmp/out/tests.log
 
-      - name: Build Tayson 3.5.0
+      - name: Build Tayson 3.5.1
         shell: bash
         run: |
           set -euxo pipefail
@@ -119,23 +119,23 @@ jobs:
           python3 /tmp/payloadgen/UPDATE/scripts/apply_release_identity.py \
             --apk /tmp/payloadgen/UPDATE/build/aligned.apk \
             --icon-source /tmp/payloadgen/UPDATE/assets/tayson-launcher.jpg \
-            --output /tmp/out/PS4-Payload-Generator-3.5.0-TaySon.apk \
-            --unsigned-output /tmp/out/PS4-Payload-Generator-3.5.0-aligned-unsigned.apk \
+            --output /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk \
+            --unsigned-output /tmp/out/PS4-Payload-Generator-3.5.1-aligned-unsigned.apk \
             --tools /tmp/tools \
             --keystore /tmp/payloadgen/UPDATE/signing/tayson-test.jks \
             --build-info /tmp/out/build-info.json
 
-          test -s /tmp/out/PS4-Payload-Generator-3.5.0-TaySon.apk
-          test -s /tmp/out/PS4-Payload-Generator-3.5.0-aligned-unsigned.apk
-          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.5.0-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
+          test -s /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk
+          test -s /tmp/out/PS4-Payload-Generator-3.5.1-aligned-unsigned.apk
+          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
 
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11_2.js /tmp/out/
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v12.js /tmp/out/
-          cp payload-generator/3.2.0/README.md /tmp/out/README-3.5.0.md
-          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.5.0.md
-          sha256sum /tmp/out/PS4-Payload-Generator-3.5.0-TaySon.apk /tmp/out/PS4-Payload-Generator-3.5.0-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
+          cp payload-generator/3.2.0/README.md /tmp/out/README-3.5.1.md
+          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.5.1.md
+          sha256sum /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk /tmp/out/PS4-Payload-Generator-3.5.1-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
 
       - name: Publish 3.4.3 FileKeeper dlproxy prerelease
@@ -153,26 +153,27 @@ jobs:
             --notes 'Candidato de teste físico para CE-32942-0. Preserva a identidade FileKeeper após a resolução da URL e força rota Worker terminada em .pkg; usa Worker v11.2.' \
             --prerelease
           gh release upload "$TAG" \
-            /tmp/out/PS4-Payload-Generator-3.5.0-TaySon.apk \
+            /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk \
             /tmp/out/universal_transport_worker_v11_2.js \
             /tmp/out/SHA256SUMS.txt \
             --clobber
 
-      - name: Publish 3.5.0 Mega BGFT Worker v12 prerelease
+      - name: Publish 3.5.1 BGFT update fix prerelease
         if: github.ref == 'refs/heads/feature/3.5.0-mega-bgft-worker-v12'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          TAG='v3.5.0-bgft-worker-v12-test'
+          TAG='v3.5.1-bgft-update-fix-test'
           gh release delete "$TAG" --cleanup-tag -y || true
           cat > /tmp/out/RELEASE-NOTES-3.5.0.md <<'EOF'
-          # Tayson PS4 Payload Generator 3.5.0 — Mega BGFT / Worker v12
+          # Tayson PS4 Payload Generator 3.5.1 — BGFT update registration fix
 
           Candidato de teste físico reconstruído diretamente sobre a base estável 3.4.3.
 
           - mantém o template ELF/BGFT validado da 3.4.3 sem trocar a API nativa;
+          - corrige atualização de jogo: PS4PATCH da interface é convertido para o package_type BGFT válido PS4GD;
           - mantém o envio GoldHEN BinLoader TCP 9090;
           - Worker v12 com perfil conservador para PS4 firmware 9.x–12.x;
           - HEAD emulado por GET Range 0-0;
@@ -191,11 +192,11 @@ jobs:
           EOF
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
-            --title 'Tayson 3.5.0 — Mega BGFT / Worker v12' \
+            --title 'Tayson 3.5.1 — BGFT update registration fix' \
             --notes-file /tmp/out/RELEASE-NOTES-3.5.0.md \
             --prerelease
           gh release upload "$TAG" \
-            /tmp/out/PS4-Payload-Generator-3.5.0-TaySon.apk \
+            /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk \
             /tmp/out/universal_transport_worker_v12.js \
             /tmp/out/SHA256SUMS.txt \
             --clobber
@@ -236,7 +237,7 @@ jobs:
             --title 'Tayson PS4 Payload Generator 3.4.3' \
             --notes-file /tmp/out/RELEASE-NOTES.md \
             --latest \
-            /tmp/out/PS4-Payload-Generator-3.5.0-TaySon.apk \
+            /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk \
             /tmp/out/universal_transport_worker_v11_2.js \
             /tmp/out/SHA256SUMS.txt
-          sha256sum /tmp/out/PS4-Payload-Generator-3.5.0-TaySon.apk
+          sha256sum /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk
