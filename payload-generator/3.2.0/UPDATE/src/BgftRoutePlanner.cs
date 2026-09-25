@@ -291,7 +291,8 @@ public sealed class BgftRoutePlanner : IDisposable
     public static bool IsAkiraAccessUrl(Uri uri)
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
-        if (!ProviderResolvers.IsAkiraBox(uri)) return false;
+        string host = uri.IdnHost.TrimEnd('.');
+        if (!LinkPolicy.Domain(host, "akirabox.com") && !LinkPolicy.Domain(host, "akirabox.to")) return false;
         if (!uri.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase)) return false;
         string access = Query(uri, "access");
         int dot = access.IndexOf('.');
