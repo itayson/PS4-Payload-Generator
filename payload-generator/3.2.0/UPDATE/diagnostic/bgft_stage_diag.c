@@ -31,9 +31,8 @@ typedef int (*notify_fn)(int, const char *);
 typedef int (*bgft_init_fn)(struct bgft_init_params *);
 typedef int (*bgft_register_fn)(struct bgft_download_param *, int *);
 typedef int (*bgft_start_fn)(int);
-typedef int (*user_service_init_fn)(OrbisUserServiceInitializeParams *);
+typedef int (*user_service_init_fn)(void *);
 typedef int (*user_service_get_user_fn)(int *);
-typedef int (*user_service_term_fn)(void);
 typedef int (*appinst_init_fn)(void);
 
 static notify_fn g_notify = 0;
@@ -85,6 +84,12 @@ static int setup_cred(void)
 
 static int resolve_user_id(void)
 {
+    /*
+     * Match the inherited 3.4.3 payload exactly:
+     *   sceUserServiceInitialize(NULL)
+     *   sceUserServiceGetInitialUser(&user_id)
+     * No foreground-user call and no terminate call are made by 3.4.3.
+     */
     int user_id = USER_ID_FALLBACK;
     void *user_service = dlopen("/system/common/lib/libSceUserService.sprx", 0);
     if (!user_service) {
@@ -95,37 +100,20 @@ static int resolve_user_id(void)
 
     user_service_init_fn user_init =
         (user_service_init_fn)dlsym(user_service, "sceUserServiceInitialize");
-    user_service_get_user_fn get_foreground_user =
-        (user_service_get_user_fn)dlsym(user_service, "sceUserServiceGetForegroundUser");
     user_service_get_user_fn get_initial_user =
         (user_service_get_user_fn)dlsym(user_service, "sceUserServiceGetInitialUser");
-    user_service_term_fn user_term =
-        (user_service_term_fn)dlsym(user_service, "sceUserServiceTerminate");
 
-    if (!user_init) {
-        notify_text("Tayson BGFT D3 USER INIT SYM SKIP");
+    if (!user_init || !get_initial_user) {
+        notify_text("Tayson BGFT D3 USER SYM SKIP");
         notify_code("D3 USER", user_id);
         return user_id;
     }
 
-    OrbisUserServiceInitializeParams init_params = {
-        .priority = ORBIS_KERNEL_PRIO_FIFO_NORMAL
-    };
-
-    int init_rc = user_init(&init_params);
+    int init_rc = user_init(NULL);
     notify_code("D3 USER INIT", init_rc);
 
-    int get_rc = -1;
-    if (get_foreground_user) {
-        get_rc = get_foreground_user(&user_id);
-        notify_code("D3 USER FG", get_rc);
-    }
-
-    if (get_rc != 0 && get_initial_user) {
-        user_id = USER_ID_FALLBACK;
-        get_rc = get_initial_user(&user_id);
-        notify_code("D3 USER INITIAL", get_rc);
-    }
+    int get_rc = get_initial_user(&user_id);
+    notify_code("D3 USER INITIAL", get_rc);
 
     if (get_rc != 0) {
         user_id = USER_ID_FALLBACK;
@@ -133,10 +121,6 @@ static int resolve_user_id(void)
     }
 
     notify_code("D3 USER", user_id);
-    if (user_term) {
-        int term_rc = user_term();
-        notify_code("D3 USER TERM", term_rc);
-    }
     return user_id;
 }
 
