@@ -11,13 +11,15 @@ namespace Tayson.Providers;
 /// <summary>
 /// One-touch pipeline for Tayson 4.0 receiver architecture.
 ///
-/// Worker Pull Engine:
+/// Native AppInst handoff:
 ///
 ///   Colar -> Validar PKG -> criar rota curta no Worker
-///         -> bootstrap Receiver 9091 -> enviar job pequeno -> app pode fechar
+///         -> bootstrap payload temporário -> entregar URL ao AppInstUtil
+///         -> serviço nativo assume a operação -> app pode fechar
 ///
-/// The Android app never stores or proxies the PKG. After QUEUED, the PS4 pulls
-/// the package directly from the Worker using its own native HTTP stack.
+/// The Android app never stores or proxies the PKG. The temporary payload is
+/// only a one-shot handoff bridge and exits after the native installer accepts
+/// the Worker URL.
 /// </summary>
 public static class UiAutoPipeline
 {
@@ -147,23 +149,18 @@ public static class UiAutoPipeline
                 meta.Url,
                 provider);
 
-            SetStatus(page, bottom, "Job criado. Iniciando Tayson Pull Engine no PS4...");
+            SetStatus(page, bottom, "Job criado. Iniciando handoff nativo no PS4...");
             string receiverVersion = await ReceiverClient.EnsureReadyAsync(ps4Ip);
 
-            string fileName = ReceiverClient.SafeFileName(
-                meta.TitleId + "-" + meta.PkgType + ".pkg");
-
-            await ReceiverClient.QueuePullAsync(
+            await ReceiverClient.StartNativeInstallAsync(
                 ps4Ip,
-                jobUrl,
-                fileName,
-                meta.ContentLength);
+                jobUrl);
 
             SetStatus(
                 page,
                 bottom,
-                "Job aceito pelo PS4 (" + receiverVersion + "). O aplicativo pode ser fechado; o PS4 continuará o download.");
-            UiStateStore.Record(meta, "PULL ENFILEIRADO", ps4Ip);
+                "Instalador nativo aceitou a tarefa (" + receiverVersion + "). O aplicativo pode ser fechado.");
+            UiStateStore.Record(meta, "APPINST ACEITO", ps4Ip);
             Reset();
         }
         catch (TimeoutException)
@@ -220,8 +217,8 @@ public static class UiAutoPipeline
     }
 
     static bool LooksSuccessful(string text)
-        => Contains(text, "job aceito pelo ps4") ||
-           Contains(text, "pull enfileirado");
+        => Contains(text, "instalador nativo aceitou") ||
+           Contains(text, "appinst aceito");
 
     static bool LooksValidated(string text)
         => Contains(text, "analisado com sucesso") || Contains(text, "validado com sucesso") ||
