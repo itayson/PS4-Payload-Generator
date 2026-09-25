@@ -89,8 +89,14 @@ public static class ReceiverClient
         await stream.FlushAsync(token).ConfigureAwait(false);
 
         string line = await ReadLineAsync(stream, 256, 1800, token).ConfigureAwait(false);
-        if (!line.StartsWith("PONG TAYSON-RX ", StringComparison.Ordinal))
+        const string expected = "PONG TAYSON-RX 4.0.0-native1";
+        if (!string.Equals(line, expected, StringComparison.Ordinal))
+        {
+            if (line.StartsWith("PONG TAYSON-RX ", StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    "Há um Receiver Tayson antigo ativo no PS4. Reinicie o console antes deste teste.");
             throw new IOException("Resposta inesperada do Receiver.");
+        }
 
         return line.Substring("PONG ".Length).Trim();
     }
@@ -148,26 +154,18 @@ public static class ReceiverClient
             throw new IOException("Receiver não confirmou o arquivo: " + result);
     }
 
-    public static async Task QueuePullAsync(
+    public static async Task StartNativeInstallAsync(
         string host,
         string workerUrl,
-        string fileName,
-        long length,
         CancellationToken token = default)
     {
-        if (length < 128)
-            throw new InvalidDataException("Tamanho do PKG inválido.");
-
         Uri route = LinkPolicy.Parse(workerUrl);
         if (route.Scheme != Uri.UriSchemeHttps ||
+            !route.AbsolutePath.StartsWith("/j/", StringComparison.OrdinalIgnoreCase) ||
             !route.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Job do Worker inválido.");
 
-        string safe = SafeFileName(fileName);
-        string line =
-            "PULL " +
-            length.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-            " " + safe + " " + route.AbsoluteUri + "\n";
+        string line = "INSTALLURL " + route.AbsoluteUri + "\n";
 
         using TcpClient client = await ConnectAsync(
             host,
@@ -184,11 +182,17 @@ public static class ReceiverClient
         string result = await ReadLineAsync(
             stream,
             256,
-            5000,
+            12000,
             token).ConfigureAwait(false);
 
-        if (!string.Equals(result, "QUEUED", StringComparison.Ordinal))
-            throw new IOException("Receiver recusou o job: " + result);
+        if (string.Equals(result, "ACCEPTED APPINST", StringComparison.Ordinal))
+            return;
+
+        if (result.StartsWith("ERR APPINST", StringComparison.Ordinal))
+            throw new IOException(
+                "O instalador nativo do PS4 recusou a tarefa: " + result);
+
+        throw new IOException("Resposta inesperada do handoff nativo: " + result);
     }
 
     public static string SafeFileName(string value)
