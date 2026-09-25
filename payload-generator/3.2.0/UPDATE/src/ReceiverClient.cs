@@ -148,6 +148,49 @@ public static class ReceiverClient
             throw new IOException("Receiver não confirmou o arquivo: " + result);
     }
 
+    public static async Task QueuePullAsync(
+        string host,
+        string workerUrl,
+        string fileName,
+        long length,
+        CancellationToken token = default)
+    {
+        if (length < 128)
+            throw new InvalidDataException("Tamanho do PKG inválido.");
+
+        Uri route = LinkPolicy.Parse(workerUrl);
+        if (route.Scheme != Uri.UriSchemeHttps ||
+            !route.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Job do Worker inválido.");
+
+        string safe = SafeFileName(fileName);
+        string line =
+            "PULL " +
+            length.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            " " + safe + " " + route.AbsoluteUri + "\n";
+
+        using TcpClient client = await ConnectAsync(
+            host,
+            ReceiverPort,
+            3000,
+            token).ConfigureAwait(false);
+        using NetworkStream stream = client.GetStream();
+
+        byte[] command = Encoding.ASCII.GetBytes(line);
+        await stream.WriteAsync(
+            command, 0, command.Length, token).ConfigureAwait(false);
+        await stream.FlushAsync(token).ConfigureAwait(false);
+
+        string result = await ReadLineAsync(
+            stream,
+            256,
+            5000,
+            token).ConfigureAwait(false);
+
+        if (!string.Equals(result, "QUEUED", StringComparison.Ordinal))
+            throw new IOException("Receiver recusou o job: " + result);
+    }
+
     public static string SafeFileName(string value)
     {
         string name = Path.GetFileName(value ?? "").Trim();
