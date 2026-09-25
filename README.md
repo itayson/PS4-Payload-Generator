@@ -5,14 +5,14 @@
 <h1 align="center">Tayson PS4 Payload Generator</h1>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-3.4.3-1f6feb?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-3.5.0--test-1f6feb?style=for-the-badge">
   <img alt="Android" src="https://img.shields.io/badge/platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white">
   <img alt="PS4" src="https://img.shields.io/badge/target-PS4-006FCD?style=for-the-badge">
   <img alt="BGFT" src="https://img.shields.io/badge/BGFT-Universal-00AEEF?style=for-the-badge">
 </p>
 
 <p align="center">
-  <img alt="Worker" src="https://img.shields.io/badge/Worker-v11.2-FF8800?style=flat-square&logo=cloudflare&logoColor=white">
+  <img alt="Worker" src="https://img.shields.io/badge/Worker-v12--BGFT-FF8800?style=flat-square&logo=cloudflare&logoColor=white">
   <img alt="Providers" src="https://img.shields.io/badge/providers-5%2F5%20validated-2ea44f?style=flat-square">
   <img alt="BinLoader" src="https://img.shields.io/badge/BinLoader-TCP%209090-8250df?style=flat-square">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square">
@@ -23,6 +23,26 @@
 <p align="center">
   Gerador universal de payloads ELF para PS4 desbloqueado, com validação de PKG, roteamento BGFT e interface Tayson.
 </p>
+
+---
+
+## Tayson 3.5.0 — Mega BGFT / Worker v12
+
+A 3.5.0 é um **candidato de teste**, reconstruído diretamente sobre a release estável 3.4.3. O objetivo é recuperar o comportamento conhecido da 3.4.3 sem continuar alterando o contrato nativo do ELF.
+
+Principais decisões:
+
+- o template ELF/BGFT da 3.4.3 permanece byte a byte no núcleo executável, com SHA-256 esperado `ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc`;
+- GoldHEN BinLoader continua exclusivamente em TCP `9090`;
+- Worker v12 adiciona um perfil conservador para PS4 firmware 9.x–12.x **quando um GoldHEN compatível já estiver ativo**;
+- HEAD do BGFT é atendido por probe `GET Range: bytes=0-0`;
+- respostas Range são verificadas antes de serem encaminhadas;
+- upstream é solicitado com `Accept-Encoding: identity`;
+- redirects só podem continuar dentro do mesmo provedor aprovado;
+- AkiraBox regional, Rootz, VikingFile, Mocha e FileKeeper têm rotas explícitas;
+- URLs assinadas, cookies e tokens não aparecem nos logs do Worker.
+
+A meta 9.x–12.x é uma matriz de compatibilidade do transporte, não uma promessa de suporte a firmware sem GoldHEN/BinLoader correspondente. A validação física continua obrigatória antes de promover a 3.5.0 a estável.
 
 ---
 
@@ -58,9 +78,9 @@ A galeria é mantida somente em memória durante a sessão. URLs assinadas, cook
 | Geração dinâmica de ELF | ✅ Funcional |
 | GoldHEN BinLoader TCP 9090 | ✅ Funcional |
 | Registro BGFT | ✅ Funcional |
-| Universal Transport Worker | ✅ v11.2 |
+| Universal Transport Worker | 🧪 v12 BGFT candidate / ✅ v11.2 baseline |
 | Cloudflare KV `ROUTES` | ✅ Suportado |
-| Interface Tayson / PT-BR | ✅ 3.4.3 |
+| Interface Tayson / PT-BR | 🧪 3.5.0 candidate, baseada na 3.4.3 |
 
 O fluxo já validado permanece:
 
