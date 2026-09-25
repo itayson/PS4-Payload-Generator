@@ -31,6 +31,17 @@ int jbc_set_cred(const struct jbc_cred*);
 void* dlopen(const char*, int);
 void* dlsym(void*, const char*);
 
+/* Freestanding payload: provide the tiny libc primitive GCC may emit for
+ * aggregate zero-initialization.  Volatile prevents it being folded back into
+ * an unresolved builtin memset call. */
+void *memset(void *dst, int value, size_t count)
+{
+    volatile unsigned char *p = (volatile unsigned char*)dst;
+    for (size_t i = 0; i < count; i++)
+        p[i] = (unsigned char)value;
+    return dst;
+}
+
 static int (*notify_fn)(int, const char*) = 0;
 
 static size_t tlen(const char *s)
