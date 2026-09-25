@@ -3,10 +3,10 @@
 import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile, zlib
 from pathlib import Path
 
-APP_VERSION = '4.0.0-alpha1'
-APP_VERSION_CODE = 50
+APP_VERSION = '4.0.0-alpha3-pull'
+APP_VERSION_CODE = 52
 APP_LABEL = 'Tayson PS4 Payload Generator'
-APK_NAME = 'Tayson-PS4-Receiver-4.0.0-alpha1.apk'
+APK_NAME = 'Tayson-PS4-Pull-4.0.0-alpha3.apk'
 
 ICON_SIZES = {
     'mipmap-mdpi-v4': 48,
@@ -297,7 +297,7 @@ def main():
         'embedded_template_sha256':hashlib.sha256((base/'assets/template.elf').read_bytes()).hexdigest(),
         'receiver_sha256':hashlib.sha256((project/'assets/tayson_receiver.elf').read_bytes()).hexdigest(),
         'receiver_port':9091,
-        'transport':'tayson-receiver-phase1-no-bgft',
+        'transport':'tayson-worker-pull-no-bgft',
         'original_template_sha256':hashlib.sha256((backup/'original-template.elf').read_bytes()).hexdigest(),
         'package':'com.phoenixx.ps4remotepkg','applicationLabel':APP_LABEL,
         'versionCode':APP_VERSION_CODE,'versionName':APP_VERSION,
