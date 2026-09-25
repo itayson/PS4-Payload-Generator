@@ -402,7 +402,7 @@ public static class UiHomeScreen
 
         body.Children.Add(new Label
         {
-            Text = "Dev. By TaySon  •  Tayson 4.0.0-alpha1  •  Receiver local",
+            Text = "Dev. By TaySon  •  Tayson 4.0.0-alpha2  •  Transferência local",
             TextColor = Muted,
             FontSize = 10,
             HorizontalTextAlignment = TextAlignment.Center,
