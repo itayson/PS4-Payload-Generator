@@ -50,7 +50,7 @@ public static class UiWorkerScreen
         body.Children.Add(endpoint);
 
         body.Children.Add(KpiRow(
-            ("WORKER", "v8", Cyan),
+            ("WORKER", "v12", Cyan),
             ("KV", "ROUTES", Green),
             ("BGFT", ".pkg", Blue)));
 
@@ -59,7 +59,7 @@ public static class UiWorkerScreen
         body.Children.Add(InfoCard("AkiraBox",
             "A rota temporária pode manter cookies, Referer e User-Agent no KV sem expor esses dados dentro do ELF."));
         body.Children.Add(InfoCard("Normalização BGFT",
-            "O Worker v8 pode responder ao HEAD do BGFT por meio de GET Range bytes=0-0 e preserva GET/Range para o download."));
+            "O Worker v12 emula HEAD via GET Range bytes=0-0, exige Content-Range consistente e força transporte sem compressão para o BGFT."));
 
         var test = Action("Testar Worker", Blue);
         test.Clicked += async (_, _) =>
@@ -75,8 +75,8 @@ public static class UiWorkerScreen
                 string compact = (health ?? "").Trim();
                 if (compact.Length > 160) compact = compact.Substring(0, 160) + "…";
                 bool ok = compact.IndexOf("OK", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool v8 = compact.IndexOf("v8", StringComparison.OrdinalIgnoreCase) >= 0;
-                status.Text = ok ? (v8 ? "● Online • Worker v8 OK" : "● Online • health OK") : "● Resposta recebida";
+                bool v12 = compact.IndexOf("v12-bgft-compat-9-12", StringComparison.OrdinalIgnoreCase) >= 0 && compact.IndexOf("ps4-bgft-fw-9-12", StringComparison.OrdinalIgnoreCase) >= 0;
+                status.Text = ok ? (v12 ? "● Online • Worker v12 BGFT OK" : "● Online • Worker incompatível") : "● Resposta recebida";
                 status.TextColor = ok ? Green : Cyan;
                 response.Text = compact.Length == 0 ? "Resposta vazia." : compact;
                 response.TextColor = ok ? Green : Muted;
