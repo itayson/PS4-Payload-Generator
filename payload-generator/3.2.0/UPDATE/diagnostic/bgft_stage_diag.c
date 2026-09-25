@@ -166,8 +166,8 @@ int main(void)
 
     bgft_init_fn bgft_init =
         (bgft_init_fn)dlsym(bgft, "sceBgftServiceIntInit");
-    bgft_register_fn bgft_register_normal =
-        (bgft_register_fn)dlsym(bgft, "sceBgftServiceDownloadRegisterTask");
+    bgft_register_fn bgft_register_internal =
+        (bgft_register_fn)dlsym(bgft, "sceBgftServiceIntDownloadRegisterTask");
     bgft_register_fn bgft_register_debug =
         (bgft_register_fn)dlsym(bgft, "sceBgftServiceIntDebugDownloadRegisterPkg");
     bgft_start_fn bgft_start =
@@ -177,7 +177,7 @@ int main(void)
         notify_text("Tayson BGFT D2 INIT SYM FAIL");
         return -102;
     }
-    if (!bgft_register_normal && !bgft_register_debug) {
+    if (!bgft_register_internal && !bgft_register_debug) {
         notify_text("Tayson BGFT D2 REGISTER SYM FAIL");
         return -103;
     }
@@ -227,13 +227,18 @@ int main(void)
 
     int task = BGFT_INVALID_TASK_ID;
 
-    if (bgft_register_normal) {
-        rc = bgft_register_normal(&params, &task);
-        notify_code("D7 REGISTER", rc);
-        notify_code("D7 TASK", task);
+    /*
+     * sceBgftServiceIntInit must be paired with the internal registration ABI.
+     * Using sceBgftServiceDownloadRegisterTask here produces 0x80990004 on
+     * affected firmware because the init/register families do not match.
+     */
+    if (bgft_register_internal) {
+        rc = bgft_register_internal(&params, &task);
+        notify_code("D7 INT REGISTER", rc);
+        notify_code("D7 INT TASK", task);
     } else {
         rc = -105;
-        notify_text("Tayson BGFT D7 REGISTER SYM SKIP");
+        notify_text("Tayson BGFT D7 INT REG SYM SKIP");
     }
 
     if (rc != 0 || task == BGFT_INVALID_TASK_ID) {
