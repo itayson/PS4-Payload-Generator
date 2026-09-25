@@ -5,7 +5,7 @@
 #include "struct.h"
 
 /*
- * Tayson 3.4.5 BGFT stage diagnostic.
+ * Tayson 3.4.5 BGFT stage diagnostic, aligned to the inherited 3.4.3 contract.
  *
  * This payload intentionally reports only stage names and integer return
  * codes. It never prints the PKG URL, cookies, tokens or other credentials.
@@ -21,25 +21,14 @@ __attribute__((used)) char PKG_TYPE[16] = "###TYPE###";
 __attribute__((used)) volatile unsigned long PKG_SIZE = 0xBBBBBBBBBBBBBBBBULL;
 
 #define BGFT_INVALID_TASK_ID (-1)
-#define BGFT_TASK_OPTION_DISABLE_CDN_QUERY_PARAM 0x10000
-
 typedef int (*notify_fn)(int, const char *);
 typedef int (*bgft_init_fn)(struct bgft_init_params *);
 typedef int (*bgft_register_fn)(struct bgft_download_param *, int *);
 typedef int (*bgft_start_fn)(int);
-typedef int (*appinst_init_fn)(void);
+typedef int (*user_service_init_fn)(void *);
+typedef int (*user_service_get_initial_user_fn)(int *);
 
 static notify_fn g_notify = 0;
-
-asm("clear_stack:\n"
-    "mov $0x800,%ecx\n"
-    "xor %rax,%rax\n"
-    ".Ldiag_clear:\n"
-    "push %rax\n"
-    "loop .Ldiag_clear\n"
-    "add $0x4000,%rsp\n"
-    "ret");
-void clear_stack(void);
 
 static void hex32(int32_t value, char *out)
 {
@@ -82,11 +71,6 @@ static int setup_cred(void)
     struct jbc_cred cred;
     if (jbc_get_cred(&cred) != 0) return -1;
     if (jbc_jailbreak_cred(&cred) != 0) return -2;
-
-    cred.jdir = 0;
-    cred.sceProcType = 0x3800000000000010ULL;
-    cred.sonyCred = 0x40001c0000000000ULL;
-    cred.sceProcCap = 0x900000000000ff00ULL;
     if (jbc_set_cred(&cred) != 0) return -3;
     return 0;
 }
@@ -94,8 +78,6 @@ static int setup_cred(void)
 int main(void)
 {
     int rc = setup_cred();
-    clear_stack();
-
     void *sysutil = dlopen("/system/common/lib/libSceSysUtil.sprx", 0);
     if (sysutil) {
         g_notify = (notify_fn)dlsym(sysutil, "sceSysUtilSendSystemNotificationWithText");
@@ -136,20 +118,30 @@ int main(void)
     }
     notify_text("Tayson BGFT D2 SYMBOLS OK");
 
-    void *appinst = dlopen("/system/common/lib/libSceAppInstUtil.sprx", 0);
-    if (!appinst) {
-        notify_text("Tayson BGFT D3 APPINST LOAD FAIL");
-        return -105;
+    /*
+     * The inherited 3.4.3 payload resolves the active PS4 user through
+     * libSceUserService and falls back to 0x10000000 when unavailable.
+     * Errors here are deliberately non-fatal, matching that behavior.
+     */
+    int user_id = 0x10000000;
+    void *user_service = dlopen("/system/common/lib/libSceUserService.sprx", 0);
+    if (!user_service) {
+        notify_text("Tayson BGFT D3 USER LOAD SKIP");
+    } else {
+        user_service_init_fn user_init =
+            (user_service_init_fn)dlsym(user_service, "sceUserServiceInitialize");
+        user_service_get_initial_user_fn get_initial_user =
+            (user_service_get_initial_user_fn)dlsym(user_service, "sceUserServiceGetInitialUser");
+
+        if (!user_init || !get_initial_user) {
+            notify_text("Tayson BGFT D3 USER SYM SKIP");
+        } else {
+            int user_init_rc = user_init(0);
+            int user_get_rc = get_initial_user(&user_id);
+            notify_code("D3 USER INIT", user_init_rc);
+            notify_code("D3 USER GET", user_get_rc);
+        }
     }
-    appinst_init_fn appinst_init =
-        (appinst_init_fn)dlsym(appinst, "sceAppInstUtilInitialize");
-    if (!appinst_init) {
-        notify_text("Tayson BGFT D3 APPINST SYM FAIL");
-        return -106;
-    }
-    rc = appinst_init();
-    notify_code("D3 APPINST", rc);
-    if (rc < 0) return rc;
 
     void *heap = mmap(NULL, 0x100000,
                       PROT_READ | PROT_WRITE,
@@ -167,26 +159,19 @@ int main(void)
 
     rc = bgft_init(&init_params);
     notify_code("D5 INIT", rc);
-    /* 0x80990001 is the known already-initialized result. */
-    if (rc != 0 && (uint32_t)rc != 0x80990001U) return rc;
-
-    struct bgft_download_param params = {
-        .user_id = 0x10000000,
-        .entitlement_type = 5,
-        .id = PKG_CONTENT_ID,
-        .content_url = PKG_URL,
-        .content_ex_url = 0,
-        .content_name = PKG_NAME,
-        .icon_path = "",
-        .sku_id = "",
-        .option = BGFT_TASK_OPTION_DISABLE_CDN_QUERY_PARAM,
-        .playgo_scenario_id = "0",
-        .release_date = "",
-        .package_type = PKG_TYPE,
-        .package_sub_type = "",
-        .package_size = 0
-    };
-
+    /* Inherited 3.4.3 records no branch on the init return value. */
+    /*
+     * Keep the 104-byte download parameter contract equivalent to 3.4.3:
+     * zero every optional field, then populate only the fields written by
+     * the inherited payload.
+     */
+    struct bgft_download_param params = {0};
+    params.user_id = user_id;
+    params.entitlement_type = 5;
+    params.id = PKG_CONTENT_ID;
+    params.content_url = PKG_URL;
+    params.content_name = PKG_NAME;
+    params.package_type = PKG_TYPE;
     params.package_size = (unsigned long)PKG_SIZE;
 
     int task = BGFT_INVALID_TASK_ID;
