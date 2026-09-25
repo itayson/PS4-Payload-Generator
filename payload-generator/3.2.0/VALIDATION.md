@@ -1,3 +1,48 @@
+# Validação 3.5.0 — Mega BGFT / Worker v12
+
+## Estratégia de recuperação
+
+A 3.5.0 parte diretamente do commit da release estável 3.4.3 e mantém o template nativo que já havia sido validado em hardware. As builds experimentais que trocaram famílias de APIs BGFT não são usadas nesta linha.
+
+Invariantes desta candidata:
+
+- SHA-256 do template ELF empacotado: `ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc`;
+- GoldHEN BinLoader: TCP `9090`;
+- Android continua controlador, não proxy persistente;
+- depois do registro BGFT, o PS4 deve baixar diretamente do Worker/provedor;
+- Worker v12 não registra URL assinada, cookie ou token em log;
+- perfil de transporte: `ps4-bgft-fw-9-12`.
+
+## Matriz de compatibilidade pretendida
+
+A referência "9 até 12" é tratada como **famílias de firmware PS4 9.x, 10.x, 11.x e 12.x**, usando uma versão de GoldHEN que ofereça BinLoader 9090 naquele firmware. O Worker não desbloqueia nem adiciona suporte de firmware ao GoldHEN.
+
+| Família | Objetivo | Estado |
+| --- | --- | --- |
+| 9.x | BinLoader 9090 + BGFT + Worker v12 | pendente de reteste físico |
+| 10.x | BinLoader 9090 + BGFT + Worker v12 | pendente de reteste físico |
+| 11.x | BinLoader 9090 + BGFT + Worker v12 | pendente de reteste físico |
+| 12.x | BinLoader 9090 + BGFT + Worker v12 | pendente de reteste físico |
+
+## Worker v12
+
+Validações automatizadas novas:
+
+- sintaxe ECMAScript;
+- health profile v12;
+- rota curta VikingFile;
+- rota dedicada Rootz;
+- HEAD via `bytes=0-0`;
+- Range 206 e `Content-Range` coerente;
+- rejeição de `Content-Range` divergente;
+- rejeição de redirect para host fora do provedor;
+- AkiraBox autenticado exige KV;
+- AkiraBox regional reconhecido;
+- `Accept-Encoding: identity`;
+- ausência de dados sensíveis no log estruturado.
+
+## Baseline 3.4.3 preservado
+
 # Validação 3.4.3 — Tayson PS4 Payload Generator
 
 ## Evidência em hardware já preservada
