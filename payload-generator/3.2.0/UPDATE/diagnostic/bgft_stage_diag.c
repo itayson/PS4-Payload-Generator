@@ -5,17 +5,18 @@
 #include "struct.h"
 
 /*
- * Tayson 3.4.5 BGFT stage diagnostic.
+ * Tayson 3.4.6 BGFT service-API laboratory payload.
  *
- * Product behavior remains the 3.4.3 flow. Only the native registration
- * backend is being exercised here:
- *   - resolve the active user like known-working PS4 payloads;
- *   - initialize AppInstUtil when available;
- *   - prefer sceBgftServiceDownloadRegisterTask;
- *   - fall back to sceBgftServiceIntDebugDownloadRegisterPkg.
+ * Purpose: isolate the BGFT API family from the Android product flow.
+ * The Android app still supplies the validated URL/metadata through the same
+ * fixed markers, but this native payload deliberately uses one BGFT path only:
  *
- * The payload reports stage names and integer return codes only. It never
- * prints the PKG URL, cookies, tokens or other credentials.
+ *   sceBgftServiceInit
+ *   sceBgftServiceDownloadRegisterTask
+ *   sceBgftServiceIntDownloadStartTask
+ *
+ * No IntDebug registration fallback is used. A failure therefore identifies
+ * this service-API path directly.
  */
 
 __attribute__((used)) char PKG_CONTENT_ID[64] = "###CONTENT_ID_PLACEHOLDER###";
@@ -26,6 +27,7 @@ __attribute__((used)) volatile unsigned long PKG_SIZE = 0xBBBBBBBBBBBBBBBBULL;
 
 #define BGFT_INVALID_TASK_ID (-1)
 #define USER_ID_FALLBACK 0x10000000
+#define BGFT_ALREADY_INITIALIZED ((uint32_t)0x80990001u)
 
 typedef int (*notify_fn)(int, const char *);
 typedef int (*bgft_init_fn)(struct bgft_init_params *);
@@ -66,7 +68,7 @@ static void notify_code(const char *stage, int code)
     int p = 0;
     msg[0] = 0;
     hex32(code, hex);
-    append(msg, &p, "Tayson BGFT ");
+    append(msg, &p, "Tayson LAB ");
     append(msg, &p, stage);
     append(msg, &p, " ");
     append(msg, &p, hex);
@@ -84,17 +86,11 @@ static int setup_cred(void)
 
 static int resolve_user_id(void)
 {
-    /*
-     * Match the inherited 3.4.3 payload exactly:
-     *   sceUserServiceInitialize(NULL)
-     *   sceUserServiceGetInitialUser(&user_id)
-     * No foreground-user call and no terminate call are made by 3.4.3.
-     */
     int user_id = USER_ID_FALLBACK;
     void *user_service = dlopen("/system/common/lib/libSceUserService.sprx", 0);
     if (!user_service) {
-        notify_text("Tayson BGFT D3 USER LOAD SKIP");
-        notify_code("D3 USER", user_id);
+        notify_text("Tayson LAB L3 USER LOAD SKIP");
+        notify_code("L3 USER", user_id);
         return user_id;
     }
 
@@ -106,33 +102,24 @@ static int resolve_user_id(void)
         (user_service_get_user_fn)dlsym(user_service, "sceUserServiceGetForegroundUser");
 
     if (!user_init || !get_initial_user) {
-        notify_text("Tayson BGFT D3 USER SYM SKIP");
-        notify_code("D3 USER", user_id);
+        notify_text("Tayson LAB L3 USER SYM SKIP");
+        notify_code("L3 USER", user_id);
         return user_id;
     }
 
     int init_rc = user_init(NULL);
-    notify_code("D3 USER INIT", init_rc);
+    notify_code("L3 USER INIT", init_rc);
 
     int get_rc = get_initial_user(&user_id);
-    notify_code("D3 USER INITIAL", get_rc);
+    notify_code("L3 USER INITIAL", get_rc);
+    notify_code("L3 INITIAL ID", user_id);
 
-    /*
-     * Physical-console capture showed a successful GetInitialUser call
-     * returning ORBIS_USER_SERVICE_USER_ID_INVALID (-1). A success return
-     * alone is therefore not enough; reject the invalid output before it
-     * reaches BGFT, otherwise registration returns 0x80990004.
-     */
     if (get_rc != 0 || user_id == -1) {
-        if (user_id == -1) {
-            notify_text("Tayson BGFT D3 INITIAL INVALID");
-        }
-
         if (get_foreground_user) {
             int foreground_user = -1;
             int fg_rc = get_foreground_user(&foreground_user);
-            notify_code("D3 USER FG", fg_rc);
-            notify_code("D3 USER FG ID", foreground_user);
+            notify_code("L3 USER FG", fg_rc);
+            notify_code("L3 USER FG ID", foreground_user);
             if (fg_rc == 0 && foreground_user != -1) {
                 user_id = foreground_user;
             }
@@ -141,87 +128,90 @@ static int resolve_user_id(void)
 
     if (user_id == -1) {
         user_id = USER_ID_FALLBACK;
-        notify_text("Tayson BGFT D3 USER FALLBACK");
+        notify_text("Tayson LAB L3 USER FALLBACK");
     }
 
-    notify_code("D3 USER", user_id);
+    notify_code("L3 USER", user_id);
     return user_id;
 }
 
-static void init_appinst_if_available(void)
+static int init_appinst(void)
 {
     void *appinst = dlopen("/system/common/lib/libSceAppInstUtil.sprx", 0);
     if (!appinst) {
-        notify_text("Tayson BGFT D4 APPINST LOAD SKIP");
-        return;
+        notify_text("Tayson LAB L4 APPINST LOAD FAIL");
+        return -105;
     }
 
     appinst_init_fn appinst_init =
         (appinst_init_fn)dlsym(appinst, "sceAppInstUtilInitialize");
     if (!appinst_init) {
-        notify_text("Tayson BGFT D4 APPINST SYM SKIP");
-        return;
+        notify_text("Tayson LAB L4 APPINST SYM FAIL");
+        return -106;
     }
 
-    notify_code("D4 APPINST INIT", appinst_init());
+    int rc = appinst_init();
+    notify_code("L4 APPINST INIT", rc);
+    return rc;
 }
 
 int main(void)
 {
     int rc = setup_cred();
+
     void *sysutil = dlopen("/system/common/lib/libSceSysUtil.sprx", 0);
     if (sysutil) {
         g_notify = (notify_fn)dlsym(sysutil, "sceSysUtilSendSystemNotificationWithText");
     }
     if (!g_notify) return -100;
 
-    notify_text("Tayson BGFT D0 START");
+    notify_text("Tayson LAB L0 START");
     if (rc != 0) {
-        notify_code("D0 CRED FAIL", rc);
+        notify_code("L0 CRED FAIL", rc);
         return rc;
     }
 
     void *bgft = dlopen("/system/common/lib/libSceBgft.sprx", 0);
     if (!bgft) {
-        notify_text("Tayson BGFT D1 LOAD FAIL");
+        notify_text("Tayson LAB L1 BGFT LOAD FAIL");
         return -101;
     }
-    notify_text("Tayson BGFT D1 LOAD OK");
+    notify_text("Tayson LAB L1 BGFT LOAD OK");
 
     bgft_init_fn bgft_init =
-        (bgft_init_fn)dlsym(bgft, "sceBgftServiceIntInit");
-    bgft_register_fn bgft_register_internal =
-        (bgft_register_fn)dlsym(bgft, "sceBgftServiceIntDownloadRegisterTask");
-    bgft_register_fn bgft_register_debug =
-        (bgft_register_fn)dlsym(bgft, "sceBgftServiceIntDebugDownloadRegisterPkg");
+        (bgft_init_fn)dlsym(bgft, "sceBgftServiceInit");
+    bgft_register_fn bgft_register =
+        (bgft_register_fn)dlsym(bgft, "sceBgftServiceDownloadRegisterTask");
     bgft_start_fn bgft_start =
         (bgft_start_fn)dlsym(bgft, "sceBgftServiceIntDownloadStartTask");
 
     if (!bgft_init) {
-        notify_text("Tayson BGFT D2 INIT SYM FAIL");
+        notify_text("Tayson LAB L2 SERVICE INIT SYM FAIL");
         return -102;
     }
-    if (!bgft_register_internal && !bgft_register_debug) {
-        notify_text("Tayson BGFT D2 REGISTER SYM FAIL");
+    if (!bgft_register) {
+        notify_text("Tayson LAB L2 SERVICE REG SYM FAIL");
         return -103;
     }
     if (!bgft_start) {
-        notify_text("Tayson BGFT D2 START SYM FAIL");
+        notify_text("Tayson LAB L2 START SYM FAIL");
         return -104;
     }
-    notify_text("Tayson BGFT D2 SYMBOLS OK");
+    notify_text("Tayson LAB L2 SYMBOLS OK");
 
     int user_id = resolve_user_id();
-    init_appinst_if_available();
+
+    rc = init_appinst();
+    if (rc != 0) return rc;
 
     void *heap = mmap(NULL, 0x100000,
                       PROT_READ | PROT_WRITE,
                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (!heap || heap == (void *)-1) {
-        notify_text("Tayson BGFT D5 HEAP FAIL");
+        notify_text("Tayson LAB L5 HEAP FAIL");
         return -107;
     }
-    notify_text("Tayson BGFT D5 HEAP OK");
+    notify_text("Tayson LAB L5 HEAP OK");
 
     struct bgft_init_params init_params = {
         .mem = heap,
@@ -229,13 +219,11 @@ int main(void)
     };
 
     rc = bgft_init(&init_params);
-    notify_code("D6 INIT", rc);
+    notify_code("L6 SERVICE INIT", rc);
+    if (rc != 0 && (uint32_t)rc != BGFT_ALREADY_INITIALIZED) {
+        return rc;
+    }
 
-    /*
-     * Preserve the 104-byte 3.4.3 parameter ABI, while filling the optional
-     * fields used by the known-working DPI BGFT path. In particular,
-     * DISABLE_CDN_QUERY_PARAM prevents BGFT from mutating signed URLs.
-     */
     struct bgft_download_param params = {0};
     params.user_id = user_id;
     params.entitlement_type = 5;
@@ -250,40 +238,18 @@ int main(void)
     params.package_size = (unsigned long)PKG_SIZE;
 
     int task = BGFT_INVALID_TASK_ID;
-
-    /*
-     * sceBgftServiceIntInit must be paired with the internal registration ABI.
-     * Using sceBgftServiceDownloadRegisterTask here produces 0x80990004 on
-     * affected firmware because the init/register families do not match.
-     */
-    if (bgft_register_internal) {
-        rc = bgft_register_internal(&params, &task);
-        notify_code("D7 INT REGISTER", rc);
-        notify_code("D7 INT TASK", task);
-    } else {
-        rc = -105;
-        notify_text("Tayson BGFT D7 INT REG SYM SKIP");
-    }
-
-    if (rc != 0 || task == BGFT_INVALID_TASK_ID) {
-        if (!bgft_register_debug) {
-            return rc ? rc : -108;
-        }
-
-        task = BGFT_INVALID_TASK_ID;
-        rc = bgft_register_debug(&params, &task);
-        notify_code("D7 DEBUG", rc);
-        notify_code("D7 DEBUG TASK", task);
-    }
+    rc = bgft_register(&params, &task);
+    notify_code("L7 SERVICE REGISTER", rc);
+    notify_code("L7 TASK", task);
 
     if (rc != 0 || task == BGFT_INVALID_TASK_ID) {
         return rc ? rc : -108;
     }
 
     rc = bgft_start(task);
-    notify_code("D8 START", rc);
+    notify_code("L8 START", rc);
     if (rc != 0) return rc;
 
-    notify_text("Tayson BGFT D9 DONE");
+    notify_text("Tayson LAB L9 DONE");
     return 0;
 }
