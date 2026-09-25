@@ -87,7 +87,7 @@ public static class UiPolish
 
         var bottom = typeof(MainPage).GetField("lblBottomStatus", PrivateInstance)?.GetValue(page) as Label;
         if (bottom != null)
-            bottom.Text = "Tayson 3.4.0 • BGFT universal • BinLoader 9090";
+            bottom.Text = "Tayson 4.0.0-alpha3 • Worker Pull • BGFT desativado";
 
         View modernHome = UiHomeScreen.Build(page);
         Visit(modernHome);
@@ -273,7 +273,7 @@ public static class UiPolish
 
         if (value.StartsWith("PS4 IP (Port 9090)", StringComparison.OrdinalIgnoreCase))
         {
-            label.Text = "IP do PS4 · porta 9090";
+            label.Text = "IP do PS4 · BinLoader 9090 / Receiver 9091";
             label.TextColor = Cyan;
             label.FontAttributes = FontAttributes.Bold;
             return;

@@ -1,0 +1,192 @@
+name: Tayson 4.0 Native AppInst Alpha 4
+
+on:
+  push:
+    branches:
+      - feature/4.0-worker-pull-engine
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: System dependencies
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq liblz4-1 unzip curl git yasm build-essential
+
+      - name: Validate Worker Pull source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          WORKER='payload-generator/4.0/worker/tayson_pull_worker_v12.js'
+          node --check "$WORKER"
+          grep -q 'v12.0-pull-engine' "$WORKER"
+          grep -q '/api/pull-jobs' "$WORKER"
+          grep -q 'origin, "j"' "$WORKER"
+          grep -q 'createPullJob' "$WORKER"
+          grep -q 'PULL_ENGINE: ON' "$WORKER"
+          ! grep -E 'console\.log\([^)]*(cookie|token|body\.url)' "$WORKER"
+
+      - name: Download verified base APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          PAGE='https://www.mediafire.com/file/hi4h13wzunr2bjm/phoenixx.ps4remotepkg_v3.0%2B%282%29.apk/file'
+          curl -fL --retry 3 -A 'Mozilla/5.0' "$PAGE" -o /tmp/mediafire.html
+          python3 - <<'PY' >/tmp/direct-url.txt
+          import html, re
+          text=open('/tmp/mediafire.html',encoding='utf-8',errors='ignore').read()
+          for pattern in [
+              r'id=["\']downloadButton["\'][^>]*href=["\']([^"\']+)',
+              r'href=["\']([^"\']+)["\'][^>]*id=["\']downloadButton["\']'
+          ]:
+              m=re.search(pattern,text,re.I)
+              if m:
+                  print(html.unescape(m.group(1)))
+                  break
+          else:
+              raise SystemExit('Direct download link not found')
+          PY
+          curl -fL --retry 3 -A 'Mozilla/5.0' "$(cat /tmp/direct-url.txt)" -o /tmp/original.apk
+          echo 'a441a8321edba13ebd2597863477c409004e7d4475b9221951bf2991e2feee81  /tmp/original.apk' | sha256sum -c -
+
+      - name: Reconstruct build tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/payloadgen /tmp/tools /tmp/out
+          mkdir -p /tmp/payloadgen /tmp/out
+          unzip -q /tmp/original.apk -d /tmp/payloadgen
+          mkdir -p /tmp/payloadgen/UPDATE/base
+          cp /tmp/payloadgen/assets/template.elf /tmp/payloadgen/UPDATE/base/original-template.elf
+          cp /tmp/payloadgen/assemblies/assemblies.blob /tmp/payloadgen/UPDATE/base/original-assemblies.blob
+          cp /tmp/payloadgen/AndroidManifest.xml /tmp/payloadgen/UPDATE/base/original-AndroidManifest.xml
+          cp -a payload-generator/3.2.0/UPDATE/. /tmp/payloadgen/UPDATE/
+          python3 /tmp/payloadgen/UPDATE/scripts/patch_diagnostics.py
+
+      - name: Prepare Android and managed compiler
+        shell: bash
+        run: |
+          python3 /tmp/payloadgen/UPDATE/scripts/prepare.py --base /tmp/payloadgen --tools /tmp/tools
+
+      - name: Build PS4 Native AppInst handoff
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/dpi
+          git clone -q https://github.com/marcussacana/DirectPackageInstaller.git /tmp/dpi
+          cd /tmp/dpi
+          git checkout -q ca7bade66737fede3b0e7bad73b665e0a4d4ff39
+          cd Payload
+          make -C lib clean
+          make -C lib lib.a
+          gcc -g -O2 -mcmodel=small -isystem freebsd-headers -Ips4-libjbc -nostdinc -nostdlib \
+            -fno-stack-protector -static lib/lib.a \
+            "$GITHUB_WORKSPACE/payload-generator/4.0/receiver/tayson_receiver.c" \
+            ps4-libjbc/*.c -Wl,-gc-sections \
+            -o /tmp/tayson_receiver.elf -fPIE -ffreestanding
+
+          file /tmp/tayson_receiver.elf
+          test -s /tmp/tayson_receiver.elf
+          strings -a /tmp/tayson_receiver.elf | grep -q 'PONG TAYSON-RX 4.0.0-native1'
+          strings -a /tmp/tayson_receiver.elf | grep -q 'sceAppInstUtilInstallByPackage'
+          strings -a /tmp/tayson_receiver.elf | grep -q 'sceAppInstUtilInitialize'
+          ! strings -a /tmp/tayson_receiver.elf | grep -qi 'sceBgft'
+
+          cp /tmp/tayson_receiver.elf /tmp/payloadgen/UPDATE/assets/tayson_receiver.elf
+          cp /tmp/tayson_receiver.elf /tmp/out/tayson_native_appinst.elf
+
+      - name: Verify Android is control plane only
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -q 'WorkerPullJobClient.CreateAsync' /tmp/payloadgen/UPDATE/src/UiAutoPipeline.cs
+          grep -q 'ReceiverClient.StartNativeInstallAsync' /tmp/payloadgen/UPDATE/src/UiAutoPipeline.cs
+          ! grep -q 'ReceiverClient.UploadAsync' /tmp/payloadgen/UPDATE/src/UiAutoPipeline.cs
+          test ! -f /tmp/payloadgen/UPDATE/src/PackageTransferClient.cs
+
+      - name: Run regression tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          /tmp/tools/dotnet/dotnet run \
+            --project /tmp/payloadgen/UPDATE/tests/Tests.csproj \
+            -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
+          grep -q 'RESULT: 103 checks passed' /tmp/out/tests.log
+
+      - name: Build Android Native AppInst alpha
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 /tmp/payloadgen/UPDATE/scripts/build.py \
+            --base /tmp/payloadgen \
+            --tools /tmp/tools \
+            --output /tmp/out | tee /tmp/out/build.log
+
+          python3 /tmp/payloadgen/UPDATE/scripts/apply_release_identity.py \
+            --apk /tmp/payloadgen/UPDATE/build/aligned.apk \
+            --icon-source /tmp/payloadgen/UPDATE/assets/tayson-launcher.jpg \
+            --output /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk \
+            --unsigned-output /tmp/out/Tayson-PS4-Native-4.0.0-alpha4-unsigned.apk \
+            --tools /tmp/tools \
+            --keystore /tmp/payloadgen/UPDATE/signing/tayson-test.jks \
+            --build-info /tmp/out/build-info.json
+
+          test -s /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk
+          /tmp/tools/android/android-15/aapt dump badging \
+            /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk \
+            | grep -q "package: name='com.tayson.ps4payloadgenerator'"
+
+          python3 - <<'PY'
+          import zipfile
+          p='/tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk'
+          with zipfile.ZipFile(p) as z:
+              rx=z.read('assets/tayson_receiver.elf')
+              assert rx[:4] == b'\x7fELF'
+              assert b'PONG TAYSON-RX 4.0.0-native1' in rx
+              assert b'sceBgft' not in rx
+          print('Embedded Native AppInst handoff verified')
+          PY
+
+          cp payload-generator/4.0/worker/tayson_pull_worker_v12.js /tmp/out/
+          sha256sum \
+            /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk \
+            /tmp/out/tayson_native_appinst.elf \
+            /tmp/out/tayson_pull_worker_v12.js \
+            > /tmp/out/SHA256SUMS-4.0-alpha4.txt
+          cat /tmp/out/build-info.json
+
+      - name: Publish Native AppInst test release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG='v4.0.0-alpha4-native-appinst'
+          gh release delete "$TAG" --cleanup-tag -y || true
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title 'Tayson 4.0.0 Alpha 4 — Native AppInst' \
+            --notes 'Teste de handoff nativo sem BGFT. O Android cria uma rota curta no Worker, envia um payload temporário pelo BinLoader e entrega a URL ao AppInstUtil nativo; após aceite, o app pode ser fechado.' \
+            --prerelease
+          gh release upload "$TAG" \
+            /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk \
+            /tmp/out/tayson_native_appinst.elf \
+            /tmp/out/tayson_pull_worker_v12.js \
+            /tmp/out/SHA256SUMS-4.0-alpha4.txt \
+            --clobber

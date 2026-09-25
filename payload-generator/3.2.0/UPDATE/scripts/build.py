@@ -3,10 +3,10 @@
 import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile, zlib
 from pathlib import Path
 
-APP_VERSION = '3.4.3'
-APP_VERSION_CODE = 40
+APP_VERSION = '4.0.0-alpha4-native'
+APP_VERSION_CODE = 53
 APP_LABEL = 'Tayson PS4 Payload Generator'
-APK_NAME = 'PS4-Payload-Generator-3.4.3-TaySon.apk'
+APK_NAME = 'Tayson-PS4-Native-4.0.0-alpha4.apk'
 
 ICON_SIZES = {
     'mipmap-mdpi-v4': 48,
@@ -269,6 +269,11 @@ def main():
                 data=store if name=='assemblies/assemblies.blob' else manifest if name=='AndroidManifest.xml' else p.read_bytes()
             compression=zipfile.ZIP_STORED if (name.startswith('assemblies/') or name=='resources.arsc') else zipfile.ZIP_DEFLATED
             z.writestr(name,data,compress_type=compression)
+
+        receiver = project/'assets/tayson_receiver.elf'
+        if not receiver.exists() or receiver.stat().st_size < 4096:
+            raise RuntimeError('Missing or invalid Tayson Receiver ELF: %s' % receiver)
+        z.writestr('assets/tayson_receiver.elf', receiver.read_bytes(), compress_type=zipfile.ZIP_DEFLATED)
     if icon_count != 20:
         raise RuntimeError('Expected 20 launcher icon resources, replaced %d' % icon_count)
     android=tool/'android/android-15'
@@ -284,11 +289,15 @@ def main():
     with zipfile.ZipFile(apk) as z:
         assert z.testzip() is None
         assert z.read('assets/template.elf')==(base/'assets/template.elf').read_bytes()
+        assert z.read('assets/tayson_receiver.elf')==(project/'assets/tayson_receiver.elf').read_bytes()
         assert z.read('classes.dex')==(base/'classes.dex').read_bytes()
         assert z.read('classes2.dex')==(base/'classes2.dex').read_bytes()
         assert z.read('res/mipmap-xxxhdpi-v4/icone.png') != (base/'res/mipmap-xxxhdpi-v4/icone.png').read_bytes()
     details={'apk':apk.name,'bytes':apk.stat().st_size,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),
         'embedded_template_sha256':hashlib.sha256((base/'assets/template.elf').read_bytes()).hexdigest(),
+        'receiver_sha256':hashlib.sha256((project/'assets/tayson_receiver.elf').read_bytes()).hexdigest(),
+        'receiver_port':9091,
+        'transport':'tayson-native-appinst-handoff-no-bgft',
         'original_template_sha256':hashlib.sha256((backup/'original-template.elf').read_bytes()).hexdigest(),
         'package':'com.phoenixx.ps4remotepkg','applicationLabel':APP_LABEL,
         'versionCode':APP_VERSION_CODE,'versionName':APP_VERSION,
