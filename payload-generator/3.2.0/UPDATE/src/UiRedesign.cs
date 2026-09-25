@@ -117,7 +117,7 @@ public static class UiRedesign
         if (h.Clear != null) h.Clear.Text = "Limpar";
         if (h.LocalFile != null) h.LocalFile.Text = "Arquivo local";
         if (h.BottomStatus != null)
-            h.BottomStatus.Text = "Tayson 3.3.1 • BGFT universal • BinLoader 9090";
+            h.BottomStatus.Text = "Tayson 4.0.0-alpha1 • Receiver local • BGFT desativado";
 
         StyleAction(h.Scan, Green, Color.FromArgb("#031A16"));
         StyleAction(h.Generate, Blue, Text);
@@ -225,7 +225,7 @@ public static class UiRedesign
             HasShadow = false,
             Content = new Label
             {
-                Text = "BGFT • 9090",
+                Text = "RX • 9091",
                 TextColor = Cyan,
                 FontSize = 10,
                 FontAttributes = FontAttributes.Bold
