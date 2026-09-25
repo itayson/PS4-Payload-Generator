@@ -31,7 +31,7 @@ public static class Integration
         var bottom = Field<Label>(page, "lblBottomStatus");
 
         entry.Placeholder = "Mocha, VikingFile, FileKeeper, Rootz, AkiraBox ou link direto";
-        bottom.Text = "Tayson 4.0.0-alpha1 • Receiver local • BGFT desativado";
+        bottom.Text = "Tayson 4.0.0-alpha3 • Worker Pull • BGFT desativado";
 
         var generate = Field<Button>(page, "btnGerar");
         var inject = Field<Button>(page, "btnInjetar");
