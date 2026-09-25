@@ -47,6 +47,15 @@ byte[] result=PayloadPatcher.Patch(template,signed,Fixture.Id,"Teste ação 🎮
 Check(result.Length==template.Length,"ELF size preserved");
 Check(Encoding.UTF8.GetString(result).Contains(signed+"#tayson.pkg"+'\0'),"ELF embeds full signed URL, compatibility fragment and terminator");
 Check(template.SequenceEqual(File.ReadAllBytes(args[0])),"Original template remains unchanged");
+Check(PayloadPatcher.BgftPackageType("PS4PATCH") == "PS4GD",
+    "Update UI type maps to valid PS4GD BGFT package_type");
+int typeOffset=Encoding.ASCII.GetString(template).IndexOf("###TYPE###",StringComparison.Ordinal);
+byte[] patchTypePayload=PayloadPatcher.Patch(template,signed,Fixture.Id,"Update Test","PS4PATCH",4096);
+int typeEnd=Array.IndexOf(patchTypePayload,(byte)0,typeOffset,16);
+Check(typeEnd>typeOffset && Encoding.ASCII.GetString(patchTypePayload,typeOffset,typeEnd-typeOffset)=="PS4GD",
+    "Generated update ELF embeds PS4GD instead of invalid PS4PATCH token");
+await Reject(()=>Task.FromResult(PayloadPatcher.Patch(template,signed,Fixture.Id,"Bad Type","PS4UNKNOWN",4096)),
+    "Unsupported BGFT package_type is rejected before PS4 registration");
 int urlOffset=Encoding.ASCII.GetString(template).IndexOf("###URL_PLACEHOLDER###",StringComparison.Ordinal);
 string exact="https://example.test/"+new string('a',2047-"https://example.test/".Length-4)+".pkg";
 byte[] boundary=PayloadPatcher.Patch(template,exact,Fixture.Id,"Title","PS4GD",4096);
