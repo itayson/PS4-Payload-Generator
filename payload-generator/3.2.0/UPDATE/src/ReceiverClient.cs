@@ -257,19 +257,27 @@ public static class ReceiverClient
         int timeoutMs,
         CancellationToken token)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(timeoutMs);
-
         var buffer = new byte[maxBytes];
         int count = 0;
 
         while (count < buffer.Length)
         {
-            int n = await stream.ReadAsync(
+            Task<int> read = stream.ReadAsync(
                 buffer,
                 count,
                 1,
-                timeout.Token).ConfigureAwait(false);
+                token);
+            Task completed = await Task.WhenAny(
+                read,
+                Task.Delay(timeoutMs, token)).ConfigureAwait(false);
+
+            if (!ReferenceEquals(completed, read))
+            {
+                token.ThrowIfCancellationRequested();
+                throw new TimeoutException("Tempo limite aguardando resposta do Receiver.");
+            }
+
+            int n = await read.ConfigureAwait(false);
             if (n <= 0)
                 throw new IOException("Conexão encerrada antes da resposta.");
             if (buffer[count] == (byte)'\n')
