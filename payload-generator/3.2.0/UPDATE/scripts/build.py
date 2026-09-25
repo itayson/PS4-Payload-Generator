@@ -3,10 +3,10 @@
 import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile, zlib
 from pathlib import Path
 
-APP_VERSION = '4.0.0-alpha1'
-APP_VERSION_CODE = 50
+APP_VERSION = '4.0.0-alpha2'
+APP_VERSION_CODE = 51
 APP_LABEL = 'Tayson PS4 Payload Generator'
-APK_NAME = 'Tayson-PS4-Receiver-4.0.0-alpha1.apk'
+APK_NAME = 'Tayson-PS4-Receiver-4.0.0-alpha2.apk'
 
 ICON_SIZES = {
     'mipmap-mdpi-v4': 48,
