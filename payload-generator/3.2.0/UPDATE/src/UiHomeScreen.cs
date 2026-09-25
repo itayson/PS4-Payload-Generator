@@ -311,9 +311,9 @@ public static class UiHomeScreen
             if (status.IndexOf("enviado", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 status.IndexOf("sent", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                stageText.Text = "✓ Receiver conectado";
+                stageText.Text = "✓ Job entregue ao PS4";
                 stageText.TextColor = Purple;
-                stageDetail.Text = "Canal local pronto; BGFT não é usado nesta linha 4.0.";
+                stageDetail.Text = "O PS4 continua sozinho pelo Worker; o app pode ser fechado.";
             }
             else if (inject != null && inject.IsEnabled)
             {
@@ -325,13 +325,13 @@ public static class UiHomeScreen
             {
                 stageText.Text = "✓ PKG validado";
                 stageText.TextColor = Green;
-                stageDetail.Text = "Metadados confirmados; iniciando Receiver local.";
+                stageDetail.Text = "Metadados confirmados; preparando job no Worker.";
             }
             else if (!string.IsNullOrWhiteSpace(url?.Text))
             {
                 stageText.Text = "○ Link recebido";
                 stageText.TextColor = Cyan;
-                stageDetail.Text = "Valide o PKG antes de iniciar a transferência local.";
+                stageDetail.Text = "Valide o PKG para criar o job do PS4.";
             }
             else
             {
@@ -402,7 +402,7 @@ public static class UiHomeScreen
 
         body.Children.Add(new Label
         {
-            Text = "Dev. By TaySon  •  Tayson 4.0.0-alpha1  •  Receiver local",
+            Text = "Dev. By TaySon  •  Tayson 4.0.0-alpha3  •  Worker Pull",
             TextColor = Muted,
             FontSize = 10,
             HorizontalTextAlignment = TextAlignment.Center,
