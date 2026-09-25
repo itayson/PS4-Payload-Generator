@@ -234,9 +234,19 @@ async function createPullJob(request, env, origin) {
   if (length > MAX_ROUTE_BODY * 2)
     return new Response("Job descriptor too large\n", { status: 413 });
 
-  let body;
-  try { body = await request.json(); }
-  catch (_) { return new Response("Invalid job descriptor\n", { status: 400 }); }
+  let body = {};
+  try {
+    const type = String(request.headers.get("content-type") || "").toLowerCase();
+    if (type.includes("application/x-www-form-urlencoded")) {
+      const form = new URLSearchParams(await request.text());
+      for (const key of ["provider", "url", "cookie", "referer", "userAgent"])
+        body[key] = form.get(key) || "";
+    } else {
+      body = await request.json();
+    }
+  } catch (_) {
+    return new Response("Invalid job descriptor\n", { status: 400 });
+  }
 
   const provider = String(body?.provider || "").toLowerCase();
   let route;
