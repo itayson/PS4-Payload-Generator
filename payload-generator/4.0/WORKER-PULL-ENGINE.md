@@ -1,24 +1,36 @@
-# Tayson 4.0 — Worker Pull Engine
+# Tayson 4.0 — Native AppInst Handoff
 
 Status: experimental, private branch.
 
 ## Goal
 
-Remove BGFT from the transport path and remove Android from the data path.
+Keep the original one-touch experience without BGFT and without installing a
+persistent application/service on the PS4.
 
-Android must never store the PKG and must not remain open while the PS4 downloads.
+Android must never store or proxy the PKG. After the native installer accepts
+the Worker URL, Android is no longer in the data path.
+
+## Alpha 4 hypothesis
+
+The PS4 exports `sceAppInstUtilInstallByPackage` in `libSceAppInstUtil`.
+Public PS4 symbol/header sets expose the symbol, but public projects commonly
+fall back to BGFT on Orbis. Therefore URL consumption on the target PS4
+firmware is **not assumed to work**: Alpha 4 is a hardware probe.
 
 ## Flow
 
 1. Android resolves and validates the provider link.
-2. Android asks the Worker for one short-lived normalized job URL.
-3. Android sends only the small job descriptor to the resident PS4 service.
-4. PS4 acknowledges the job. Android may close immediately.
-5. PS4 downloads directly from the Worker using native HTTP(S).
-6. Worker streams provider bytes and forwards Range requests; it does not buffer the whole PKG.
-7. PS4 stores only a temporary/resumable file on its own disk.
-8. PS4 validates size, CNT magic and package metadata.
-9. Local install is started through AppInstUtil after validation.
+2. Android creates a short-lived opaque Worker route.
+3. Android sends a temporary one-shot ELF to GoldHEN BinLoader 9090.
+4. The ELF loads `libSceAppInstUtil.sprx`, calls
+   `sceAppInstUtilInitialize()`, then calls
+   `sceAppInstUtilInstallByPackage()` with the Worker HTTPS URL.
+5. If the native service accepts the request, the ELF returns
+   `ACCEPTED APPINST` and exits.
+6. Android may close only after that native acceptance.
+
+No Receiver application is installed on the PS4. The ELF exists only in the
+current runtime and disappears on reboot.
 
 ## Worker responsibilities
 
@@ -30,27 +42,28 @@ Android must never store the PKG and must not remain open while the PS4 download
 - no full-PKG buffering;
 - no public logging of source URLs, cookies or tokens.
 
-## PS4 responsibilities
-
-- resident job queue;
-- native HTTP(S) pull;
-- retry and Range resume;
-- local preallocation before writing PKG data;
-- package validation;
-- installation;
-- persistent status independent of Android.
-
 ## Android responsibilities
 
 - provider/browser flow;
 - metadata validation;
 - create Worker job;
-- submit tiny descriptor to PS4;
-- optional status viewer.
+- bootstrap the temporary ELF;
+- hand off the short Worker URL;
+- display the native return code.
 
-Android is not a proxy and is not part of the transfer after job acceptance.
+Android is not a download proxy.
+
+## Hardware result interpretation
+
+- `ACCEPTED APPINST`: PS4 accepted the native URL handoff.
+- `ERR APPINST_INIT 0x........`: initialization failed.
+- `ERR APPINST 0x........`: the native URL install call was rejected.
+- no response after BinLoader receive: payload/runtime problem before handoff.
+
+The exact return code is intentionally surfaced instead of silently falling
+back to BGFT.
 
 ## Compatibility rule
 
-The 3.4.3 BGFT baseline and the validated 4.0 Alpha 1 Receiver remain untouched.
-The rejected phone-stream Alpha 2 is not the basis for this line.
+The validated 3.4.3 BGFT baseline and 4.0 Alpha 1 handshake remain untouched.
+The phone-stream Alpha 2 is not the basis for this line.
