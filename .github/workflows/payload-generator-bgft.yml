@@ -85,6 +85,18 @@ jobs:
         run: |
           python3 /tmp/payloadgen/UPDATE/scripts/prepare.py --base /tmp/payloadgen --tools /tmp/tools
 
+      - name: Inspect native ELF diagnostics
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ELF=/tmp/payloadgen/assets/template.elf
+          file "$ELF"
+          readelf -h "$ELF" || true
+          echo '--- interesting strings ---'
+          strings -a -t x "$ELF" | grep -Eai 'registro|bgft|download|task|erro|error|start|payload|sucesso|falha|dev\. by|http' || true
+          echo '--- placeholders ---'
+          strings -a -t x "$ELF" | grep -Ea 'URL_PLACEHOLDER|CONTENT_ID_PLACEHOLDER|NAME_PLACEHOLDER|###TYPE###' || true
+
       - name: Validate Worker v11.2
         shell: bash
         run: |
