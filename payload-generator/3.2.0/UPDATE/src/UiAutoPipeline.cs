@@ -9,18 +9,16 @@ using PS4RemotePkgMobile;
 namespace Tayson.Providers;
 
 /// <summary>
-/// One-touch pipeline for the 3.4.0 Home screen.
+/// One-touch pipeline for Tayson 4.0 receiver architecture.
 ///
-/// After Colar, the existing hardware-tested validation handler remains
-/// authoritative. As soon as the PKG is valid, this coordinator generates the
-/// ELF only in memory and streams it directly to GoldHEN BinLoader TCP 9090:
+/// Phase 1 intentionally stops after bringing the PS4 receiver online:
 ///
-///   Colar -> Validar PKG -> Gerar ELF em memoria -> PS4:9090 -> BGFT
+///   Colar -> Validar PKG -> bootstrap receiver via BinLoader 9090
+///         -> PING receiver 9091 -> ready
 ///
-/// No Android file picker is opened and no ELF needs to be saved locally.
-/// Manual buttons remain available as fallback. Connection establishment may
-/// be retried, but once a TCP connection succeeds the payload itself is written
-/// only once, preventing duplicate BGFT registrations.
+/// No BGFT registration is performed in this branch. The full PKG transfer and
+/// local installation are introduced only after this receiver bootstrap is
+/// validated on real hardware.
 /// </summary>
 public static class UiAutoPipeline
 {
@@ -141,31 +139,28 @@ public static class UiAutoPipeline
                 SendStarted = true;
             }
 
-            SetStatus(page, bottom, "PKG validado. Preparando envio direto ao PS4...");
+            SetStatus(page, bottom, "PKG validado. Iniciando Tayson Receiver no PS4...");
 
-            byte[] payload = await Integration.GenerateAsync(page);
-            if (payload == null || payload.Length == 0)
-                throw new InvalidOperationException("O ELF gerado está vazio.");
+            string receiverVersion = await ReceiverClient.EnsureReadyAsync(ps4Ip);
 
-            // The ELF stays in memory. Nothing is written to Downloads and no
-            // Storage Access Framework/file-picker flow is invoked.
-            SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
-            await SendToBinLoaderAsync(ps4Ip, payload);
-
-            SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
+            SetStatus(
+                page,
+                bottom,
+                "Tayson Receiver conectado (" + receiverVersion + "). BGFT desativado; pronto para a etapa de transferência local.");
+            UiStateStore.Record(meta, "RECEIVER ATIVO", ps4Ip);
             Reset();
         }
         catch (TimeoutException)
         {
-            Fail(bottom, "O PS4:9090 não respondeu após várias tentativas. Confirme que o GoldHEN BinLoader está ativado.");
+            Fail(bottom, "O PS4 não respondeu. Confirme o IP, o GoldHEN e o BinLoader 9090.");
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
         {
-            Fail(bottom, "PS4 recusou a conexão na porta 9090 após várias tentativas. Reative o GoldHEN BinLoader e tente novamente.");
+            Fail(bottom, "PS4 recusou a conexão. Reative o GoldHEN BinLoader e tente novamente.");
         }
         catch (SocketException ex)
         {
-            Fail(bottom, "Falha de rede ao conectar ao PS4:9090 (" + ex.SocketErrorCode + ").");
+            Fail(bottom, "Falha de rede ao conectar ao PS4 (" + ex.SocketErrorCode + ").");
         }
         catch (Exception ex)
         {
@@ -176,68 +171,6 @@ public static class UiAutoPipeline
             lock (Gate) Busy = false;
         }
     }
-
-    static async Task SendToBinLoaderAsync(string host, byte[] payload)
-    {
-        TcpClient client = null;
-        SocketException lastSocket = null;
-        bool timedOut = false;
-
-        // Retry only the connection establishment. We never retry after a TCP
-        // connection succeeds, because replaying a partially written ELF could
-        // create duplicate or corrupted BinLoader/BGFT work.
-        for (int attempt = 1; attempt <= 4; attempt++)
-        {
-            client = new TcpClient();
-            try
-            {
-                Task connect = client.ConnectAsync(host, 9090);
-                Task completed = await Task.WhenAny(connect, Task.Delay(2500));
-                if (!ReferenceEquals(completed, connect))
-                {
-                    timedOut = true;
-                    client.Dispose();
-                    client = null;
-                    if (attempt < 4)
-                    {
-                        await Task.Delay(350 * attempt);
-                        continue;
-                    }
-                    throw new TimeoutException("BinLoader connection timeout");
-                }
-
-                await connect;
-                break;
-            }
-            catch (SocketException ex) when (IsRetryableConnectError(ex.SocketErrorCode) && attempt < 4)
-            {
-                lastSocket = ex;
-                client.Dispose();
-                client = null;
-                await Task.Delay(350 * attempt);
-            }
-        }
-
-        if (client == null)
-        {
-            if (lastSocket != null) throw lastSocket;
-            if (timedOut) throw new TimeoutException("BinLoader connection timeout");
-            throw new SocketException((int)SocketError.NotConnected);
-        }
-
-        using (client)
-        using (NetworkStream stream = client.GetStream())
-        {
-            await stream.WriteAsync(payload, 0, payload.Length);
-            await stream.FlushAsync();
-        }
-    }
-
-    static bool IsRetryableConnectError(SocketError error)
-        => error == SocketError.ConnectionRefused ||
-           error == SocketError.TimedOut ||
-           error == SocketError.HostUnreachable ||
-           error == SocketError.NetworkUnreachable;
 
     static void SetStatus(MainPage page, Label bottom, string message)
     {
@@ -271,8 +204,7 @@ public static class UiAutoPipeline
     }
 
     static bool LooksSuccessful(string text)
-        => Contains(text, "payload enviado") || Contains(text, "enviado ao ps4") ||
-           Contains(text, "successfully sent") || Contains(text, "payload sent");
+        => Contains(text, "receiver conectado") || Contains(text, "receiver ativo");
 
     static bool LooksValidated(string text)
         => Contains(text, "analisado com sucesso") || Contains(text, "validado com sucesso") ||
