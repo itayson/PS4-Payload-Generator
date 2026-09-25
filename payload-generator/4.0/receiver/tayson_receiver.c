@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include "ps4-libjbc/jailbreak.h"
+#include "jailbreak.h"
 
 #define TAYSON_RX_PORT 9091
 #define LINE_MAX 192
