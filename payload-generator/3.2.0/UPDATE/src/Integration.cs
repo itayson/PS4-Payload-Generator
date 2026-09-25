@@ -31,7 +31,14 @@ public static class Integration
         var bottom = Field<Label>(page, "lblBottomStatus");
 
         entry.Placeholder = "Mocha, VikingFile, FileKeeper, Rootz, AkiraBox ou link direto";
-        bottom.Text = "Tayson 3.4.3 • FileK dlproxy • BinLoader 9090";
+        bottom.Text = "Tayson 4.0.0-alpha1 • Receiver local • BGFT desativado";
+
+        var generate = Field<Button>(page, "btnGerar");
+        var inject = Field<Button>(page, "btnInjetar");
+        var local = Field<Button>(page, "btnArquivoLocal");
+        if (generate != null) generate.IsVisible = false;
+        if (inject != null) inject.IsVisible = false;
+        if (local != null) local.IsVisible = false;
 
         string savedIp = UiStateStore.LoadPs4Ip();
         if (!string.IsNullOrWhiteSpace(savedIp)) ip.Text = savedIp;
