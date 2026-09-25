@@ -87,7 +87,7 @@ public static class UiPolish
 
         var bottom = typeof(MainPage).GetField("lblBottomStatus", PrivateInstance)?.GetValue(page) as Label;
         if (bottom != null)
-            bottom.Text = "Tayson 4.0.0-alpha1 • Receiver local • BGFT desativado";
+            bottom.Text = "Tayson 4.0.0-alpha2 • Transferência local • BGFT desativado";
 
         View modernHome = UiHomeScreen.Build(page);
         Visit(modernHome);
