@@ -1,4 +1,4 @@
-name: Tayson PS4 Payload Generator 3.5.1 BGFT Update Fix / Worker v12
+name: Tayson PS4 Payload Generator 3.5.2 FW12.02 BGFT Context
 
 on:
   push:
@@ -11,6 +11,7 @@ on:
       - feature/3.4.2-filek-provider-context
       - feature/3.4.3-filek-dlproxy
       - feature/3.5.0-mega-bgft-worker-v12
+      - diagnostic/3.5.2-fw1202-bgft-context
   pull_request:
     branches:
       - main
@@ -38,7 +39,7 @@ jobs:
       - name: System dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq liblz4-1 unzip curl
+          sudo apt-get install -y -qq liblz4-1 unzip curl git yasm build-essential
 
       - name: Download verified Phoenixx V3 base APK
         shell: bash
@@ -80,11 +81,57 @@ jobs:
           cp -a payload-generator/3.2.0/UPDATE/. /tmp/payloadgen/UPDATE/
           python3 /tmp/payloadgen/UPDATE/scripts/patch_diagnostics.py
           sha256sum /tmp/payloadgen/UPDATE/base/original-template.elf /tmp/payloadgen/assets/template.elf
-          echo 'ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc  /tmp/payloadgen/assets/template.elf' | sha256sum -c -
+          if [ "$GITHUB_REF" != "refs/heads/diagnostic/3.5.2-fw1202-bgft-context" ]; then
+            echo 'ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc  /tmp/payloadgen/assets/template.elf' | sha256sum -c -
+          fi
 
       - name: Prepare compiler and Android build tools
         run: |
           python3 /tmp/payloadgen/UPDATE/scripts/prepare.py --base /tmp/payloadgen --tools /tmp/tools
+
+      - name: Build FW 12.02 stable-contract diagnostic ELF
+        if: github.ref == 'refs/heads/diagnostic/3.5.2-fw1202-bgft-context'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/dpi
+          git clone https://github.com/marcussacana/DirectPackageInstaller.git /tmp/dpi
+          cd /tmp/dpi
+          git checkout ca7bade66737fede3b0e7bad73b665e0a4d4ff39
+          cd Payload
+          make -C lib clean
+          make -C lib lib.a
+          cp "$GITHUB_WORKSPACE/payload-generator/3.2.0/UPDATE/diagnostic/bgft_fw1202_context.c" ./bgft_fw1202_context.c
+          gcc -g -mcmodel=small -isystem freebsd-headers -nostdinc -nostdlib \
+            -fno-stack-protector -static lib/lib.a bgft_fw1202_context.c ps4-libjbc/*.c \
+            -Wl,-gc-sections -o /tmp/bgft-fw1202-context.elf -fPIE -ffreestanding
+          file /tmp/bgft-fw1202-context.elf
+          cp /tmp/bgft-fw1202-context.elf /tmp/payloadgen/assets/template.elf
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/payloadgen/assets/template.elf').read_bytes()
+          assert p[:4] == b'\x7fELF'
+          for marker,width in [
+              (b'###CONTENT_ID_PLACEHOLDER###',64),
+              (b'###URL_PLACEHOLDER###',2048),
+              (b'###NAME_PLACEHOLDER###',128),
+              (b'###TYPE###',16),
+          ]:
+              needle=marker+b'\0'*(width-len(marker))
+              assert p.count(needle)==1, (marker,p.count(needle))
+          assert p.count(b'\xbb'*8)==1
+          print('FW12.02 diagnostic ELF markers verified:', len(p))
+          PY
+
+      - name: Inspect FW 12.02 diagnostic ELF
+        if: github.ref == 'refs/heads/diagnostic/3.5.2-fw1202-bgft-context'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ELF=/tmp/payloadgen/assets/template.elf
+          file "$ELF"
+          strings -a "$ELF" | grep -E 'Tayson 3\.5\.2|sceBgftServiceInt|sceUserService' || true
+          nm -n "$ELF" | grep -E 'main|stable_343|notify' || true
 
       - name: Validate Worker v12 BGFT compatibility profile
         shell: bash
@@ -109,7 +156,7 @@ jobs:
           /tmp/tools/dotnet/dotnet run --project /tmp/payloadgen/UPDATE/tests/Tests.csproj -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
           grep -q 'RESULT: 111 checks passed' /tmp/out/tests.log
 
-      - name: Build Tayson 3.5.1
+      - name: Build Tayson 3.5.2
         shell: bash
         run: |
           set -euxo pipefail
@@ -119,23 +166,23 @@ jobs:
           python3 /tmp/payloadgen/UPDATE/scripts/apply_release_identity.py \
             --apk /tmp/payloadgen/UPDATE/build/aligned.apk \
             --icon-source /tmp/payloadgen/UPDATE/assets/tayson-launcher.jpg \
-            --output /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk \
-            --unsigned-output /tmp/out/PS4-Payload-Generator-3.5.1-aligned-unsigned.apk \
+            --output /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-TaySon.apk \
+            --unsigned-output /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-aligned-unsigned.apk \
             --tools /tmp/tools \
             --keystore /tmp/payloadgen/UPDATE/signing/tayson-test.jks \
             --build-info /tmp/out/build-info.json
 
-          test -s /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk
-          test -s /tmp/out/PS4-Payload-Generator-3.5.1-aligned-unsigned.apk
-          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
+          test -s /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-TaySon.apk
+          test -s /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-aligned-unsigned.apk
+          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
 
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11_2.js /tmp/out/
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v12.js /tmp/out/
-          cp payload-generator/3.2.0/README.md /tmp/out/README-3.5.1.md
-          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.5.1.md
-          sha256sum /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk /tmp/out/PS4-Payload-Generator-3.5.1-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
+          cp payload-generator/3.2.0/README.md /tmp/out/README-3.5.2-DIAG.md
+          cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.5.2-DIAG.md
+          sha256sum /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-TaySon.apk /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
 
       - name: Publish 3.4.3 FileKeeper dlproxy prerelease
@@ -153,8 +200,45 @@ jobs:
             --notes 'Candidato de teste físico para CE-32942-0. Preserva a identidade FileKeeper após a resolução da URL e força rota Worker terminada em .pkg; usa Worker v11.2.' \
             --prerelease
           gh release upload "$TAG" \
-            /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk \
+            /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-TaySon.apk \
             /tmp/out/universal_transport_worker_v11_2.js \
+            /tmp/out/SHA256SUMS.txt \
+            --clobber
+
+      - name: Publish 3.5.2 FW12.02 BGFT context diagnostic
+        if: github.ref == 'refs/heads/diagnostic/3.5.2-fw1202-bgft-context'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG='v3.5.2-fw1202-bgft-context-test'
+          gh release delete "$TAG" --cleanup-tag -y || true
+          cat > /tmp/out/RELEASE-NOTES-3.5.2-DIAG.md <<'EOF'
+          # Tayson 3.5.2 — FW 12.02 BGFT context diagnostic
+
+          Build temporária para PS4 firmware 12.02.
+
+          - mantém a UI/Worker v12 da linha 3.5.x;
+          - substitui somente o template ELF por um tracer;
+          - reproduz o contrato nativo da 3.4.3: jbc get/jailbreak/set, IntInit,
+            UserServiceInitialize(NULL), GetInitialUser, IntDebugDownloadRegisterPkg,
+            IntDownloadStartTask;
+          - não aplica override explícito de authID, sonyCred ou sceProcCap;
+          - não inicializa AppInstUtil;
+          - não registra URL, cookie, token ou IP nas notificações.
+
+          As notificações C*, U*, B* e R* mostram apenas estágios e códigos hex.
+          Uso para diagnóstico em hardware próprio/homebrew.
+          EOF
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title 'Tayson 3.5.2 — FW 12.02 BGFT context diagnostic' \
+            --notes-file /tmp/out/RELEASE-NOTES-3.5.2-DIAG.md \
+            --prerelease
+          gh release upload "$TAG" \
+            /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-TaySon.apk \
+            /tmp/out/universal_transport_worker_v12.js \
             /tmp/out/SHA256SUMS.txt \
             --clobber
 
@@ -196,7 +280,7 @@ jobs:
             --notes-file /tmp/out/RELEASE-NOTES-3.5.0.md \
             --prerelease
           gh release upload "$TAG" \
-            /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk \
+            /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-TaySon.apk \
             /tmp/out/universal_transport_worker_v12.js \
             /tmp/out/SHA256SUMS.txt \
             --clobber
@@ -237,7 +321,7 @@ jobs:
             --title 'Tayson PS4 Payload Generator 3.4.3' \
             --notes-file /tmp/out/RELEASE-NOTES.md \
             --latest \
-            /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk \
+            /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-TaySon.apk \
             /tmp/out/universal_transport_worker_v11_2.js \
             /tmp/out/SHA256SUMS.txt
-          sha256sum /tmp/out/PS4-Payload-Generator-3.5.1-TaySon.apk
+          sha256sum /tmp/out/PS4-Payload-Generator-3.5.2-DIAG-TaySon.apk
