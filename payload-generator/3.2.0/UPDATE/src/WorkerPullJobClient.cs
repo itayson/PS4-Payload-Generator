@@ -58,9 +58,24 @@ public static class WorkerPullJobClient
             HttpCompletionOption.ResponseHeadersRead,
             token).ConfigureAwait(false);
 
-        string text = await response.Content
-            .ReadAsStringAsync()
-            .ConfigureAwait(false);
+        string text;
+        using (Stream body = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+        using (var buffer = new MemoryStream())
+        {
+            byte[] chunk = new byte[1024];
+            int total = 0;
+            while (total <= 8192)
+            {
+                int wanted = Math.Min(chunk.Length, 8193 - total);
+                int n = await body.ReadAsync(chunk, 0, wanted, token).ConfigureAwait(false);
+                if (n == 0) break;
+                buffer.Write(chunk, 0, n);
+                total += n;
+            }
+            if (total > 8192)
+                throw new InvalidDataException("Resposta do Worker excedeu o limite.");
+            text = System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+        }
 
         if (!response.IsSuccessStatusCode)
             throw new InvalidDataException(
@@ -68,10 +83,9 @@ public static class WorkerPullJobClient
                     ? "Worker recusou o job de download."
                     : text.Trim());
 
-        Match match = Regex.Match(
-            text ?? "",
+        Match match = new Regex(
             "\"url\"\\s*:\\s*\"([^\"]+)\"",
-            RegexOptions.IgnoreCase);
+            RegexOptions.IgnoreCase).Match(text ?? "");
 
         if (!match.Success)
             throw new InvalidDataException("Worker retornou um job inválido.");
