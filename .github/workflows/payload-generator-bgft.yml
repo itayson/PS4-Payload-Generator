@@ -12,6 +12,7 @@ on:
       - feature/3.4.3-filek-dlproxy
       - hotfix/3.4.4-mocha-direct-bgft
       - diagnostic/3.4.5-bgft-stages
+      - lab/3.4.6-bgft-service-api
   pull_request:
     branches:
       - main
@@ -89,7 +90,7 @@ jobs:
 
 
       - name: Map inherited 3.4.3 BGFT contract
-        if: github.ref == 'refs/heads/diagnostic/3.4.5-bgft-stages'
+        if: github.ref == 'refs/heads/diagnostic/3.4.5-bgft-stages' || github.ref == 'refs/heads/lab/3.4.6-bgft-service-api'
         shell: bash
         run: |
           set -euxo pipefail
@@ -107,7 +108,7 @@ jobs:
           readelf --debug-dump=info "$ELF" | grep -Eai -B2 -A6 'SceBgft|Bgft|UserService|AppInst|GetInitialUser|user_id|task_id|content_url|package_size' | head -n 500 || true
 
       - name: Build BGFT stage diagnostic ELF
-        if: github.ref == 'refs/heads/diagnostic/3.4.5-bgft-stages'
+        if: github.ref == 'refs/heads/diagnostic/3.4.5-bgft-stages' || github.ref == 'refs/heads/lab/3.4.6-bgft-service-api'
         shell: bash
         run: |
           set -euxo pipefail
@@ -284,6 +285,35 @@ jobs:
             /tmp/out/SHA256SUMS.txt \
             --clobber
 
+
+      - name: Prepare 3.4.6 service API lab artifact
+        if: github.ref == 'refs/heads/lab/3.4.6-bgft-service-api'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp /tmp/out/PS4-Payload-Generator-3.4.5-DIAG-TaySon.apk \
+             /tmp/out/PS4-Payload-Generator-3.4.6-SERVICE-LAB-TaySon.apk
+          sha256sum /tmp/out/PS4-Payload-Generator-3.4.6-SERVICE-LAB-TaySon.apk \
+            > /tmp/out/SHA256SUMS-3.4.6-SERVICE-LAB.txt
+
+      - name: Publish 3.4.6 BGFT service API lab release
+        if: github.ref == 'refs/heads/lab/3.4.6-bgft-service-api'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG='v3.4.6-bgft-service-lab'
+          gh release delete "$TAG" --cleanup-tag -y || true
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title 'Tayson 3.4.6 — BGFT service API lab' \
+            --notes 'Build de laboratório: preserva o fluxo Android 3.4.3 e testa apenas sceBgftServiceInit + sceBgftServiceDownloadRegisterTask + sceBgftServiceIntDownloadStartTask. Sem fallback IntDebug.' \
+            --prerelease
+          gh release upload "$TAG" \
+            /tmp/out/PS4-Payload-Generator-3.4.6-SERVICE-LAB-TaySon.apk \
+            /tmp/out/SHA256SUMS-3.4.6-SERVICE-LAB.txt \
+            --clobber
 
       - name: Publish 3.4.5 BGFT diagnostic test release
         if: github.ref == 'refs/heads/diagnostic/3.4.5-bgft-stages'
