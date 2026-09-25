@@ -11,14 +11,13 @@ namespace Tayson.Providers;
 /// <summary>
 /// One-touch pipeline for Tayson 4.0 receiver architecture.
 ///
-/// Phase 1 intentionally stops after bringing the PS4 receiver online:
+/// Worker Pull Engine:
 ///
-///   Colar -> Validar PKG -> bootstrap receiver via BinLoader 9090
-///         -> PING receiver 9091 -> ready
+///   Colar -> Validar PKG -> criar rota curta no Worker
+///         -> bootstrap Receiver 9091 -> enviar job pequeno -> app pode fechar
 ///
-/// No BGFT registration is performed in this branch. The full PKG transfer and
-/// local installation are introduced only after this receiver bootstrap is
-/// validated on real hardware.
+/// The Android app never stores or proxies the PKG. After QUEUED, the PS4 pulls
+/// the package directly from the Worker using its own native HTTP stack.
 /// </summary>
 public static class UiAutoPipeline
 {
@@ -139,15 +138,32 @@ public static class UiAutoPipeline
                 SendStarted = true;
             }
 
-            SetStatus(page, bottom, "PKG validado. Iniciando Tayson Receiver no PS4...");
+            SetStatus(page, bottom, "PKG validado. Preparando job no Worker...");
 
+            Provider provider = Integration.ProviderFor(meta);
+            string worker = UiStateStore.LoadWorkerUrl(BgftRoutePlanner.DefaultWorkerBase);
+            string jobUrl = await WorkerPullJobClient.CreateAsync(
+                worker,
+                meta.Url,
+                provider);
+
+            SetStatus(page, bottom, "Job criado. Iniciando Tayson Pull Engine no PS4...");
             string receiverVersion = await ReceiverClient.EnsureReadyAsync(ps4Ip);
+
+            string fileName = ReceiverClient.SafeFileName(
+                meta.TitleId + "-" + meta.PkgType + ".pkg");
+
+            await ReceiverClient.QueuePullAsync(
+                ps4Ip,
+                jobUrl,
+                fileName,
+                meta.ContentLength);
 
             SetStatus(
                 page,
                 bottom,
-                "Tayson Receiver conectado (" + receiverVersion + "). BGFT desativado; pronto para a etapa de transferência local.");
-            UiStateStore.Record(meta, "RECEIVER ATIVO", ps4Ip);
+                "Job aceito pelo PS4 (" + receiverVersion + "). O aplicativo pode ser fechado; o PS4 continuará o download.");
+            UiStateStore.Record(meta, "PULL ENFILEIRADO", ps4Ip);
             Reset();
         }
         catch (TimeoutException)
@@ -204,7 +220,8 @@ public static class UiAutoPipeline
     }
 
     static bool LooksSuccessful(string text)
-        => Contains(text, "receiver conectado") || Contains(text, "receiver ativo");
+        => Contains(text, "job aceito pelo ps4") ||
+           Contains(text, "pull enfileirado");
 
     static bool LooksValidated(string text)
         => Contains(text, "analisado com sucesso") || Contains(text, "validado com sucesso") ||
