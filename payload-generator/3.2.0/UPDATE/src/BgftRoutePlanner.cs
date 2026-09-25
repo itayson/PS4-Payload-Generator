@@ -83,28 +83,10 @@ public sealed class BgftRoutePlanner : IDisposable
             return await CreateProviderWorkerRouteAsync(
                 exact, "/api/viking-routes", "VikingFile", true, token).ConfigureAwait(false);
 
-        if (!IsRootzR2(uri))
-            return exact;
+        if (IsRootzR2(uri))
+            return await CreateRootzWorkerRouteAsync(exact, token).ConfigureAwait(false);
 
-        Exception routeError = null;
-        try
-        {
-            string shortRoute = await CreateR2WorkerRouteAsync(exact, token).ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(shortRoute)) return shortRoute;
-        }
-        catch (Exception ex) when (ex is HttpRequestException || ex is OperationCanceledException)
-        {
-            if (ex is OperationCanceledException && token.IsCancellationRequested) throw;
-            routeError = ex;
-        }
-
-        string inline = workerBase + "/r2.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
-        string registration = PayloadPatcher.RegistrationUrl(inline);
-        if (Encoding.UTF8.GetByteCount(registration) > PayloadUrlLimit)
-            throw new InvalidDataException(
-                "A URL R2 assinada é longa demais para o payload. Configure o binding KV ROUTES no Worker para gerar uma rota curta." +
-                (routeError == null ? "" : " O registro de rota também falhou: " + routeError.Message));
-        return inline;
+        return exact;
     }
 
     async Task<string> CreateProviderWorkerRouteAsync(
@@ -145,7 +127,7 @@ public sealed class BgftRoutePlanner : IDisposable
         if (status == 404 || status == 405)
             throw new InvalidDataException(
                 "O Worker publicado ainda não suporta " + providerName +
-                ". Publique o Universal Transport Worker v11.");
+                ". Publique o Universal Transport Worker v12.");
 
         if (status == 400 || status == 401 || status == 403 || status == 410 || status == 503)
             throw new InvalidDataException(
@@ -155,6 +137,44 @@ public sealed class BgftRoutePlanner : IDisposable
 
         throw new InvalidDataException(
             "O Worker " + providerName + " respondeu HTTP " + status + ".");
+    }
+
+    async Task<string> CreateRootzWorkerRouteAsync(string exactUpstream, CancellationToken token)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(12));
+        using var http = new HttpClient(factory()) { Timeout = TimeSpan.FromSeconds(15) };
+        using var request = new HttpRequestMessage(HttpMethod.Post, workerBase + "/api/rootz-routes");
+        request.Content = new StringContent(exactUpstream, Encoding.UTF8, "text/plain");
+        using HttpResponseMessage response = await http.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            timeout.Token).ConfigureAwait(false);
+        string text = await ReadBoundedAsync(
+            response.Content,
+            RouteReplyLimit,
+            timeout.Token).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode)
+            return ValidateWorkerRoute(text);
+
+        int status = (int)response.StatusCode;
+
+        // Backward compatibility with v11.2/v11.3 deployments: Rootz already
+        // used the generic R2 endpoint there.
+        if (status == 404 || status == 405)
+        {
+            string legacy = await CreateR2WorkerRouteAsync(exactUpstream, token).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(legacy)) return legacy;
+        }
+
+        if (status == 400 || status == 401 || status == 403 || status == 410 || status == 503)
+            throw new InvalidDataException(
+                string.IsNullOrWhiteSpace(text)
+                    ? "O Worker recusou a URL Rootz (HTTP " + status + ")."
+                    : text.Trim());
+
+        throw new InvalidDataException("O Worker Rootz respondeu HTTP " + status + ".");
     }
 
     async Task<string> CreateR2WorkerRouteAsync(string exactUpstream, CancellationToken token)
@@ -209,7 +229,7 @@ public sealed class BgftRoutePlanner : IDisposable
         {
             int status = (int)response.StatusCode;
             if (status == 404 || status == 405)
-                throw new InvalidDataException("O Worker publicado ainda não suporta AkiraBox. Publique o Universal Transport Worker v8.");
+                throw new InvalidDataException("O Worker publicado ainda não suporta AkiraBox. Publique o Universal Transport Worker v12.");
             if (status == 400 || status == 401 || status == 403 || status == 410)
                 throw new InvalidDataException(string.IsNullOrWhiteSpace(text)
                     ? "O Worker recusou a URL AkiraBox (HTTP " + status + ")."
@@ -271,7 +291,7 @@ public sealed class BgftRoutePlanner : IDisposable
     public static bool IsAkiraAccessUrl(Uri uri)
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
-        if (!uri.IdnHost.TrimEnd('.').Equals("download.akirabox.com", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!ProviderResolvers.IsAkiraBox(uri)) return false;
         if (!uri.AbsolutePath.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase)) return false;
         string access = Query(uri, "access");
         int dot = access.IndexOf('.');
@@ -310,7 +330,7 @@ public sealed class BgftRoutePlanner : IDisposable
     /// <summary>
     /// Performs format/range validation without using DateTimeOffset APIs that
     /// are absent from the trimmed Xamarin runtime embedded in the original V3.
-    /// Actual clock-expiry enforcement is performed by the published Worker.
+    /// Actual clock-expiry enforcement is performed by the published Worker v12.
     /// </summary>
     public static void ValidateTemporalParameters(Uri uri)
     {
