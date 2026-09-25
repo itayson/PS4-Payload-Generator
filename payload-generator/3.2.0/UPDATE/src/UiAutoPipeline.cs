@@ -154,7 +154,7 @@ public static class UiAutoPipeline
 
             long lastUi = 0;
             long total = meta.ContentLength;
-            var progress = new Progress<long>(sent =>
+            Action<long> progress = sent =>
             {
                 if (sent != total && sent - lastUi < 16L * 1024L * 1024L)
                     return;
@@ -167,7 +167,7 @@ public static class UiAutoPipeline
                     "Transferindo para o PS4: " +
                     percent.ToString("0.0") + "% • " +
                     HumanSize(sent) + " / " + HumanSize(total));
-            });
+            };
 
             SetStatus(page, bottom, "Transferindo PKG para o armazenamento local do PS4...");
             await ReceiverClient.UploadAsync(
