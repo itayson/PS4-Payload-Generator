@@ -1,18 +1,21 @@
-# Tayson PS4 Payload Generator 3.4.3
+# Tayson PS4 Payload Generator 3.5.0 — Mega BGFT / Worker v12
 
 Aplicativo Android para validar PKGs de PS4, preparar a rota BGFT, gerar um ELF específico para a tarefa e enviá-lo diretamente ao **GoldHEN BinLoader TCP 9090**.
 
 **Não usa Receiver, Remote Package Installer nem retransmite o PKG inteiro pelo celular.**
 
-## Novidades da 3.4.3
+## Novidades da 3.5.0
 
-- preserva o botão **Colar**, artwork e validação por Range da linha 3.4.x;
-- roteamento unificado no Worker para Mocha, FileKeeper e VikingFile;
-- FileKeeper reconhece o transporte real por `dlproxy.uk`;
-- a identidade do provedor é preservada até a geração do ELF;
-- o BGFT recebe FileKeeper sempre por uma URL curta terminada em `.pkg`;
-- Worker estável **v11.2**;
-- `versionName 3.4.3` e `versionCode 40`.
+- volta ao **template ELF/BGFT da 3.4.3**, sem as experiências Int/Service/Debug das builds de diagnóstico;
+- preserva o botão **Colar**, artwork, histórico e validação por Range da linha 3.4.3;
+- Worker **v12-bgft-compat-9-12** com HEAD emulado por Range, validação estrita de `Content-Range` e upstream sem compressão;
+- Rootz ganha rota dedicada `/z/<token>.pkg`, com fallback para o endpoint R2 legado;
+- AkiraBox reconhece hosts regionais `akirabox.com` e `akirabox.to`;
+- Mocha e FileKeeper podem usar rota inline quando não dependem de cookie e o KV não estiver disponível;
+- redirects do Worker ficam confinados ao mesmo provedor aprovado;
+- `versionName 3.5.0` e `versionCode 50`.
+
+A 3.4.3 continua sendo o baseline físico conhecido. A 3.5.0 permanece prerelease até fechar a matriz de testes em hardware.
 
 Falhas ao carregar imagens extras não invalidam um PKG que já passou na validação principal.
 
@@ -31,9 +34,9 @@ icon0 • pic0 • pic1 • fallback PSN por Title ID
     ↓
 BGFT Route Planner
     ├── direto quando compatível
-    └── Worker v11.2 / KV ROUTES
+    └── Worker v12 / KV ROUTES
         ├── AkiraBox   /a/<token>.pkg
-        ├── Rootz/R2   /d/<token>.pkg
+        ├── Rootz/R2   /z/<token>.pkg
         ├── Mocha      /m/<token>.pkg
         ├── FileKeeper /f/<token>.pkg
         └── VikingFile /v/<token>.pkg
@@ -59,7 +62,7 @@ BGFT do PS4
 
 O fluxo Android → ELF → GoldHEN → BGFT já foi confirmado em hardware real, inclusive com AkiraBox.
 
-## Universal Transport Worker v11.2
+## Universal Transport Worker v12
 
 Worker padrão:
 
@@ -101,8 +104,8 @@ Não são persistidos:
 
 ```text
 Application label: Tayson PS4 Payload Generator
-Version name: 3.4.3
-Version code: 37
+Version name: 3.5.0
+Version code: 50
 Package: com.tayson.ps4payloadgenerator
 ```
 
@@ -112,7 +115,7 @@ A classe herdada `com.phoenixx.ps4remotepkg.mono.MonoRuntimeProvider.__mono_init
 
 ## Compatibilidade preservada
 
-A reconstrução continua preservando `classes.dex`, `classes2.dex`, `assets/template.elf`, integração JNI/MAUI, PayloadPatcher, Worker v11.2 e BinLoader 9090.
+A reconstrução continua preservando `classes.dex`, `classes2.dex`, `assets/template.elf`, integração JNI/MAUI, PayloadPatcher, Worker v12 e BinLoader 9090.
 
 ## Uso responsável
 
