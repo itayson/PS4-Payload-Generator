@@ -1,4 +1,4 @@
-name: Tayson 4.0 Worker Pull Alpha 3
+name: Tayson 4.0 Native AppInst Alpha 4
 
 on:
   push:
@@ -84,7 +84,7 @@ jobs:
         run: |
           python3 /tmp/payloadgen/UPDATE/scripts/prepare.py --base /tmp/payloadgen --tools /tmp/tools
 
-      - name: Build PS4 Worker Pull Engine
+      - name: Build PS4 Native AppInst handoff
         shell: bash
         run: |
           set -euxo pipefail
@@ -103,21 +103,19 @@ jobs:
 
           file /tmp/tayson_receiver.elf
           test -s /tmp/tayson_receiver.elf
-          strings -a /tmp/tayson_receiver.elf | grep -q 'PONG TAYSON-RX 4.0.0-pull1'
-          strings -a /tmp/tayson_receiver.elf | grep -q 'Tayson Pull Engine'
-          strings -a /tmp/tayson_receiver.elf | grep -q 'sceHttpReadData'
-          strings -a /tmp/tayson_receiver.elf | grep -q 'sceHttpCreateRequestWithURL'
-          ! strings -a /tmp/tayson_receiver.elf | grep -qi 'sceBgft'
+          strings -a /tmp/tayson_receiver.elf | grep -q 'PONG TAYSON-RX 4.0.0-native1'
+          strings -a /tmp/tayson_receiver.elf | grep -q 'sceAppInstUtilInstallByPackage'
+                    ! strings -a /tmp/tayson_receiver.elf | grep -qi 'sceBgft'
 
           cp /tmp/tayson_receiver.elf /tmp/payloadgen/UPDATE/assets/tayson_receiver.elf
-          cp /tmp/tayson_receiver.elf /tmp/out/tayson_pull_engine.elf
+          cp /tmp/tayson_receiver.elf /tmp/out/tayson_native_appinst.elf
 
       - name: Verify Android is control plane only
         shell: bash
         run: |
           set -euxo pipefail
           grep -q 'WorkerPullJobClient.CreateAsync' /tmp/payloadgen/UPDATE/src/UiAutoPipeline.cs
-          grep -q 'ReceiverClient.QueuePullAsync' /tmp/payloadgen/UPDATE/src/UiAutoPipeline.cs
+          grep -q 'ReceiverClient.StartNativeInstallAsync' /tmp/payloadgen/UPDATE/src/UiAutoPipeline.cs
           ! grep -q 'ReceiverClient.UploadAsync' /tmp/payloadgen/UPDATE/src/UiAutoPipeline.cs
           test ! -f /tmp/payloadgen/UPDATE/src/PackageTransferClient.cs
 
@@ -142,34 +140,34 @@ jobs:
           python3 /tmp/payloadgen/UPDATE/scripts/apply_release_identity.py \
             --apk /tmp/payloadgen/UPDATE/build/aligned.apk \
             --icon-source /tmp/payloadgen/UPDATE/assets/tayson-launcher.jpg \
-            --output /tmp/out/Tayson-PS4-Pull-4.0.0-alpha3.apk \
+            --output /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk \
             --unsigned-output /tmp/out/Tayson-PS4-Pull-4.0.0-alpha3-unsigned.apk \
             --tools /tmp/tools \
             --keystore /tmp/payloadgen/UPDATE/signing/tayson-test.jks \
             --build-info /tmp/out/build-info.json
 
-          test -s /tmp/out/Tayson-PS4-Pull-4.0.0-alpha3.apk
+          test -s /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk
           /tmp/tools/android/android-15/aapt dump badging \
-            /tmp/out/Tayson-PS4-Pull-4.0.0-alpha3.apk \
+            /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk \
             | grep -q "package: name='com.tayson.ps4payloadgenerator'"
 
           python3 - <<'PY'
           import zipfile
-          p='/tmp/out/Tayson-PS4-Pull-4.0.0-alpha3.apk'
+          p='/tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk'
           with zipfile.ZipFile(p) as z:
               rx=z.read('assets/tayson_receiver.elf')
               assert rx[:4] == b'\x7fELF'
-              assert b'PONG TAYSON-RX 4.0.0-pull1' in rx
+              assert b'PONG TAYSON-RX 4.0.0-native1' in rx
               assert b'sceBgft' not in rx
-          print('Embedded Worker Pull Engine verified')
+          print('Embedded Native AppInst handoff verified')
           PY
 
           cp payload-generator/4.0/worker/tayson_pull_worker_v12.js /tmp/out/
           sha256sum \
-            /tmp/out/Tayson-PS4-Pull-4.0.0-alpha3.apk \
-            /tmp/out/tayson_pull_engine.elf \
+            /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk \
+            /tmp/out/tayson_native_appinst.elf \
             /tmp/out/tayson_pull_worker_v12.js \
-            > /tmp/out/SHA256SUMS-4.0-alpha3.txt
+            > /tmp/out/SHA256SUMS-4.0-alpha4.txt
           cat /tmp/out/build-info.json
 
       - name: Publish Worker Pull test release
@@ -178,16 +176,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          TAG='v4.0.0-alpha3-worker-pull'
+          TAG='v4.0.0-alpha4-native-appinst'
           gh release delete "$TAG" --cleanup-tag -y || true
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
-            --title 'Tayson 4.0.0 Alpha 3 — Worker Pull' \
-            --notes 'Teste da arquitetura sem BGFT e sem o celular no caminho dos dados. O aplicativo entrega um job curto; o PS4 continua o download diretamente pelo Worker.' \
+            --title 'Tayson 4.0.0 Alpha 4 — Native AppInst' \
+            --notes 'Teste de handoff nativo sem BGFT. O Android cria uma rota curta no Worker, envia um payload temporário pelo BinLoader e entrega a URL ao AppInstUtil nativo; após aceite, o app pode ser fechado.' \
             --prerelease
           gh release upload "$TAG" \
-            /tmp/out/Tayson-PS4-Pull-4.0.0-alpha3.apk \
-            /tmp/out/tayson_pull_engine.elf \
+            /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk \
+            /tmp/out/tayson_native_appinst.elf \
             /tmp/out/tayson_pull_worker_v12.js \
-            /tmp/out/SHA256SUMS-4.0-alpha3.txt \
+            /tmp/out/SHA256SUMS-4.0-alpha4.txt \
             --clobber
