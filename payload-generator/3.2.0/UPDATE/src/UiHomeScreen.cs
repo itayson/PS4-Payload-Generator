@@ -125,7 +125,7 @@ public static class UiHomeScreen
         connectionGrid.Children.Add(new Label { Text = "CONEXÃO PS4", TextColor = Cyan, FontSize = 10, FontAttributes = FontAttributes.Bold, CharacterSpacing = 1.2 });
         Grid.SetRow(ps4Value, 1); connectionGrid.Children.Add(ps4Value);
         Grid.SetRow(ps4Status, 2); connectionGrid.Children.Add(ps4Status);
-        var port = StatusPill("BinLoader 9090", Blue);
+        var port = StatusPill("RX 9091", Green);
         Grid.SetColumn(port, 1); Grid.SetRowSpan(port, 3); connectionGrid.Children.Add(port);
         connection.Content = connectionGrid;
         body.Children.Add(connection);
@@ -213,7 +213,7 @@ public static class UiHomeScreen
 
         var package = Card();
         var packageBody = new VerticalStackLayout { Spacing = 8 };
-        packageBody.Children.Add(SectionTitle("Pacote", Cyan));
+        packageBody.Children.Add(SectionTitle("Pacote validado", Cyan));
         var packageGrid = new Grid { ColumnSpacing = 12 };
         packageGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         packageGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -311,27 +311,27 @@ public static class UiHomeScreen
             if (status.IndexOf("enviado", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 status.IndexOf("sent", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                stageText.Text = "✓ Payload enviado ao PS4";
+                stageText.Text = "✓ Receiver conectado";
                 stageText.TextColor = Purple;
-                stageDetail.Text = "Confirme o registro/download no console.";
+                stageDetail.Text = "Canal local pronto; BGFT não é usado nesta linha 4.0.";
             }
             else if (inject != null && inject.IsEnabled)
             {
-                stageText.Text = "✓ ELF pronto";
+                stageText.Text = "○ Receiver aguardando";
                 stageText.TextColor = Blue;
-                stageDetail.Text = "Pronto para enviar ao GoldHEN BinLoader 9090.";
+                stageDetail.Text = "O app iniciará o Receiver automaticamente pelo BinLoader.";
             }
             else if (generate != null && generate.IsEnabled)
             {
                 stageText.Text = "✓ PKG validado";
                 stageText.TextColor = Green;
-                stageDetail.Text = "Metadados confirmados; gere o ELF.";
+                stageDetail.Text = "Metadados confirmados; iniciando Receiver local.";
             }
             else if (!string.IsNullOrWhiteSpace(url?.Text))
             {
                 stageText.Text = "○ Link recebido";
                 stageText.TextColor = Cyan;
-                stageDetail.Text = "Valide o PKG antes de gerar o payload.";
+                stageDetail.Text = "Valide o PKG antes de iniciar a transferência local.";
             }
             else
             {
@@ -362,7 +362,7 @@ public static class UiHomeScreen
 
         var payloadActions = Card();
         var payloadBody = new VerticalStackLayout { Spacing = 9 };
-        payloadBody.Children.Add(SectionTitle("Payload", Cyan));
+        payloadBody.Children.Add(SectionTitle("BGFT legado desativado", Cyan));
         if (generate != null) payloadBody.Children.Add(generate);
         if (inject != null) payloadBody.Children.Add(inject);
         if (local != null) payloadBody.Children.Add(local);
@@ -378,7 +378,7 @@ public static class UiHomeScreen
                 Children =
                 {
                     SectionTitle("Destino", Cyan),
-                    new Label { Text = "IP do PS4 · TCP 9090", TextColor = Muted, FontSize = 10 },
+                    new Label { Text = "IP do PS4 · BinLoader 9090 / Receiver 9091", TextColor = Muted, FontSize = 10 },
                     ip
                 }
             };
@@ -402,7 +402,7 @@ public static class UiHomeScreen
 
         body.Children.Add(new Label
         {
-            Text = "Dev. By TaySon  •  Tayson 3.4.0  •  BGFT universal",
+            Text = "Dev. By TaySon  •  Tayson 4.0.0-alpha1  •  Receiver local",
             TextColor = Muted,
             FontSize = 10,
             HorizontalTextAlignment = TextAlignment.Center,
@@ -493,7 +493,7 @@ public static class UiHomeScreen
     static View StepsRow()
     {
         var grid = new Grid { ColumnSpacing = 5 };
-        string[] steps = { "Link", "Validar", "BGFT", "ELF", "Enviar" };
+        string[] steps = { "Link", "Validar", "Receiver", "Transferir", "Instalar" };
         for (int i = 0; i < steps.Length; i++)
         {
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
