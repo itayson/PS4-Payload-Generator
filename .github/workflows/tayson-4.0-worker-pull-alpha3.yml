@@ -105,7 +105,8 @@ jobs:
           test -s /tmp/tayson_receiver.elf
           strings -a /tmp/tayson_receiver.elf | grep -q 'PONG TAYSON-RX 4.0.0-native1'
           strings -a /tmp/tayson_receiver.elf | grep -q 'sceAppInstUtilInstallByPackage'
-                    ! strings -a /tmp/tayson_receiver.elf | grep -qi 'sceBgft'
+          strings -a /tmp/tayson_receiver.elf | grep -q 'sceAppInstUtilInitialize'
+          ! strings -a /tmp/tayson_receiver.elf | grep -qi 'sceBgft'
 
           cp /tmp/tayson_receiver.elf /tmp/payloadgen/UPDATE/assets/tayson_receiver.elf
           cp /tmp/tayson_receiver.elf /tmp/out/tayson_native_appinst.elf
@@ -128,7 +129,7 @@ jobs:
             -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
           grep -q 'RESULT: 103 checks passed' /tmp/out/tests.log
 
-      - name: Build Android Worker Pull alpha
+      - name: Build Android Native AppInst alpha
         shell: bash
         run: |
           set -euxo pipefail
@@ -141,7 +142,7 @@ jobs:
             --apk /tmp/payloadgen/UPDATE/build/aligned.apk \
             --icon-source /tmp/payloadgen/UPDATE/assets/tayson-launcher.jpg \
             --output /tmp/out/Tayson-PS4-Native-4.0.0-alpha4.apk \
-            --unsigned-output /tmp/out/Tayson-PS4-Pull-4.0.0-alpha3-unsigned.apk \
+            --unsigned-output /tmp/out/Tayson-PS4-Native-4.0.0-alpha4-unsigned.apk \
             --tools /tmp/tools \
             --keystore /tmp/payloadgen/UPDATE/signing/tayson-test.jks \
             --build-info /tmp/out/build-info.json
@@ -170,7 +171,7 @@ jobs:
             > /tmp/out/SHA256SUMS-4.0-alpha4.txt
           cat /tmp/out/build-info.json
 
-      - name: Publish Worker Pull test release
+      - name: Publish Native AppInst test release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
