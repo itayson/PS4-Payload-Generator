@@ -220,6 +220,12 @@ public static class Integration
         return meta;
     }
 
+    public static Provider ProviderFor(PkgMetadata meta)
+    {
+        if (meta == null) return Provider.Direct;
+        return ContentProvider(meta.ContentId, meta.Url);
+    }
+
     public static async Task<byte[]> GenerateAsync(MainPage page)
     {
         PkgMetadata meta = Field<PkgMetadata>(page, "_currentMeta");
