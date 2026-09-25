@@ -87,6 +87,21 @@ jobs:
           python3 /tmp/payloadgen/UPDATE/scripts/prepare.py --base /tmp/payloadgen --tools /tmp/tools
 
 
+
+      - name: Map inherited 3.4.3 BGFT contract
+        if: github.ref == 'refs/heads/diagnostic/3.4.5-bgft-stages'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ELF=/tmp/payloadgen/UPDATE/base/original-template.elf
+          file "$ELF"
+          echo '--- inherited BGFT/User/AppInst symbols and strings ---'
+          strings -a -t x "$ELF" | grep -Eai 'SceBgft|Bgft|UserService|AppInst|SystemService|GetInitialUser|Initialize|RegisterPkg|StartTask|user_id|task_id|package_size|content_url' || true
+          echo '--- inherited main disassembly ---'
+          objdump -d -Mintel "$ELF" | sed -n '/<main>:/,/^$/p' || true
+          echo '--- inherited DWARF names ---'
+          readelf --debug-dump=info "$ELF" | grep -Eai -B2 -A6 'SceBgft|Bgft|UserService|AppInst|GetInitialUser|user_id|task_id|content_url|package_size' | head -n 500 || true
+
       - name: Build BGFT stage diagnostic ELF
         if: github.ref == 'refs/heads/diagnostic/3.4.5-bgft-stages'
         shell: bash
