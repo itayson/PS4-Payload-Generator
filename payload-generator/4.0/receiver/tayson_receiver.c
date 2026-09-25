@@ -159,6 +159,27 @@ static int receive_exact_to_file(int sock, int file, uint64_t total)
     return 0;
 }
 
+static int verify_pkg_file(const char *path, uint64_t expected)
+{
+    struct stat st;
+    if (stat(path, &st) != 0) return -1;
+    if ((uint64_t)st.st_size != expected) return -2;
+
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return -3;
+
+    unsigned char magic[4];
+    ssize_t n = read(fd, magic, sizeof(magic));
+    close(fd);
+
+    if (n != 4) return -4;
+    if (magic[0] != 0x7f || magic[1] != 0x43 ||
+        magic[2] != 0x4e || magic[3] != 0x54)
+        return -5;
+
+    return 0;
+}
+
 static void handle_client(int fd)
 {
     char line[LINE_MAX];
@@ -169,7 +190,7 @@ static void handle_client(int fd)
     }
 
     if (starts(line, "PING")) {
-        reply(fd, "PONG TAYSON-RX 4.0.0-alpha1\n");
+        reply(fd, "PONG TAYSON-RX 4.0.0-alpha2\n");
         return;
     }
 
@@ -217,8 +238,15 @@ static void handle_client(int fd)
             return;
         }
 
+        if (verify_pkg_file(path, size) != 0) {
+            unlink(path);
+            reply(fd, "ERR verify\n");
+            notify("Tayson Receiver: verificacao do PKG falhou");
+            return;
+        }
+
         reply(fd, "STORED\n");
-        notify("Tayson Receiver: arquivo recebido");
+        notify("Tayson Receiver: PKG recebido e verificado");
         return;
     }
 
@@ -292,7 +320,7 @@ int main(void)
         return -3;
     }
 
-    notify("Tayson Receiver 4.0 alpha: pronto na porta 9091");
+    notify("Tayson Receiver 4.0 alpha2: pronto na porta 9091");
 
     for (;;) {
         struct sockaddr_in peer;
