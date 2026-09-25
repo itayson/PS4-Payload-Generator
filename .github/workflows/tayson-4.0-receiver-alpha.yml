@@ -82,7 +82,7 @@ jobs:
           cd Payload
           make -C lib clean
           make -C lib lib.a
-          gcc -g -O2 -mcmodel=small -isystem freebsd-headers -nostdinc -nostdlib \
+          gcc -g -O2 -mcmodel=small -isystem freebsd-headers -Ips4-libjbc -nostdinc -nostdlib \
             -fno-stack-protector -static lib/lib.a \
             "$GITHUB_WORKSPACE/payload-generator/4.0/receiver/tayson_receiver.c" \
             ps4-libjbc/*.c -Wl,-gc-sections \
