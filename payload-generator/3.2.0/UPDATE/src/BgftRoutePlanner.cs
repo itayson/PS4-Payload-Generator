@@ -17,7 +17,7 @@ namespace Tayson.Providers;
 /// </summary>
 public sealed class BgftRoutePlanner : IDisposable
 {
-    public const string DefaultWorkerBase = "https://drive.itaysondaniel.workers.dev";
+    public const string DefaultWorkerBase = "https://seek.itaysondaniel.workers.dev/";
     const int PayloadUrlLimit = 2047;
     const int RouteReplyLimit = 4096;
 
