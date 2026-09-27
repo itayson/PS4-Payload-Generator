@@ -31,7 +31,7 @@ public static class Integration
         var bottom = Field<Label>(page, "lblBottomStatus");
 
         entry.Placeholder = "Mocha, VikingFile, FileKeeper, Rootz, AkiraBox ou link direto";
-        bottom.Text = "Tayson 3.4.3 • FileK dlproxy • BinLoader 9090";
+        bottom.Text = "Tayson 3.5.0 • BGFT canonical • BinLoader 9090";
 
         string savedIp = UiStateStore.LoadPs4Ip();
         if (!string.IsNullOrWhiteSpace(savedIp)) ip.Text = savedIp;
