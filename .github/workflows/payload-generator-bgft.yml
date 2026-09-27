@@ -1,4 +1,4 @@
-name: Tayson PS4 Payload Generator 3.5.0 BGFT canonical
+name: Tayson PS4 Payload Generator 3.5.1 BGFT seek Worker
 
 on:
   push:
@@ -166,9 +166,9 @@ jobs:
         run: |
           set -euxo pipefail
           /tmp/tools/dotnet/dotnet run --project /tmp/payloadgen/UPDATE/tests/Tests.csproj -- /tmp/payloadgen/assets/template.elf | tee /tmp/out/tests.log
-          grep -q 'RESULT: 105 checks passed' /tmp/out/tests.log
+          grep -q 'RESULT: 106 checks passed' /tmp/out/tests.log
 
-      - name: Build Tayson 3.5.0 BGFT canonical
+      - name: Build Tayson 3.5.1 BGFT canonical
         shell: bash
         run: |
           set -euxo pipefail
@@ -178,15 +178,15 @@ jobs:
           python3 /tmp/payloadgen/UPDATE/scripts/apply_release_identity.py \
             --apk /tmp/payloadgen/UPDATE/build/aligned.apk \
             --icon-source /tmp/payloadgen/UPDATE/assets/tayson-launcher.jpg \
-            --output /tmp/out/PS4-Payload-Generator-3.5.0-BGFT-TaySon.apk \
-            --unsigned-output /tmp/out/PS4-Payload-Generator-3.5.0-BGFT-aligned-unsigned.apk \
+            --output /tmp/out/PS4-Payload-Generator-3.5.1-BGFT-TaySon.apk \
+            --unsigned-output /tmp/out/PS4-Payload-Generator-3.5.1-BGFT-aligned-unsigned.apk \
             --tools /tmp/tools \
             --keystore /tmp/payloadgen/UPDATE/signing/tayson-test.jks \
             --build-info /tmp/out/build-info.json
 
-          test -s /tmp/out/PS4-Payload-Generator-3.5.0-BGFT-TaySon.apk
-          test -s /tmp/out/PS4-Payload-Generator-3.5.0-BGFT-aligned-unsigned.apk
-          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.5.0-BGFT-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
+          test -s /tmp/out/PS4-Payload-Generator-3.5.1-BGFT-TaySon.apk
+          test -s /tmp/out/PS4-Payload-Generator-3.5.1-BGFT-aligned-unsigned.apk
+          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.5.1-BGFT-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
 
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
@@ -194,24 +194,24 @@ jobs:
           cp payload-generator/3.2.0/README.md /tmp/out/README-3.5.0.md
           cp /tmp/payloadgen/assets/template.elf /tmp/out/template-bgft-3.5.0.elf
           cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.5.0.md
-          sha256sum /tmp/out/PS4-Payload-Generator-3.5.0-BGFT-TaySon.apk /tmp/out/PS4-Payload-Generator-3.5.0-BGFT-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
+          sha256sum /tmp/out/PS4-Payload-Generator-3.5.1-BGFT-TaySon.apk /tmp/out/PS4-Payload-Generator-3.5.1-BGFT-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
 
-      - name: Publish 3.5.0 BGFT canonical prerelease
+      - name: Publish 3.5.1 BGFT seek Worker prerelease
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          TAG='v3.5.0-bgft-canonical-test'
+          TAG='v3.5.1-bgft-seek-worker-test'
           gh release delete "$TAG" --cleanup-tag -y || true
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
-            --title 'Tayson 3.5.0 — BGFT canonical / Worker v11.2' \
-            --notes 'Candidato de teste físico para PS4 FW 12.02. Preserva Android → Worker v11.2 → ELF → BinLoader 9090 → BGFT. O novo template reproduz o ciclo de contexto do DirectPackageInstaller (credenciais DPI, clear_stack, UserService foreground/terminate, AppInstUtil, BGFT) e corrige PS4PATCH → PS4DP.' \
+            --title 'Tayson 3.5.1 — BGFT canonical / Worker seek' \
+            --notes 'Pequena atualização do candidato BGFT para PS4 FW 12.02. Preserva Android → Worker → ELF → BinLoader 9090 → BGFT. O Worker padrão agora é https://seek.itaysondaniel.workers.dev/ e o app migra automaticamente o endpoint antigo drive.itaysondaniel.workers.dev salvo nas preferências. ELF/BGFT e Worker v11.2 permanecem iguais.' \
             --prerelease
           gh release upload "$TAG" \
-            /tmp/out/PS4-Payload-Generator-3.5.0-BGFT-TaySon.apk \
+            /tmp/out/PS4-Payload-Generator-3.5.1-BGFT-TaySon.apk \
             /tmp/out/universal_transport_worker_v11_2.js \
             /tmp/out/template-bgft-3.5.0.elf \
             /tmp/out/SHA256SUMS.txt \
