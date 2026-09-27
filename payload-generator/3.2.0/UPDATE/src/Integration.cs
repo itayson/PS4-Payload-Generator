@@ -31,7 +31,7 @@ public static class Integration
         var bottom = Field<Label>(page, "lblBottomStatus");
 
         entry.Placeholder = "Mocha, VikingFile, FileKeeper, Rootz, AkiraBox ou link direto";
-        bottom.Text = "Tayson 3.4.3 • FileK dlproxy • BinLoader 9090";
+        bottom.Text = "Tayson 3.5.0 • RPI 12800 • Worker v11.2";
 
         string savedIp = UiStateStore.LoadPs4Ip();
         if (!string.IsNullOrWhiteSpace(savedIp)) ip.Text = savedIp;
@@ -213,13 +213,14 @@ public static class Integration
         return meta;
     }
 
-    public static async Task<byte[]> GenerateAsync(MainPage page)
+    public static async Task<string> PrepareInstallUrlAsync(MainPage page)
     {
         PkgMetadata meta = Field<PkgMetadata>(page, "_currentMeta");
-        if (meta == null) throw new InvalidDataException("Analise um link válido antes de gerar o payload.");
+        if (meta == null) throw new InvalidDataException("Analise um link válido antes de instalar.");
+
         DownloadInfo current = await ProbeForProviderAsync(meta.Url);
         if (!ReferenceEquals(meta, Field<PkgMetadata>(page, "_currentMeta")))
-            throw new InvalidDataException("O link foi alterado durante a verificação. Analise o novo link antes de enviar.");
+            throw new InvalidDataException("O link foi alterado durante a verificação. Analise o novo link antes de instalar.");
         if (current.Length != meta.ContentLength || current.ContentId != meta.ContentId)
             throw new InvalidDataException("O arquivo mudou desde a análise. Analise o link novamente.");
 
@@ -228,14 +229,14 @@ public static class Integration
             () => new HttpClientHandler { AllowAutoRedirect = false },
             worker);
 
-        string bgftUrl;
+        string installUrl;
         Uri currentUri = LinkPolicy.Parse(current.Url.AbsoluteUri);
         Provider sourceProvider = ContentProvider(meta.ContentId, current.Url.AbsoluteUri);
 
         if (sourceProvider == Provider.AkiraBox || BgftRoutePlanner.IsAkiraAccessUrl(currentUri))
         {
             string cookie = AkiraDownloadProbe.GetCookieHeader(current.Url.AbsoluteUri);
-            bgftUrl = await router.PrepareAsync(
+            installUrl = await router.PrepareAsync(
                 current.Url.AbsoluteUri,
                 sourceProvider,
                 cookie,
@@ -244,8 +245,19 @@ public static class Integration
         }
         else
         {
-            bgftUrl = await router.PrepareAsync(current.Url.AbsoluteUri, sourceProvider);
+            installUrl = await router.PrepareAsync(current.Url.AbsoluteUri, sourceProvider);
         }
+
+        UiStateStore.Record(meta, "ROTA RPI PRONTA", Field<Entry>(page, "txtIp").Text);
+        return installUrl;
+    }
+
+    public static async Task<byte[]> GenerateAsync(MainPage page)
+    {
+        PkgMetadata meta = Field<PkgMetadata>(page, "_currentMeta");
+        if (meta == null) throw new InvalidDataException("Analise um link válido antes de gerar o payload.");
+
+        string bgftUrl = await PrepareInstallUrlAsync(page);
 
         using Stream input = await FileSystem.OpenAppPackageFileAsync("template.elf");
         using var buffer = new MemoryStream();
@@ -260,4 +272,5 @@ public static class Integration
         UiStateStore.Record(meta, "ELF GERADO", Field<Entry>(page, "txtIp").Text);
         return payload;
     }
+
 }
