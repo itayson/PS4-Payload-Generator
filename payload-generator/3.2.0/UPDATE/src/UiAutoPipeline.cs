@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -12,15 +13,16 @@ namespace Tayson.Providers;
 /// One-touch pipeline for the 3.4.0 Home screen.
 ///
 /// After Colar, the existing hardware-tested validation handler remains
-/// authoritative. As soon as the PKG is valid, this coordinator generates the
-/// ELF only in memory and streams it directly to GoldHEN BinLoader TCP 9090:
+/// authoritative. As soon as the PKG is valid, this coordinator preserves the
+/// provider/Worker routing and sends the final PKG URL to flatz Remote Package
+/// Installer running on the PS4:
 ///
-///   Colar -> Validar PKG -> Gerar ELF em memoria -> PS4:9090 -> BGFT
+///   Colar -> Validar PKG -> Worker/rota final -> PS4 RPI:12800 -> BGFT
 ///
-/// No Android file picker is opened and no ELF needs to be saved locally.
-/// Manual buttons remain available as fallback. Connection establishment may
-/// be retried, but once a TCP connection succeeds the payload itself is written
-/// only once, preventing duplicate BGFT registrations.
+/// No Android file picker is opened and no ELF is required for the primary
+/// one-touch path. The existing manual ELF buttons remain available as fallback.
+/// The install POST itself is never automatically replayed, preventing duplicate
+/// BGFT registrations.
 /// </summary>
 public static class UiAutoPipeline
 {
@@ -141,23 +143,26 @@ public static class UiAutoPipeline
                 SendStarted = true;
             }
 
-            SetStatus(page, bottom, "PKG validado. Preparando envio direto ao PS4...");
+            SetStatus(page, bottom, "PKG validado. Preparando rota para o Remote Package Installer...");
 
-            byte[] payload = await Integration.GenerateAsync(page);
-            if (payload == null || payload.Length == 0)
-                throw new InvalidOperationException("O ELF gerado está vazio.");
+            string installUrl = await Integration.PrepareInstallUrlAsync(page);
+            if (string.IsNullOrWhiteSpace(installUrl))
+                throw new InvalidOperationException("A rota final do PKG está vazia.");
 
-            // The ELF stays in memory. Nothing is written to Downloads and no
-            // Storage Access Framework/file-picker flow is invoked.
-            SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
-            await SendToBinLoaderAsync(ps4Ip, payload);
+            SetStatus(page, bottom, "Enviando instalação ao RPI do PS4 na porta 12800...");
+            RpiInstallResult result = await RpiClient.InstallAsync(ps4Ip, installUrl);
 
-            SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
+            UiStateStore.Record(meta, "RPI / BGFT #" + result.TaskId, ps4Ip);
+            SetStatus(page, bottom, "RPI aceitou a instalação. Tarefa BGFT #" + result.TaskId + ".");
             Reset();
         }
         catch (TimeoutException)
         {
-            Fail(bottom, "O PS4:9090 não respondeu após várias tentativas. Confirme que o GoldHEN BinLoader está ativado.");
+            Fail(bottom, "O Remote Package Installer do PS4 não respondeu na porta 12800. Abra o RPI no PS4 e mantenha-o em primeiro plano.");
+        }
+        catch (HttpRequestException ex)
+        {
+            Fail(bottom, "Falha de rede ao acessar o RPI do PS4: " + ex.Message);
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
         {
