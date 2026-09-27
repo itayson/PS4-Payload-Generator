@@ -9,7 +9,8 @@ on:
       - feature/3.4.0-paste-metadata-icon
       - feature/3.4.1-unified-provider-routes
       - feature/3.4.2-filek-provider-context
-      - feature/3.4.3-filek-dlproxy\n      - feature/3.5.0-rpi-backend
+      - feature/3.4.3-filek-dlproxy
+      - feature/3.5.0-rpi-backend
   pull_request:
     branches:
       - main
@@ -123,7 +124,8 @@ jobs:
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v11_2.js /tmp/out/
-          cp payload-generator/3.2.0/README.md /tmp/out/README-3.5.0.md\n          cp payload-generator/3.2.0/RPI-3.5.0.md /tmp/out/RPI-3.5.0.md
+          cp payload-generator/3.2.0/README.md /tmp/out/README-3.5.0.md
+          cp payload-generator/3.2.0/RPI-3.5.0.md /tmp/out/RPI-3.5.0.md
           cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.5.0.md
           sha256sum /tmp/out/PS4-Payload-Generator-3.5.0-RPI-TaySon.apk /tmp/out/PS4-Payload-Generator-3.5.0-RPI-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
@@ -144,5 +146,6 @@ jobs:
           gh release upload "$TAG" \
             /tmp/out/PS4-Payload-Generator-3.5.0-RPI-TaySon.apk \
             /tmp/out/universal_transport_worker_v11_2.js \
+            /tmp/out/RPI-3.5.0.md \
             /tmp/out/SHA256SUMS.txt \
             --clobber
