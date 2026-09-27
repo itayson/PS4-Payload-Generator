@@ -43,7 +43,23 @@ public static class UiStateStore
     }
 
     public static string LoadWorkerUrl(string fallback = BgftRoutePlanner.DefaultWorkerBase)
-        => Preferences.Default.Get(WorkerUrlKey, fallback ?? BgftRoutePlanner.DefaultWorkerBase);
+    {
+        string value = Preferences.Default.Get(
+            WorkerUrlKey,
+            fallback ?? BgftRoutePlanner.DefaultWorkerBase);
+
+        value = (value ?? "").Trim();
+        if (value.Equals("https://drive.itaysondaniel.workers.dev", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("https://drive.itaysondaniel.workers.dev/", StringComparison.OrdinalIgnoreCase))
+        {
+            value = BgftRoutePlanner.DefaultWorkerBase;
+            Preferences.Default.Set(WorkerUrlKey, value);
+        }
+
+        return value.Length == 0
+            ? (fallback ?? BgftRoutePlanner.DefaultWorkerBase)
+            : value;
+    }
 
     public static void SaveWorkerUrl(string value)
     {
