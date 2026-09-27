@@ -38,15 +38,14 @@ public static class RpiClient
 
         using var handler = new HttpClientHandler
         {
-            AllowAutoRedirect = false,
-            UseCookies = false
+            AllowAutoRedirect = false
         };
         using var http = new HttpClient(handler)
         {
             Timeout = Timeout.InfiniteTimeSpan
         };
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        request.Headers.TryAddWithoutValidation("Accept", "application/json");
+        request.Headers.TryAddWithoutValidation("Accept", new[] { "application/json" });
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
         HttpResponseMessage response;
@@ -91,8 +90,7 @@ public static class RpiClient
     {
         Match match = Regex.Match(
             body ?? "",
-            "\"task_id\"\\s*:\\s*(-?\\d+)",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            "\"task_id\"\\s*:\\s*(-?\\d+)");
         return match.Success && int.TryParse(match.Groups[1].Value, out int id) ? id : -1;
     }
 
