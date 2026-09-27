@@ -15,7 +15,7 @@ namespace Tayson.Providers;
 /// </summary>
 public static class UiRedesign
 {
-    const string WorkerEndpoint = "https://drive.itaysondaniel.workers.dev";
+    const string WorkerEndpoint = "https://seek.itaysondaniel.workers.dev/";
 
     static readonly Color Background = Color.FromArgb("#030B14");
     static readonly Color Surface = Color.FromArgb("#071827");
