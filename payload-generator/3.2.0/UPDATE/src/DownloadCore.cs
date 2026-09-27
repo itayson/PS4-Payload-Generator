@@ -240,6 +240,12 @@ public sealed class DownloadClient : IDisposable
 
 public static class PayloadPatcher
 {
+    public static string BgftPackageType(string type)
+    {
+        type = (type ?? "").Trim();
+        return string.Equals(type, "PS4PATCH", StringComparison.OrdinalIgnoreCase) ? "PS4DP" : type;
+    }
+
     public static string RegistrationUrl(string url)
     {
         Uri uri = LinkPolicy.Parse(url);
@@ -256,6 +262,7 @@ public static class PayloadPatcher
         if (template == null || template.Length < 64 || template[0] != 0x7f || template[1] != 69 || template[2] != 76 || template[3] != 70)
             throw new InvalidDataException("Template ELF inválido.");
         url = RegistrationUrl(url);
+        type = BgftPackageType(type);
         if (size < 128) throw new InvalidDataException("Tamanho de PKG inválido.");
         byte[] output = (byte[])template.Clone();
         Put(output, "###URL_PLACEHOLDER###", 2048, url, false);
