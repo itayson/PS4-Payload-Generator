@@ -43,6 +43,8 @@ foreach(string scenario in new[]{"html","json","badmagic","missingid","forbidden
     Check(info.Prefix.Length==4096&&state.BytesRead==4097,"Metadata read bounded by file length");
 }
 byte[] template=File.ReadAllBytes(args[0]);
+Check(PayloadPatcher.BgftPackageType("PS4PATCH") == "PS4DP", "Patch metadata maps to BGFT PS4DP");
+Check(PayloadPatcher.BgftPackageType("PS4GD") == "PS4GD", "Game metadata keeps BGFT PS4GD");
 byte[] result=PayloadPatcher.Patch(template,signed,Fixture.Id,"Teste ação 🎮", "PS4GD",8589934592L);
 Check(result.Length==template.Length,"ELF size preserved");
 Check(Encoding.UTF8.GetString(result).Contains(signed+"#tayson.pkg"+'\0'),"ELF embeds full signed URL, compatibility fragment and terminator");
