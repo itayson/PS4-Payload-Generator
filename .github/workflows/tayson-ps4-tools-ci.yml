@@ -6,11 +6,34 @@ on:
       - ci/tayson-ps4-tools-v1.0.0
   workflow_dispatch:
 
+permissions:
+  contents: write
+  statuses: write
+  actions: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ci/tayson-ps4-tools-v1.0.0
+
+      - name: Publish run id
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci/output
+          printf '%s\n' "$RUN_ID" > ci/output/run_id.txt
+          printf '%s\n' "$SHA" > ci/output/source_sha.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci/output/run_id.txt ci/output/source_sha.txt
+          git commit -m "CI: publish TaySon PS4 Tools run id [skip ci]" || true
+          git push origin HEAD:ci/tayson-ps4-tools-v1.0.0
 
       - name: Reconstruct source archive
         shell: bash
