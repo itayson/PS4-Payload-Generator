@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat ci/parts/part00 ci/parts/part01 ci/parts/part02 ci/parts/part03 ci/parts/part04 ci/parts/part05 > /tmp/TaySonPS4Tools.b64
+          cat ci/parts/part00 ci/parts/part01a ci/parts/part01b ci/parts/part02 ci/parts/part03 ci/parts/part04 ci/parts/part05 > /tmp/TaySonPS4Tools.b64
           test "$(wc -c < /tmp/TaySonPS4Tools.b64)" = "34572"
           base64 -d /tmp/TaySonPS4Tools.b64 > /tmp/TaySonPS4Tools.zip
           echo "33aea94362f907a796f565b048cd7929fc7a982298400d025944c4f889dbfc00  /tmp/TaySonPS4Tools.zip" | sha256sum -c -
