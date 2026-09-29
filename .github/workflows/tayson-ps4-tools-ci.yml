@@ -1,0 +1,58 @@
+name: Build TaySon PS4 Tools v1.0.0
+
+on:
+  push:
+    branches:
+      - ci/tayson-ps4-tools-v1.0.0
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/parts/part00 ci/parts/part01 ci/parts/part02 ci/parts/part03 ci/parts/part04 ci/parts/part05 > /tmp/TaySonPS4Tools.b64
+          test "$(wc -c < /tmp/TaySonPS4Tools.b64)" = "34572"
+          base64 -d /tmp/TaySonPS4Tools.b64 > /tmp/TaySonPS4Tools.zip
+          echo "33aea94362f907a796f565b048cd7929fc7a982298400d025944c4f889dbfc00  /tmp/TaySonPS4Tools.zip" | sha256sum -c -
+          mkdir -p /tmp/TaySonPS4Tools
+          unzip -q /tmp/TaySonPS4Tools.zip -d /tmp/TaySonPS4Tools
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        shell: bash
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Build debug APK
+        working-directory: /tmp/TaySonPS4Tools
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/TaySonPS4Tools/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          sha256sum "$APK"
+          unzip -t "$APK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TaySonPS4Tools-v1.0.0-debug
+          path: /tmp/TaySonPS4Tools/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
