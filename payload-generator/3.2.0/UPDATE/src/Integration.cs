@@ -31,7 +31,7 @@ public static class Integration
         var bottom = Field<Label>(page, "lblBottomStatus");
 
         entry.Placeholder = "Mocha, VikingFile, FileKeeper, Rootz, AkiraBox ou link direto";
-        bottom.Text = "Tayson 3.5.1 • BGFT update fix • Worker v12 • BinLoader 9090";
+        bottom.Text = "Tayson 3.5.3 • Capa no BGFT • Worker v12 • BinLoader 9090";
 
         string savedIp = UiStateStore.LoadPs4Ip();
         if (!string.IsNullOrWhiteSpace(savedIp)) ip.Text = savedIp;
@@ -250,13 +250,17 @@ public static class Integration
         using Stream input = await FileSystem.OpenAppPackageFileAsync("template.elf");
         using var buffer = new MemoryStream();
         await input.CopyToAsync(buffer);
+        byte[][] artworks = UiArtworkStore.Get(meta.ContentId);
+        byte[] bgftIcon = artworks.Length > 0 ? artworks[0] : meta.IconBytes;
+
         byte[] payload = PayloadPatcher.Patch(
             buffer.ToArray(),
             bgftUrl,
             meta.ContentId,
             meta.DisplayName,
             meta.PkgType,
-            meta.ContentLength);
+            meta.ContentLength,
+            bgftIcon);
         UiStateStore.Record(meta, "ELF GERADO", Field<Entry>(page, "txtIp").Text);
         return payload;
     }
