@@ -118,7 +118,7 @@ jobs:
               assert p.count(needle)==1, (marker,p.count(needle))
           assert p.count(b'\xbb'*8)==1
           assert p.count(b'###ICON_PLACEHOLDER###')==1
-          assert p.count(b'\xcc'*4)==1
+          assert p.count(b'###ICON_SIZE###')==1
           assert b'/user/data/tayson_bgft_icon.png' in p
           print('3.5.3 cover ELF verified:', len(p))
           PY
