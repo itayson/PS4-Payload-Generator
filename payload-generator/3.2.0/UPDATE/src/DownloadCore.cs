@@ -269,7 +269,7 @@ public static class PayloadPatcher
         return candidate;
     }
 
-    public static byte[] Patch(byte[] template, string url, string contentId, string name, string type, long size)
+    public static byte[] Patch(byte[] template, string url, string contentId, string name, string type, long size, byte[] iconBytes = null)
     {
         if (template == null || template.Length < 64 || template[0] != 0x7f || template[1] != 69 || template[2] != 76 || template[3] != 70)
             throw new InvalidDataException("Template ELF inválido.");
@@ -284,7 +284,53 @@ public static class PayloadPatcher
         byte[] marker = { 187, 187, 187, 187, 187, 187, 187, 187 };
         int position = Unique(output, marker);
         for (int i = 0; i < 8; i++) output[position + i] = (byte)((ulong)size >> (8 * i));
+
+        InjectIcon(output, iconBytes);
         return output;
+    }
+
+    static void InjectIcon(byte[] output, byte[] iconBytes)
+    {
+        byte[] marker = Encoding.ASCII.GetBytes("###ICON_PLACEHOLDER###");
+        int iconOffset = FindUniqueOptional(output, marker);
+        byte[] sizeMarker = { 204, 204, 204, 204 };
+        int sizeOffset = FindUniqueOptional(output, sizeMarker);
+
+        // Legacy 3.4.3 templates intentionally have no icon transport area.
+        if (iconOffset < 0 && sizeOffset < 0) return;
+        if (iconOffset < 0 || sizeOffset < 0)
+            throw new InvalidDataException("Template de capa incompleto.");
+
+        const int capacity = 1048576;
+        if (iconOffset + capacity > output.Length)
+            throw new InvalidDataException("Área de capa inválida no template.");
+
+        int length = iconBytes?.Length ?? 0;
+        if (length > capacity)
+            throw new InvalidDataException("A capa excede 1 MiB. Use o icon0.png do PKG ou uma imagem menor.");
+
+        Array.Clear(output, iconOffset, capacity);
+        if (length > 0)
+            Array.Copy(iconBytes, 0, output, iconOffset, length);
+
+        output[sizeOffset] = (byte)length;
+        output[sizeOffset + 1] = (byte)(length >> 8);
+        output[sizeOffset + 2] = (byte)(length >> 16);
+        output[sizeOffset + 3] = (byte)(length >> 24);
+    }
+
+    static int FindUniqueOptional(byte[] data, byte[] needle)
+    {
+        int result = -1;
+        for (int i = 0; i <= data.Length - needle.Length; i++)
+        {
+            int j = 0;
+            while (j < needle.Length && data[i + j] == needle[j]) j++;
+            if (j != needle.Length) continue;
+            if (result != -1) throw new InvalidDataException("Template com marcador duplicado.");
+            result = i;
+        }
+        return result;
     }
 
     static void Put(byte[] output, string marker, int width, string value, bool truncateName)
