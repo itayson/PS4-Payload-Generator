@@ -1,10 +1,16 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/mman.h>
-#include <sys/types.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include "ps4-libjbc/jailbreak.h"
+
+#define O_WRONLY 0x0001
+#define O_CREAT  0x0200
+#define O_TRUNC  0x0400
+
+extern int open(const char *path, int flags, ...);
+extern long write(int fd, const void *buf, unsigned long nbyte);
+extern int close(int fd);
+extern int unlink(const char *path);
 #include "struct.h"
 
 __attribute__((used)) char PKG_CONTENT_ID[64] = "###CONTENT_ID_PLACEHOLDER###";
@@ -49,7 +55,7 @@ static int write_all(int fd, const unsigned char *data, uint32_t size)
 {
     uint32_t done = 0;
     while (done < size) {
-        ssize_t n = write(fd, data + done, size - done);
+        long n = write(fd, data + done, size - done);
         if (n <= 0) return -1;
         done += (uint32_t)n;
     }
