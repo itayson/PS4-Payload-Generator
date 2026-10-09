@@ -20,13 +20,12 @@ __attribute__((used)) char PKG_TYPE[16] = "###TYPE###";
 __attribute__((used)) volatile unsigned long PKG_SIZE = 0xBBBBBBBBBBBBBBBBULL;
 
 #define ICON_CAPACITY 1048576
-#define ICON_SIZE_MARKER 0xCCCCCCCCu
 #define ICON_PATH "/user/data/tayson_bgft_icon.png"
 
 __attribute__((used, aligned(16)))
 unsigned char PKG_ICON[ICON_CAPACITY] = "###ICON_PLACEHOLDER###";
 __attribute__((used))
-volatile uint32_t PKG_ICON_SIZE = ICON_SIZE_MARKER;
+unsigned char PKG_ICON_SIZE_FIELD[16] = "###ICON_SIZE###";
 
 typedef int (*notify_fn)(int, const char *);
 typedef int (*bgft_init_fn)(struct bgft_init_params *);
@@ -62,10 +61,18 @@ static int write_all(int fd, const unsigned char *data, uint32_t size)
     return 0;
 }
 
+static uint32_t embedded_icon_size(void)
+{
+    return ((uint32_t)PKG_ICON_SIZE_FIELD[0]) |
+           ((uint32_t)PKG_ICON_SIZE_FIELD[1] << 8) |
+           ((uint32_t)PKG_ICON_SIZE_FIELD[2] << 16) |
+           ((uint32_t)PKG_ICON_SIZE_FIELD[3] << 24);
+}
+
 static const char *prepare_icon(void)
 {
-    uint32_t size = PKG_ICON_SIZE;
-    if (size == 0 || size == ICON_SIZE_MARKER || size > ICON_CAPACITY)
+    uint32_t size = embedded_icon_size();
+    if (size == 0 || size > ICON_CAPACITY)
         return NULL;
 
     int fd = open(ICON_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0777);
