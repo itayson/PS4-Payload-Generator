@@ -293,7 +293,7 @@ public static class PayloadPatcher
     {
         byte[] marker = Encoding.ASCII.GetBytes("###ICON_PLACEHOLDER###");
         int iconOffset = FindUniqueOptional(output, marker);
-        byte[] sizeMarker = { 204, 204, 204, 204 };
+        byte[] sizeMarker = Encoding.ASCII.GetBytes("###ICON_SIZE###");
         int sizeOffset = FindUniqueOptional(output, sizeMarker);
 
         // Legacy 3.4.3 templates intentionally have no icon transport area.
@@ -313,6 +313,7 @@ public static class PayloadPatcher
         if (length > 0)
             Array.Copy(iconBytes, 0, output, iconOffset, length);
 
+        Array.Clear(output, sizeOffset, 16);
         output[sizeOffset] = (byte)length;
         output[sizeOffset + 1] = (byte)(length >> 8);
         output[sizeOffset + 2] = (byte)(length >> 16);
