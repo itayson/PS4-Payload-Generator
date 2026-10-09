@@ -47,6 +47,28 @@ byte[] result=PayloadPatcher.Patch(template,signed,Fixture.Id,"Teste ação 🎮
 Check(result.Length==template.Length,"ELF size preserved");
 Check(Encoding.UTF8.GetString(result).Contains(signed+"#tayson.pkg"+'\0'),"ELF embeds full signed URL, compatibility fragment and terminator");
 Check(template.SequenceEqual(File.ReadAllBytes(args[0])),"Original template remains unchanged");
+
+byte[] coverMarker = Encoding.ASCII.GetBytes("###ICON_PLACEHOLDER###");
+int coverMarkerOffset = Encoding.ASCII.GetString(template).IndexOf("###ICON_PLACEHOLDER###", StringComparison.Ordinal);
+if (coverMarkerOffset >= 0)
+{
+    byte[] iconFixture = new byte[] {137,80,78,71,13,10,26,10,1,2,3,4,5,6,7,8};
+    byte[] withCover = PayloadPatcher.Patch(template,signed,Fixture.Id,"Cover Test","PS4GD",4096,iconFixture);
+    Check(withCover.Skip(coverMarkerOffset).Take(iconFixture.Length).SequenceEqual(iconFixture),
+        "ELF embeds extracted PKG cover bytes");
+    byte[] iconSizeMarker = new byte[] {204,204,204,204};
+    int iconSizeOffset = -1;
+    for (int i=0;i<=template.Length-iconSizeMarker.Length;i++)
+    {
+        bool same=true;
+        for(int j=0;j<iconSizeMarker.Length;j++) if(template[i+j]!=iconSizeMarker[j]) { same=false; break; }
+        if(same){ iconSizeOffset=i; break; }
+    }
+    Check(iconSizeOffset>=0 && BitConverter.ToUInt32(withCover,iconSizeOffset)==(uint)iconFixture.Length,
+        "ELF embeds exact game-cover byte length");
+    await Reject(()=>Task.FromResult(PayloadPatcher.Patch(template,signed,Fixture.Id,"Too Large","PS4GD",4096,new byte[1048577])),
+        "Reject cover larger than 1 MiB");
+}
 Check(PayloadPatcher.BgftPackageType("PS4PATCH") == "PS4GD",
     "Update UI type maps to valid PS4GD BGFT package_type");
 int typeOffset=Encoding.ASCII.GetString(template).IndexOf("###TYPE###",StringComparison.Ordinal);
