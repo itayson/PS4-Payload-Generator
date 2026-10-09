@@ -56,7 +56,7 @@ if (coverMarkerOffset >= 0)
     byte[] withCover = PayloadPatcher.Patch(template,signed,Fixture.Id,"Cover Test","PS4GD",4096,iconFixture);
     Check(withCover.Skip(coverMarkerOffset).Take(iconFixture.Length).SequenceEqual(iconFixture),
         "ELF embeds extracted PKG cover bytes");
-    byte[] iconSizeMarker = new byte[] {204,204,204,204};
+    byte[] iconSizeMarker = Encoding.ASCII.GetBytes("###ICON_SIZE###");
     int iconSizeOffset = -1;
     for (int i=0;i<=template.Length-iconSizeMarker.Length;i++)
     {
