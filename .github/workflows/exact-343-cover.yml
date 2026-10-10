@@ -31,10 +31,12 @@ jobs:
 
       - name: Download exact stable 3.4.3 APK
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          URL='https://github.com/itayson/PS4-Payload-Generator/releases/download/v3.4.3/PS4-Payload-Generator-3.4.3-TaySon.apk'
-          curl -fL --retry 3 "$URL" -o /tmp/base-343.apk
+          gh release download v3.4.3 --repo "$GITHUB_REPOSITORY"             --pattern 'PS4-Payload-Generator-3.4.3-TaySon.apk'             --dir /tmp
+          mv /tmp/PS4-Payload-Generator-3.4.3-TaySon.apk /tmp/base-343.apk
           echo 'a251efb5fbdcc48acf402d0d54ed2a91b21fec058f563436a54f6b3ff5ae526e  /tmp/base-343.apk' | sha256sum -c -
           rm -rf /tmp/base343 /tmp/tools /tmp/out
           mkdir -p /tmp/base343 /tmp/out
