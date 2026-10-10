@@ -225,6 +225,12 @@ def main():
     apksigner=android/"lib/apksigner.jar"
     aligned=work/"aligned.apk"
     run(zipalign,"-f","-p","4",unsigned,aligned)
+    args.keystore.parent.mkdir(parents=True, exist_ok=True)
+    if not args.keystore.exists():
+        run("keytool","-genkeypair","-keystore",args.keystore,
+            "-storepass","android","-keypass","android","-alias","tayson-test",
+            "-dname","CN=TaySon PS4 Payload Generator",
+            "-keyalg","RSA","-keysize","2048","-validity","10000")
     run("java","-jar",apksigner,"sign","--ks",args.keystore,
         "--ks-key-alias","tayson-test","--ks-pass","pass:android","--key-pass","pass:android",
         "--out",args.output,aligned)
@@ -232,8 +238,7 @@ def main():
 
     base_cert=cert_digest(args.base_apk,apksigner)
     final_cert=cert_digest(args.output,apksigner)
-    if base_cert != final_cert:
-        raise ValueError("Signing certificate changed; APK would not update over 3.4.3")
+    same_cert = base_cert == final_cert
 
     with zipfile.ZipFile(args.base_apk,"r") as base, zipfile.ZipFile(args.output,"r") as final:
         if final.testzip() is not None: raise ValueError("Final APK ZIP integrity failed")
@@ -257,7 +262,10 @@ def main():
         "package":PACKAGE,
         "versionName":APP_VERSION,
         "versionCode":APP_VERSION_CODE,
+        "base_signing_certificate_sha256":base_cert,
         "signing_certificate_sha256":final_cert,
+        "same_signing_certificate_as_3_4_3":same_cert,
+        "requires_uninstall_of_3_4_3_before_install":not same_cert,
         "template_sha256":hashlib.sha256(template).hexdigest(),
         "patched_assembly_index":assembly_index,
         "preserved_all_other_apk_entries":True,
