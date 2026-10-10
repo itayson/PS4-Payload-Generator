@@ -26,7 +26,10 @@ public static class ExactCoverOverlay
         object meta = typeof(MainPage).GetField("_currentMeta", PrivateInstance)?.GetValue(page);
         if (meta == null) return null;
 
-        string contentId = meta.GetType().GetProperty("ContentId")?.GetValue(meta) as string;
+        Type metaType = meta.GetType();
+        string contentId =
+            metaType.GetProperty("ContentId")?.GetValue(meta) as string ??
+            metaType.GetField("ContentId")?.GetValue(meta) as string;
         if (!string.IsNullOrWhiteSpace(contentId))
         {
             byte[][] artworks = UiArtworkStore.Get(contentId);
@@ -34,7 +37,9 @@ public static class ExactCoverOverlay
                 return artworks[0];
         }
 
-        return meta.GetType().GetProperty("IconBytes")?.GetValue(meta) as byte[];
+        return
+            metaType.GetProperty("IconBytes")?.GetValue(meta) as byte[] ??
+            metaType.GetField("IconBytes")?.GetValue(meta) as byte[];
     }
 
     static void InjectIcon(byte[] payload, byte[] icon)
