@@ -1,0 +1,142 @@
+name: Tayson 3.5.3 Exact 3.4.3 Cover Update
+
+on:
+  push:
+    branches:
+      - feature/3.5.3-exact-343-cover
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq liblz4-1 unzip curl git yasm build-essential
+
+      - name: Download exact stable 3.4.3 APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          URL='https://github.com/itayson/PS4-Payload-Generator/releases/download/v3.4.3/PS4-Payload-Generator-3.4.3-TaySon.apk'
+          curl -fL --retry 3 "$URL" -o /tmp/base-343.apk
+          echo 'a251efb5fbdcc48acf402d0d54ed2a91b21fec058f563436a54f6b3ff5ae526e  /tmp/base-343.apk' | sha256sum -c -
+          rm -rf /tmp/base343 /tmp/tools /tmp/out
+          mkdir -p /tmp/base343 /tmp/out
+          unzip -q /tmp/base-343.apk -d /tmp/base343
+          echo 'ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc  /tmp/base343/assets/template.elf' | sha256sum -c -
+
+      - name: Prepare compiler and Android tools from exact 3.4.3
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 payload-generator/3.2.0/UPDATE/scripts/prepare.py \
+            --base /tmp/base343 \
+            --tools /tmp/tools
+
+      - name: Build cover-capable BGFT ELF
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/dpi
+          git clone https://github.com/marcussacana/DirectPackageInstaller.git /tmp/dpi
+          cd /tmp/dpi
+          git checkout ca7bade66737fede3b0e7bad73b665e0a4d4ff39
+          cd Payload
+          make -C lib clean
+          make -C lib lib.a
+          cp "$GITHUB_WORKSPACE/payload-generator/3.2.0/UPDATE/native/bgft_cover_353.c" ./bgft_cover_353.c
+          gcc -g -mcmodel=small -isystem freebsd-headers -nostdinc -nostdlib \
+            -fno-stack-protector -static lib/lib.a bgft_cover_353.c ps4-libjbc/*.c \
+            -Wl,-gc-sections -o /tmp/bgft-cover-353.elf -fPIE -ffreestanding
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/bgft-cover-353.elf').read_bytes()
+          assert p[:4] == b'\x7fELF'
+          assert p.count(b'###ICON_PLACEHOLDER###') == 1
+          assert p.count(b'###ICON_SIZE###') == 1
+          assert b'/user/data/tayson_bgft_icon.png' in p
+          for marker,width in [
+              (b'###CONTENT_ID_PLACEHOLDER###',64),
+              (b'###URL_PLACEHOLDER###',2048),
+              (b'###NAME_PLACEHOLDER###',128),
+              (b'###TYPE###',16),
+          ]:
+              assert p.count(marker+b'\0'*(width-len(marker))) == 1
+          assert p.count(b'\xbb'*8) == 1
+          print('Exact 3.4.3 cover ELF OK:', len(p))
+          PY
+
+      - name: Build exact 3.4.3 based update
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 payload-generator/3.2.0/UPDATE/scripts/build_exact_343_cover.py \
+            --base-apk /tmp/base-343.apk \
+            --base-dir /tmp/base343 \
+            --tools /tmp/tools \
+            --template /tmp/bgft-cover-353.elf \
+            --output /tmp/out/PS4-Payload-Generator-3.5.3-EXACT343-TaySon.apk \
+            --keystore payload-generator/3.2.0/UPDATE/signing/tayson-test.jks | tee /tmp/out/build-exact.log
+
+          test -s /tmp/out/PS4-Payload-Generator-3.5.3-EXACT343-TaySon.apk
+          /tmp/tools/android/android-15/aapt dump badging \
+            /tmp/out/PS4-Payload-Generator-3.5.3-EXACT343-TaySon.apk | \
+            grep -q "package: name='com.tayson.ps4payloadgenerator' versionCode='53' versionName='3.5.3'"
+
+          cp payload-generator/3.2.0/UPDATE/cloudflare/universal_transport_worker_v12.js /tmp/out/
+          sha256sum /tmp/out/PS4-Payload-Generator-3.5.3-EXACT343-TaySon.apk \
+            /tmp/out/universal_transport_worker_v12.js > /tmp/out/SHA256SUMS.txt
+          cat /tmp/out/PS4-Payload-Generator-3.5.3-EXACT343-TaySon.json
+
+      - name: Publish exact 3.4.3 based cover prerelease
+        shell: bash
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG='v3.5.3-exact343-cover-test'
+          gh release delete "$TAG" --cleanup-tag -y || true
+          cat > /tmp/out/RELEASE-NOTES.md <<'EOF'
+          # Tayson 3.5.3 — atualização direta da 3.4.3 enviada pelo usuário
+
+          Base exata:
+          SHA-256 a251efb5fbdcc48acf402d0d54ed2a91b21fec058f563436a54f6b3ff5ae526e
+
+          Alterações deliberadamente restritas:
+          - mantém package identity e certificado de assinatura da 3.4.3;
+          - mantém classes.dex, classes2.dex, resources.arsc, ícones e demais recursos byte a byte;
+          - altera AndroidManifest apenas para versionName 3.5.3 / versionCode 53;
+          - adiciona um overlay mínimo no assembly para anexar a capa já extraída pelo app;
+          - substitui somente o template ELF por uma variante BGFT com icon_path local;
+          - a capa é escrita em /user/data/tayson_bgft_icon.png e sobrescrita no próximo envio;
+          - Worker v12 é distribuído junto, mas permanece separado do transporte da capa.
+
+          Destinado a homebrew, conteúdo autorizado e testes em hardware próprio.
+          EOF
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title 'Tayson 3.5.3 — Exact 3.4.3 BGFT Cover' \
+            --notes-file /tmp/out/RELEASE-NOTES.md \
+            --prerelease
+          gh release upload "$TAG" \
+            /tmp/out/PS4-Payload-Generator-3.5.3-EXACT343-TaySon.apk \
+            /tmp/out/PS4-Payload-Generator-3.5.3-EXACT343-TaySon.json \
+            /tmp/out/universal_transport_worker_v12.js \
+            /tmp/out/SHA256SUMS.txt \
+            --clobber
