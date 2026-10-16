@@ -196,9 +196,9 @@ try
 
     // Nunca sobrescrever o original; falha de gates remove apenas a copia.
     Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-    assembly.Write(output);
     try
     {
+        assembly.Write(output);
         using var verify = AssemblyDefinition.ReadAssembly(output);
         var after = verify.MainModule;
         Check(after.Mvid == mvidBefore, "MVID mudou");
