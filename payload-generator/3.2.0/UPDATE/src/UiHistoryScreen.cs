@@ -71,7 +71,8 @@ public static class UiHistoryScreen
                 Margin = new Thickness(3, 4, 0, 0)
             });
 
-            int shown = history.Count < 10 ? history.Count : 10;
+            // ReadHistory already enforces MaxItems (20). Show every stored item.
+            int shown = history.Count;
             for (int i = 0; i < shown; i++)
                 body.Children.Add(HistoryCard(history[i], i));
 
