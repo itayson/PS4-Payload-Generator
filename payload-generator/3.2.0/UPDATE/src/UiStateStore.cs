@@ -126,7 +126,13 @@ public static class UiStateStore
     }
 
     static string PackageKey(PkgMetadata meta)
-        => meta.ContentId ?? meta.TitleId ?? meta.DisplayName ?? "pkg";
+    {
+        // Ignore whitespace-only metadata IDs when selecting the deduplication key.
+        if (!string.IsNullOrWhiteSpace(meta.ContentId)) return meta.ContentId.Trim();
+        if (!string.IsNullOrWhiteSpace(meta.TitleId)) return meta.TitleId.Trim();
+        if (!string.IsNullOrWhiteSpace(meta.DisplayName)) return meta.DisplayName.Trim();
+        return "pkg";
+    }
 
     static string ProviderName(string url)
     {
