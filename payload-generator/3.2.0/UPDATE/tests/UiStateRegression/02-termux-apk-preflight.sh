@@ -23,7 +23,7 @@ dotnet --list-sdks
 echo '[2/5] Instalar ferramentas Android NATIVAS dos repositórios Termux'
 # zipalign é instalado junto com aapt no Termux; não é um pacote separado.
 # liblz4 será tratado na etapa de reconstrução (não é requisito deste preflight).
-pkg install -y aapt aapt2 apksigner openjdk-21 openssl unzip
+pkg install -y aapt aapt2 apksigner openjdk-21 openssl openssl-tool unzip
 for cmd in aapt aapt2 zipalign apksigner java keytool openssl unzip sha256sum; do
   command -v "$cmd" || { echo "ERRO: ferramenta ausente: $cmd"; exit 3; }
 done
