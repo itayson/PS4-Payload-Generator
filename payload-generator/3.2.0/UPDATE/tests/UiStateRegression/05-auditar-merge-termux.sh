@@ -29,20 +29,33 @@ WORK="$(mktemp -d "$HOME/tayson-ps4-344-merge-audit.XXXXXX")"
 echo "[TAYSON] Ensaio isolado em: $WORK"
 sha256sum "$REFS/PS4RemotePkgMobile.dll" "$CANDIDATE" | tee "$WORK/sha256-origem.txt"
 
-echo '[1/4] Buscar auditor e ferramentas do projeto (sem checkout/reset)...'
+echo '[1/5] Buscar auditor e ferramentas do projeto (sem checkout/reset)...'
 git -C "$ROOT" fetch --no-tags origin "$BRANCH"
 git -C "$ROOT" archive FETCH_HEAD "$SOURCE_PATH/patcher" "$SOURCE_PATH/tests/UiStateRegression/MergeAudit" | tar -xf - -C "$WORK"
 P="$WORK/$SOURCE_PATH"
 test -s "$P/patcher/Patcher.csproj"
 test -s "$P/tests/UiStateRegression/MergeAudit/MergeAudit.csproj"
 
-echo '[2/4] Compilar ferramentas Mono.Cecil no .NET nativo do Termux...'
-dotnet build "$P/patcher/Patcher.csproj" -c Release --ignore-failed-sources -p:NuGetAudit=false > "$WORK/dotnet-patcher-build.log" 2>&1 || {
-  echo 'FALHA compilando o patcher. Ultimas linhas:'; tail -n 40 "$WORK/dotnet-patcher-build.log"; exit 4; }
+echo '[2/5] Compilar auditor Mono.Cecil no .NET nativo do Termux...'
 dotnet build "$P/tests/UiStateRegression/MergeAudit/MergeAudit.csproj" -c Release --ignore-failed-sources -p:NuGetAudit=false > "$WORK/dotnet-merge-audit-build.log" 2>&1 || {
-  echo 'FALHA compilando o auditor. Ultimas linhas:'; tail -n 40 "$WORK/dotnet-merge-audit-build.log"; exit 4; }
+  echo 'FALHA compilando auditor. Ultimas linhas:'; tail -n 40 "$WORK/dotnet-merge-audit-build.log"; exit 4; }
 
-echo '[3/4] Auditar dependencias da DLL candidata...'
+echo '[3/5] DETECTAR COLISOES de tipos ANTES de ILRepack...'
+set +e
+dotnet run -c Release --no-build --project "$P/tests/UiStateRegression/MergeAudit/MergeAudit.csproj" -- "$REFS/PS4RemotePkgMobile.dll" "$CANDIDATE" > "$WORK/duplicate-type-report.log" 2>&1
+types_status=$?
+set -e
+cat "$WORK/duplicate-type-report.log"
+if (( types_status != 0 )); then
+  echo "AUDITORIA INTERROMPEU MERGE (codigo $types_status). Protecao ativa, sem APK alterado."
+  echo "Log: $WORK/duplicate-type-report.log"
+  exit "$types_status"
+fi
+
+dotnet build "$P/patcher/Patcher.csproj" -c Release --ignore-failed-sources -p:NuGetAudit=false > "$WORK/dotnet-patcher-build.log" 2>&1 || {
+  echo 'FALHA compilando patcher. Ultimas linhas:'; tail -n 40 "$WORK/dotnet-patcher-build.log"; exit 4; }
+
+echo '[4/5] Auditar dependencias da DLL candidata...'
 set +e
 dotnet run -c Release --no-build --project "$P/patcher/Patcher.csproj" -- audit "$CANDIDATE" "$REFS" > "$WORK/dependencies.log" 2>&1
 status=$?
@@ -52,7 +65,7 @@ if (( status != 0 )); then
   echo 'BLOQUEADO: existem dependencias nao resolvidas. Nao fundir.'; echo "Log: $WORK/dependencies.log"; exit "$status";
 fi
 
-echo '[4/4] Ensaio de fusao ILRepack (NAO modifica APK original)...'
+echo '[5/5] Ensaio de fusao ILRepack (NAO modifica APK original)...'
 mkdir -p "$WORK/tools"
 dotnet tool install dotnet-ilrepack --version 2.0.44 --tool-path "$WORK/tools" --ignore-failed-sources > "$WORK/ilrepack-install.log" 2>&1 || {
   echo 'BLOQUEADO: ILRepack nao pode ser instalado.'; tail -n 35 "$WORK/ilrepack-install.log"; exit 5; }
