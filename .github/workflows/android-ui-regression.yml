@@ -1,0 +1,43 @@
+name: Android original - UI source regression
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "payload-generator/3.2.0/UPDATE/src/UiHistoryScreen.cs"
+      - "payload-generator/3.2.0/UPDATE/src/UiStateStore.cs"
+      - "payload-generator/3.2.0/UPDATE/tests/UiStateRegression/**"
+      - ".github/workflows/android-ui-regression.yml"
+  push:
+    branches: ["fix/android-3.4.4-historico-identificacao"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout original app sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restrict to original Android app files
+        run: |
+          python3 payload-generator/3.2.0/UPDATE/tests/UiStateRegression/test_ui_source_contract.py --scope
+
+      - name: Static UI regression contract
+        run: |
+          python3 -m unittest discover -s payload-generator/3.2.0/UPDATE/tests/UiStateRegression -p "test_*.py" -v
+
+      - name: Install .NET 8 (test harness, not APK signing)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Compile real UiStateStore and run C# regressions
+        run: |
+          dotnet run --configuration Release --project payload-generator/3.2.0/UPDATE/tests/UiStateRegression/UiStateRegression.csproj
