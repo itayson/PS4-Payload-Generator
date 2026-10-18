@@ -107,11 +107,12 @@ jobs:
             --unsigned-output /tmp/out/staging-auth-unsigned.apk \
             --tools /tmp/tools \
             --keystore /tmp/payloadgen/UPDATE/signing/tayson-test.jks \
+            --new-package com.tayson.ps4payloadgenerator.staging \
             --build-info /tmp/out/build-info.json
-          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-Staging-Auth-EXPERIMENTAL.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
+          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-Staging-Auth-EXPERIMENTAL.apk | grep -q "package: name='com.tayson.ps4payloadgenerator.staging'"
           /tmp/tools/android/android-15/apksigner verify --verbose --print-certs /tmp/out/PS4-Payload-Generator-Staging-Auth-EXPERIMENTAL.apk | tee /tmp/out/signature.txt
           sha256sum /tmp/out/PS4-Payload-Generator-Staging-Auth-EXPERIMENTAL.apk > /tmp/out/SHA256SUMS.txt
-          echo 'EXPERIMENTAL SIGNATURE: incompatible with original installed APK. DO NOT UNINSTALL STABLE VERSION.' > /tmp/out/INSTALL_WARNING.txt
+          echo 'EXPERIMENTAL PACKAGE: separate com.tayson.ps4payloadgenerator.staging identity. Keep the stable 3.4.3 installed.' > /tmp/out/INSTALL_WARNING.txt
       - uses: actions/upload-artifact@v4
         with:
           name: tayson-auth-test-build
