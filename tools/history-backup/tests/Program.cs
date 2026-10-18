@@ -74,6 +74,22 @@ static class Tests
         Check(UiHistoryBackupCodec.Import(UiHistoryBackupCodec.Export(twenty)).Count==20,"max-20 backup roundtrip");
         Check(UiHistoryBackupCodec.Merge(new[]{Item("now")},twenty).Count==20,"merge respects 20 cap");
         Check(UiHistoryBackupCodec.Merge(new[]{Item("now")},twenty)[0].Key=="now","existing newest retained");
+        var fileBytes = UiHistoryTextFile.Encode(backup);
+        Check(fileBytes.Length > 0, "TXT bytes exported");
+        string fromStream = UiHistoryTextFile.Decode(new MemoryStream(fileBytes));
+        Check(UiHistoryBackupCodec.Import(fromStream).Count==2, "TXT stream roundtrip");
+        byte[] withBom = new byte[fileBytes.Length+3];
+        withBom[0]=0xEF; withBom[1]=0xBB; withBom[2]=0xBF;
+        Array.Copy(fileBytes,0,withBom,3,fileBytes.Length);
+        Check(UiHistoryBackupCodec.Import(UiHistoryTextFile.Decode(new MemoryStream(withBom))).Count==2,
+            "TXT UTF8 BOM supported");
+        Reject(()=>UiHistoryTextFile.Decode(new MemoryStream(new byte[]{0xFF,0xFE,0x00})),"non-UTF8 file rejected");
+        Reject(()=>UiHistoryTextFile.Decode(new MemoryStream(new byte[UiHistoryTextFile.MaxFileBytes+1])),
+            "oversized TXT stream rejected");
+        Reject(()=>UiHistoryTextFile.Decode(new MemoryStream(System.Text.Encoding.UTF8.GetBytes("not a backup"))),
+            "unrelated TXT rejected");
+        Reject(()=>UiHistoryTextFile.Encode("not a backup"),"invalid backup export rejected");
+        Check(UiHistoryTextFile.Decode(new MemoryStream(fileBytes))==fromStream,"TXT export repeatable");
         Console.WriteLine("RESULT: "+passed+" history-backup checks passed");
     }
 }
