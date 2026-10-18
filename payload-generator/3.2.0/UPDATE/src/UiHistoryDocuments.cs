@@ -42,8 +42,7 @@ public static class UiHistoryDocuments
         if (register == null || unregister == null)
             throw new NotSupportedException("Seletor de documentos indisponível nesta versão.");
 
-        var completion = new TaskCompletionSource<Android.Net.Uri>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource<Android.Net.Uri>();
         var callback = new Action<Android.App.Result, Android.Content.Intent>((result, returned) =>
         {
             if (result == Android.App.Result.Ok && returned?.Data != null)
