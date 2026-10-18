@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Net.Http;
 using System.Reflection;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
@@ -114,11 +115,67 @@ public static class UiSettingsScreen
             stagingKey.Text = "";
             keyStatus.Text = "Chave desta sessão apagada.";
         };
+        var authCheckStatus = new Label
+        {
+            Text = "Teste isolado: verifica a chave sem criar rota, baixar PKG ou contatar o PS4.",
+            TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap
+        };
+        var checkAuth = Outline("Testar autenticação (sem PS4)");
+        checkAuth.Clicked += async (_, _) =>
+        {
+            checkAuth.IsEnabled = false;
+            try
+            {
+                // Only send credentials to the exact, saved HTTPS staging host.
+                string target = UiStateStore.LoadWorkerUrl();
+                if (!StagingRouteAuth.IsStagingWorker(target))
+                {
+                    authCheckStatus.Text = "Salve primeiro o endereço do Worker de homologação em Ajustes.";
+                    authCheckStatus.TextColor = Red;
+                    return;
+                }
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                using var request = new HttpRequestMessage(HttpMethod.Post, target.TrimEnd('/') + "/api/v12/auth-check");
+                await StagingRouteAuth.AttachAsync(request);
+                using HttpResponseMessage result = await http.SendAsync(request);
+                if (result.IsSuccessStatusCode)
+                {
+                    string payload = await result.Content.ReadAsStringAsync();
+                    if (payload.IndexOf("\"authenticated\":true", StringComparison.Ordinal) >= 0 &&
+                        payload.IndexOf("\"route_written\":false", StringComparison.Ordinal) >= 0)
+                    {
+                        authCheckStatus.Text = "✓ Autenticação aprovada. Nenhum PKG ou payload enviado.";
+                        authCheckStatus.TextColor = Green;
+                    }
+                    else
+                    {
+                        authCheckStatus.Text = "Resposta inesperada do teste de autenticação.";
+                        authCheckStatus.TextColor = Red;
+                    }
+                }
+                else
+                {
+                    authCheckStatus.Text = result.StatusCode == HttpStatusCode.Unauthorized ||
+                        result.StatusCode == HttpStatusCode.Forbidden ?
+                        "Chave recusada pelo Worker de homologação (HTTP " + (int)result.StatusCode + ")." :
+                        "Falha no teste de autenticação (HTTP " + (int)result.StatusCode + ").";
+                    authCheckStatus.TextColor = Red;
+                }
+            }
+            catch (Exception)
+            {
+                authCheckStatus.Text = "Teste indisponível. Verifique conexão, chave da sessão e Worker.";
+                authCheckStatus.TextColor = Red;
+            }
+            finally { checkAuth.IsEnabled = true; }
+        };
+
         var stagingCard = Card();
         stagingCard.Content = new VerticalStackLayout
         {
             Spacing = 8,
-            Children = { Title("Autenticação de homologação", Cyan), stagingKey, clearKey, keyStatus }
+            Children = { Title("Autenticação de homologação", Cyan), stagingKey, clearKey,
+                         keyStatus, checkAuth, authCheckStatus }
         };
         body.Children.Add(stagingCard);
 
