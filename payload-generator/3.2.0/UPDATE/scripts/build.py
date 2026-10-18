@@ -5,7 +5,7 @@ from pathlib import Path
 
 APP_VERSION = '3.4.3-staging.7'
 APP_VERSION_CODE = 43
-APP_LABEL = 'Tayson PS4 Payload Generator'
+APP_LABEL = 'Tayson PS4 Backup Lab'
 APK_NAME = 'PS4-Payload-Generator-3.4.3-TaySon.apk'
 
 ICON_SIZES = {
