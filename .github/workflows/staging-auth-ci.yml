@@ -35,7 +35,7 @@ jobs:
           assert "if (isStaging)" in planner and "fallback inline bloqueado" in planner
           assert 'DefaultWorkerBase = "https://drive.itaysondaniel.workers.dev"' in planner
           assert 'uri.IdnHost.Equals(Host, StringComparison.OrdinalIgnoreCase)' in auth
-          assert 'SecureStorage.Default.SetAsync' in auth
+          assert 'currentCredential = credential' in auth
           assert 'stagingKey.IsPassword = true' in settings
           assert 'UiStateStore.SaveWorkerUrl(workerValue)' in settings
           assert 'StagingRouteAuth.SaveAsync(stagingKey.Text)' in settings
