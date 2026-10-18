@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../../payload-generator/3.2.0/UPDATE/src/UiHistoryBackupCodec.cs" Link="UiHistoryBackupCodec.cs" />
+    <Compile Include="../../../payload-generator/3.2.0/UPDATE/src/UiHistoryTextFile.cs" Link="UiHistoryTextFile.cs" />
   </ItemGroup>
 </Project>
