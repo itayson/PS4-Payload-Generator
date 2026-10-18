@@ -222,7 +222,7 @@ public static class UiHistoryScreen
         var card = Card();
         var label = new Label
         {
-            Text = "Exporte seu histórico como arquivo .txt em Downloads ou importe um .txt salvo. A opção de copiar texto continua disponível. Antes de desinstalar, guarde o arquivo em local seguro.",
+            Text = "Para exportar, escolha onde salvar o arquivo .txt no seletor do Android (por exemplo, Downloads). Para importar, selecione um .txt existente. Os botões de copiar e restaurar texto continuam disponíveis.",
             TextColor = Muted,
             FontSize = 11,
             LineBreakMode = LineBreakMode.WordWrap
@@ -236,7 +236,7 @@ public static class UiHistoryScreen
         };
         var fileExport = new Button
         {
-            Text = "Salvar backup .txt em Downloads",
+            Text = "Salvar backup .txt (escolher pasta)",
             BackgroundColor = Surface2, TextColor = Cyan,
             BorderColor = Stroke, BorderWidth = 1,
             CornerRadius = 12, HeightRequest = 46
@@ -248,7 +248,7 @@ public static class UiHistoryScreen
             BorderColor = Stroke, BorderWidth = 1,
             CornerRadius = 12, HeightRequest = 46
         };
-        fileExport.Clicked += (_, _) =>
+        fileExport.Clicked += async (_, _) =>
         {
             fileExport.IsEnabled = false;
             try
@@ -260,14 +260,20 @@ public static class UiHistoryScreen
                     result.TextColor = Muted;
                     return;
                 }
-                string file = UiHistoryDocuments.ExportToDownloads(UiStateStore.ExportHistoryBackup());
-                result.Text = "Arquivo salvo em Downloads/Tayson-PS4-Backups/" + file +
-                    ". Conserve esse .txt fora do aplicativo. Ele não é criptografado.";
+                string file = await UiHistoryDocuments.ExportToDocumentAsync(UiStateStore.ExportHistoryBackup());
+                if (file == null)
+                {
+                    result.Text = "Salvamento cancelado. Nenhum arquivo novo foi criado.";
+                    result.TextColor = Muted;
+                    return;
+                }
+                result.Text = "Arquivo .txt salvo na pasta escolhida: " + file +
+                    ". Guarde-o fora do aplicativo. O arquivo não é criptografado.";
                 result.TextColor = Green;
             }
             catch (Exception)
             {
-                result.Text = "Falha ao exportar .txt. Verifique se seu Android permite salvar arquivos em Downloads.";
+                result.Text = "Não foi possível salvar .txt. Use Copiar backup do histórico como alternativa.";
                 result.TextColor = Color.FromArgb("#FF4D6D");
             }
             finally { fileExport.IsEnabled = true; }
