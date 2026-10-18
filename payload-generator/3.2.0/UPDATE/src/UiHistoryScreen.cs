@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
+using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
 
@@ -66,6 +67,8 @@ public static class UiHistoryScreen
             if (latestKpi != null) latestKpi.Text =
                 current.Count == 0 ? "—" : ShortStatus(current[0].Status);
         }
+
+        body.Children.Add(BackupCard(page, RefreshKpis));
 
         if (history.Count == 0)
         {
@@ -213,6 +216,97 @@ public static class UiHistoryScreen
         }
         frame.Content = cardBody;
         return frame;
+    }
+
+    static View BackupCard(MainPage page, Action refreshKpis)
+    {
+        var card = Card();
+        var label = new Label
+        {
+            Text = "Para conservar o histórico após desinstalar, copie o backup e SALVE o texto em uma nota ou arquivo fora deste aplicativo. A área de transferência não é um backup permanente.",
+            TextColor = Muted,
+            FontSize = 11,
+            LineBreakMode = LineBreakMode.WordWrap
+        };
+        var result = new Label
+        {
+            Text = "O backup inclui nome, Title ID, provedor, etapa, tamanho e IP local do PS4. Não contém links, cookies nem chaves. Não é criptografado.",
+            TextColor = Muted,
+            FontSize = 10,
+            LineBreakMode = LineBreakMode.WordWrap
+        };
+        var backup = new Button
+        {
+            Text = "Copiar backup do histórico",
+            BackgroundColor = Surface2, TextColor = Cyan,
+            BorderColor = Stroke, BorderWidth = 1,
+            CornerRadius = 12, HeightRequest = 46
+        };
+        var restore = new Button
+        {
+            Text = "Restaurar backup copiado",
+            BackgroundColor = Surface2, TextColor = Cyan,
+            BorderColor = Stroke, BorderWidth = 1,
+            CornerRadius = 12, HeightRequest = 46
+        };
+        backup.Clicked += async (_, _) =>
+        {
+            backup.IsEnabled = false;
+            try
+            {
+                string data = UiStateStore.ExportHistoryBackup();
+                await Clipboard.Default.SetTextAsync(data);
+                result.Text = "Backup copiado. Salve agora o conteúdo em uma nota/arquivo fora do aplicativo, antes de desinstalar. Não compartilhe publicamente.";
+                result.TextColor = Green;
+            }
+            catch (Exception)
+            {
+                result.Text = "Não foi possível copiar o backup. Verifique o histórico e tente novamente.";
+                result.TextColor = Color.FromArgb("#FF4D6D");
+            }
+            finally { backup.IsEnabled = true; }
+        };
+        restore.Clicked += async (_, _) =>
+        {
+            restore.IsEnabled = false;
+            try
+            {
+                string data = await Clipboard.Default.GetTextAsync();
+                var restored = UiHistoryBackupCodec.Import(data);
+                if (restored.Count == 0)
+                {
+                    result.Text = "O backup não contém registros.";
+                    result.TextColor = Muted;
+                    return;
+                }
+                bool confirmed = await page.DisplayAlert(
+                    "Restaurar histórico",
+                    "Backup válido com " + restored.Count + " registro(s). Mesclar com o histórico atual sem duplicar? Os registros já existentes serão preservados.",
+                    "Restaurar", "Cancelar");
+                if (!confirmed) return;
+                int count = UiStateStore.RestoreHistoryBackup(data);
+                refreshKpis?.Invoke();
+                result.Text = "Restauração concluída: " + count + " registro(s) no aparelho. Vá à tela Início e retorne ao Histórico para atualizar os cartões.";
+                result.TextColor = Green;
+            }
+            catch (Exception)
+            {
+                result.Text = "Backup inválido ou incompleto. Nenhum registro foi modificado.";
+                result.TextColor = Color.FromArgb("#FF4D6D");
+            }
+            finally { restore.IsEnabled = true; }
+        };
+        card.Content = new VerticalStackLayout
+        {
+            Spacing = 9,
+            Children =
+            {
+                new Label { Text = "Backup e restauração", TextColor = Cyan, FontSize = 16,
+                    FontAttributes = FontAttributes.Bold },
+                label, backup, restore, result
+            }
+        };
+        return card;
     }
 
     static Frame Card() => new Frame
