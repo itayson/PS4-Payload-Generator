@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
-using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Microsoft.Maui.Graphics;
 using PS4RemotePkgMobile;
 
@@ -255,7 +254,7 @@ public static class UiHistoryScreen
             try
             {
                 string data = UiStateStore.ExportHistoryBackup();
-                await Clipboard.Default.SetTextAsync(data);
+                UiHistoryClipboard.Copy(data);
                 result.Text = "Backup copiado. Salve agora o conteúdo em uma nota/arquivo fora do aplicativo, antes de desinstalar. Não compartilhe publicamente.";
                 result.TextColor = Green;
             }
@@ -271,7 +270,7 @@ public static class UiHistoryScreen
             restore.IsEnabled = false;
             try
             {
-                string data = await Clipboard.Default.GetTextAsync();
+                string data = UiHistoryClipboard.Paste();
                 var restored = UiHistoryBackupCodec.Import(data);
                 if (restored.Count == 0)
                 {
