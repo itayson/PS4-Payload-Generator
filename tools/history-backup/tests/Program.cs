@@ -56,7 +56,7 @@ static class Tests
         Check(merged[0].Status=="ELF GERADO","local status wins duplicate");
         Check(merged[1].Status=="CONCLUÍDO (MANUAL)","other imported status preserved");
         Check(UiHistoryBackupCodec.Import(UiHistoryBackupCodec.Export(new List<UiHistoryItem>())).Count==0,"empty backup roundtrip");
-        Reject(()=>UiHistoryBackupCodec.Import(backup.Replace("CUSA","CUSZ")), "damaged payload rejected");
+        Reject(()=>UiHistoryBackupCodec.Import(backup.Replace("FNV32:","FNV31:")), "damaged payload rejected");
         Reject(()=>UiHistoryBackupCodec.Import(backup.Substring(0,backup.Length-3)), "truncated checksum rejected");
         Reject(()=>UiHistoryBackupCodec.Import("TAYSON-HISTORY-BACKUP-V999\n0\nFNV32:00000000"),"unknown version rejected");
         Reject(()=>UiHistoryBackupCodec.Import(new string('x', UiHistoryBackupCodec.MaxBackupChars+1)),"oversized backup rejected");
