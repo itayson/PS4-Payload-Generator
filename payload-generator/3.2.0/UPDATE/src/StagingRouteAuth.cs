@@ -9,7 +9,7 @@ namespace Tayson.Providers;
 /// <summary>Opt-in Android SecureStorage credential for the isolated staging Worker.</summary>
 public static class StagingRouteAuth
 {
-    const string Host = "tayson-transport-v12-staging.itayson.workers.dev";
+    public const string Host = "tayson-transport-v12-staging.itayson.workers.dev";
     const string StorageKey = "tayson.staging.route_api_key.v1";
 
     public static bool IsStagingWorker(string workerBase)
@@ -34,7 +34,7 @@ public static class StagingRouteAuth
         await SecureStorage.Default.SetAsync(StorageKey, value).ConfigureAwait(false);
     }
 
-    public static async Task<bool> HasCredentialAsync()
+    public static async Task<bool> IsConfiguredAsync()
     {
         try { return Valid(await SecureStorage.Default.GetAsync(StorageKey).ConfigureAwait(false)); }
         catch { return false; }
