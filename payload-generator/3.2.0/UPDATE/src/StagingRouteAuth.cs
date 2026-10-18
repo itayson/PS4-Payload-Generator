@@ -2,19 +2,23 @@ using System;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
-using Microsoft.Maui.Storage;
 
 namespace Tayson.Providers;
 
-/// <summary>Opt-in Android SecureStorage credential for the isolated staging Worker.</summary>
+/// <summary>
+/// Isolated staging-only route credential. Session memory ONLY.
+/// Nothing is written to the APK, Android Preferences, history, URL, ELF, or log.
+/// Re-enter the credential in Settings after each application restart.
+/// </summary>
 public static class StagingRouteAuth
 {
     public const string Host = "tayson-transport-v12-staging.itayson.workers.dev";
-    const string StorageKey = "tayson.staging.route_api_key.v1";
+    static readonly object Gate = new object();
+    static string currentCredential = "";
 
     public static bool IsStagingWorker(string workerBase)
     {
-        if (!Uri.TryCreate(workerBase, UriKind.Absolute, out var uri)) return false;
+        if (!Uri.TryCreate(workerBase, UriKind.Absolute, out Uri uri)) return false;
         return uri.Scheme == Uri.UriSchemeHttps && uri.Port == 443 &&
             uri.AbsolutePath == "/" && uri.UserInfo.Length == 0 &&
             uri.Query.Length == 0 && uri.Fragment.Length == 0 &&
@@ -24,42 +28,45 @@ public static class StagingRouteAuth
     static bool Valid(string value)
     {
         if (string.IsNullOrEmpty(value) || value.Length > 512) return false;
-        foreach (char ch in value) if (ch < '!' || ch > '~') return false;
+        foreach (char c in value) if (c < '!' || c > '~') return false;
         return true;
     }
 
-    public static async Task SaveAsync(string value)
+    public static Task SaveAsync(string credential)
     {
-        if (!Valid(value)) throw new InvalidDataException("Chave de homologação inválida.");
-        await SecureStorage.Default.SetAsync(StorageKey, value).ConfigureAwait(false);
+        if (!Valid(credential))
+            throw new InvalidDataException("Chave de homologação inválida.");
+        lock (Gate) currentCredential = credential;
+        return Task.CompletedTask;
     }
 
-    public static async Task<bool> IsConfiguredAsync()
+    public static Task<bool> IsConfiguredAsync()
     {
-        try { return Valid(await SecureStorage.Default.GetAsync(StorageKey).ConfigureAwait(false)); }
-        catch { return false; }
+        lock (Gate) return Task.FromResult(Valid(currentCredential));
     }
 
-    public static void Clear() => SecureStorage.Default.Remove(StorageKey);
-
-    public static async Task AttachAsync(HttpRequestMessage request)
+    public static void Clear()
     {
-        Uri uri = request?.RequestUri;
+        lock (Gate) currentCredential = "";
+    }
+
+    public static Task AttachAsync(HttpRequestMessage request)
+    {
+        Uri uri = request == null ? null : request.RequestUri;
         if (uri == null || request.Method != HttpMethod.Post ||
             uri.Scheme != Uri.UriSchemeHttps || uri.Port != 443 ||
             !uri.IdnHost.Equals(Host, StringComparison.OrdinalIgnoreCase) ||
-            !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) ||
-            !string.IsNullOrEmpty(uri.Fragment) ||
+            uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 ||
             (uri.AbsolutePath != "/api/routes" && uri.AbsolutePath != "/api/akira-routes" &&
              uri.AbsolutePath != "/api/mocha-routes" && uri.AbsolutePath != "/api/filek-routes" &&
              uri.AbsolutePath != "/api/viking-routes"))
             throw new InvalidOperationException("Destino de homologação não autorizado.");
-
-        string value;
-        try { value = await SecureStorage.Default.GetAsync(StorageKey).ConfigureAwait(false); }
-        catch { throw new InvalidOperationException("Chave indisponível no armazenamento seguro."); }
-        if (!Valid(value)) throw new InvalidOperationException("Configure a chave em Ajustes.");
-        if (!request.Headers.TryAddWithoutValidation("x-api-key", value))
-            throw new InvalidOperationException("Falha ao autenticar solicitação de homologação.");
+        string secret;
+        lock (Gate) secret = currentCredential;
+        if (!Valid(secret))
+            throw new InvalidOperationException("Informe a chave em Ajustes para esta sessão do aplicativo.");
+        if (!request.Headers.TryAddWithoutValidation("x-api-key", new[] { secret }))
+            throw new InvalidOperationException("Falha ao autenticar o registro de rota.");
+        return Task.CompletedTask;
     }
 }
