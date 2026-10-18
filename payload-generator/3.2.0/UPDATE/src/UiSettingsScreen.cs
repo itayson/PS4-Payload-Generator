@@ -105,14 +105,14 @@ public static class UiSettingsScreen
         var stagingKey = Input("", "Chave de homologação (somente staging)");
         stagingKey.IsPassword = true;
         stagingKey.MaxLength = 512;
-        var keyStatus = new Label { Text = "A chave fica protegida no Android e só autentica rotas de homologação.",
+        var keyStatus = new Label { Text = "Chave apenas nesta sessão: informe novamente ao reiniciar o aplicativo.",
                                     TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap };
         var clearKey = Outline("Apagar chave de homologação");
         clearKey.Clicked += (_, _) =>
         {
             StagingRouteAuth.Clear();
             stagingKey.Text = "";
-            keyStatus.Text = "Chave apagada do armazenamento seguro.";
+            keyStatus.Text = "Chave desta sessão apagada.";
         };
         var stagingCard = Card();
         stagingCard.Content = new VerticalStackLayout
@@ -127,7 +127,7 @@ public static class UiSettingsScreen
         body.Children.Add(StatusCard("Navegador de provedor", "Automático", Cyan,
             "O fluxo de navegador é acionado somente quando o provedor exige contexto de sessão, como AkiraBox."));
         body.Children.Add(StatusCard("Dados sensíveis", "Não persistidos", Blue,
-            "URLs e cookies não são gravados no histórico. A chave do Worker de testes usa SecureStorage."));
+            "URLs e cookies não são gravados no histórico. A chave de testes fica só na memória."));
 
         var saveStatus = new Label { TextColor = Muted, FontSize = 11, HorizontalTextAlignment = TextAlignment.Center };
         var save = Action("Salvar configurações", Blue);
@@ -170,11 +170,11 @@ public static class UiSettingsScreen
                         return;
                     }
                     stagingKey.Text = "";
-                    keyStatus.Text = "Chave protegida configurada.";
+                    keyStatus.Text = "Chave desta sessão configurada.";
                 }
                 catch
                 {
-                    saveStatus.Text = "Falha ao armazenar chave no SecureStorage.";
+                    saveStatus.Text = "Falha ao configurar chave desta sessão.";
                     saveStatus.TextColor = Red;
                     return;
                 }
