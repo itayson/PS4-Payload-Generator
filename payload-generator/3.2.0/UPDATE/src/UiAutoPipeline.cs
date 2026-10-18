@@ -141,18 +141,22 @@ public static class UiAutoPipeline
                 SendStarted = true;
             }
 
-            SetStatus(page, bottom, "PKG validado. Preparando envio direto ao PS4...");
+            SetStatus(page, bottom, "PKG validado. Preparando o ELF...");
 
             byte[] payload = await Integration.GenerateAsync(page);
             if (payload == null || payload.Length == 0)
                 throw new InvalidOperationException("O ELF gerado está vazio.");
+            UiStateStore.Record(meta, "ELF GERADO", ps4Ip);
 
             // The ELF stays in memory. Nothing is written to Downloads and no
             // Storage Access Framework/file-picker flow is invoked.
+            UiStateStore.Record(meta, "ENVIANDO ELF", ps4Ip);
             SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
             await SendToBinLoaderAsync(ps4Ip, payload);
 
-            SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
+            // A completed TCP write is not an acknowledgement from BGFT.
+            UiStateStore.Record(meta, "PAYLOAD ENVIADO", ps4Ip);
+            SetStatus(page, bottom, "ELF transmitido ao BinLoader. Confira o download no PS4.");
             Reset();
         }
         catch (TimeoutException)
@@ -169,7 +173,8 @@ public static class UiAutoPipeline
         }
         catch (Exception ex)
         {
-            Fail(bottom, "Falha no envio automático: " + ex.Message);
+            // Do not echo exception messages: some providers include signed URLs.
+            Fail(bottom, "Falha no fluxo automático (" + ex.GetType().Name + "). Confira o link, Worker e BinLoader.");
         }
         finally
         {
