@@ -122,6 +122,21 @@ public static class UiStateStore
         return true;
     }
 
+    public static string ExportHistoryBackup() =>
+        UiHistoryBackupCodec.Export(ReadHistory());
+
+    /// <summary>
+    /// Validates the entire backup before changing local preferences.
+    /// Existing local records take precedence; only non-sensitive history is merged.
+    /// </summary>
+    public static int RestoreHistoryBackup(string backup)
+    {
+        var imported = UiHistoryBackupCodec.Import(backup);
+        var merged = UiHistoryBackupCodec.Merge(ReadHistory(), imported);
+        Write(merged);
+        return merged.Count;
+    }
+
     public static void ClearHistory() => Preferences.Default.Set(HistoryKey, "");
 
     static void Write(IEnumerable<UiHistoryItem> items)
