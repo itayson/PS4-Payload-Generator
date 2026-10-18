@@ -42,7 +42,7 @@ public static class UiHistoryScreen
             Children =
             {
                 new Label { Text = "Histórico", TextColor = Text, FontSize = 25, FontAttributes = FontAttributes.Bold },
-                new Label { Text = "Validações, payloads e envios recentes", TextColor = Cyan, FontSize = 12 }
+                new Label { Text = "Etapas locais verificadas • sem confirmação automática BGFT", TextColor = Cyan, FontSize = 12 }
             }
         };
         body.Children.Add(hero);
@@ -57,7 +57,7 @@ public static class UiHistoryScreen
         {
             body.Children.Add(InfoCard(
                 "Nenhum histórico ainda",
-                "Valide um PKG na tela Início. As próximas validações, gerações de ELF e confirmações de envio aparecerão aqui mesmo depois de fechar o aplicativo."));
+                "Valide um PKG na tela Início. As etapas de geração e envio do ELF podem aparecer aqui. Download e instalação dependem de confirmação no PS4."));
         }
         else
         {
@@ -100,6 +100,10 @@ public static class UiHistoryScreen
             };
             body.Children.Add(clear);
         }
+
+        body.Children.Add(InfoCard(
+            "Significado dos estados",
+            "VALIDADO: metadados do arquivo. ELF: gerado localmente. ENVIANDO: transferência em andamento. ENVIADO: bytes do ELF transmitidos por TCP 9090. Não significa que o BGFT instalou o pacote."));
 
         body.Children.Add(InfoCard(
             "Privacidade",
@@ -229,6 +233,8 @@ public static class UiHistoryScreen
     static Color StatusColor(string status)
     {
         string value = (status ?? "").ToUpperInvariant();
+        if (value.Contains("FALHA")) return Color.FromArgb("#FF4D6D");
+        if (value.Contains("ENVIANDO")) return Cyan;
         if (value.Contains("ENVIADO")) return Purple;
         if (value.Contains("GERADO")) return Blue;
         if (value.Contains("VALIDADO")) return Green;
@@ -239,6 +245,8 @@ public static class UiHistoryScreen
     {
         string value = (status ?? "").Trim().ToUpperInvariant();
         if (value.Length == 0) return "—";
+        if (value.Contains("FALHA")) return "FALHA";
+        if (value.Contains("ENVIANDO")) return "ENVIANDO";
         if (value.Contains("PAYLOAD ENVIADO")) return "ENVIADO";
         if (value.Contains("ELF GERADO")) return "ELF";
         if (value.Contains("VALIDADO")) return "VALIDADO";
