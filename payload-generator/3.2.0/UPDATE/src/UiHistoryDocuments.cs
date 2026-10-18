@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using System.Text;
+using System.Reflection;
 using System.Threading.Tasks;
 using Android.Runtime;
 using Microsoft.Maui.Storage;
@@ -8,8 +8,10 @@ using Microsoft.Maui.Storage;
 namespace Tayson.Providers;
 
 /// <summary>
-/// Android SAF import + MediaStore Downloads export. Neither step sends data to a server.
-/// Exported text is NOT encrypted and survives removing this application.
+/// User-directed Android Storage Access Framework (SAF) export/import.
+/// No direct MediaStore insert, no broad storage permission, no cloud calls.
+/// The original trimmed MAUI runtime has its internal activity-result registry,
+/// which we use for ACTION_CREATE_DOCUMENT without modifying MainActivity.
 /// </summary>
 public static class UiHistoryDocuments
 {
@@ -17,7 +19,7 @@ public static class UiHistoryDocuments
     {
         FileResult picked = await FilePicker.Default.PickAsync(
             new PickOptions { PickerTitle = "Selecionar backup Tayson (.txt)" });
-        if (picked == null) return null; // User canceled.
+        if (picked == null) return null;
         if (string.IsNullOrWhiteSpace(picked.FileName) ||
             !picked.FileName.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Selecione um arquivo .txt de backup.");
@@ -25,93 +27,94 @@ public static class UiHistoryDocuments
         return UiHistoryTextFile.Decode(stream);
     }
 
-    /// <summary>
-    /// Write directly to the public Android Downloads collection (Android 10+)
-    /// with ContentResolver/MediaStore. Original trimmed MAUI DLLs have no typed
-    /// ContentValues, Insert or OpenOutputStream bindings, so invoke Android API via JNI.
-    /// </summary>
-    public static unsafe string ExportToDownloads(string backup)
+    public static async Task<string> ExportToDocumentAsync(string backup)
     {
-        byte[] data = UiHistoryTextFile.Encode(backup);
+        // Validate full content before opening the system picker or writing anything.
+        byte[] bytes = UiHistoryTextFile.Encode(backup);
         string filename = "Tayson-Historico-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt";
-        var context = Android.App.Application.Context;
-        var resolver = context?.ContentResolver;
-        if (resolver == null) throw new InvalidOperationException("Armazenamento Android indisponível.");
+        var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+        if (activity == null) throw new InvalidOperationException("Activity Android indisponível.");
 
-        IntPtr cls = IntPtr.Zero;
-        IntPtr resolverCls = IntPtr.Zero;
-        IntPtr valuesHandle = IntPtr.Zero;
-        Android.Net.Uri created = null;
+        Type registry = typeof(Microsoft.Maui.Platform.ActivityResultCallbackRegistry);
+        var binding = BindingFlags.Static | BindingFlags.NonPublic;
+        MethodInfo register = registry.GetMethod("RegisterActivityResultCallback", binding);
+        MethodInfo unregister = registry.GetMethod("UnregisterActivityResultCallback", binding);
+        if (register == null || unregister == null)
+            throw new NotSupportedException("Seletor de documentos indisponível nesta versão.");
+
+        var completion = new TaskCompletionSource<Android.Net.Uri>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var callback = new Action<Android.App.Result, Android.Content.Intent>((result, returned) =>
+        {
+            if (result == Android.App.Result.Ok && returned?.Data != null)
+                completion.TrySetResult(returned.Data);
+            else
+                completion.TrySetResult(null);
+        });
+        int requestCode = (int)register.Invoke(null, new object[] { callback });
         try
         {
-            using var downloads = Android.Net.Uri.Parse("content://media/external_primary/downloads");
-            cls = JNIEnv.FindClass("android/content/ContentValues");
-            if (cls == IntPtr.Zero) throw new InvalidOperationException("MediaStore indisponível.");
-            var constructor = JNIEnv.GetMethodID(cls, "<init>", "()V");
-            valuesHandle = JNIEnv.NewObject(cls, constructor, null);
-            if (valuesHandle == IntPtr.Zero) throw new InvalidOperationException("MediaStore não inicializado.");
-            var put = JNIEnv.GetMethodID(cls, "put", "(Ljava/lang/String;Ljava/lang/String;)V");
-            PutString(valuesHandle, put, "_display_name", filename);
-            PutString(valuesHandle, put, "mime_type", "text/plain");
-            PutString(valuesHandle, put, "relative_path", "Download/Tayson-PS4-Backups/");
-
-            resolverCls = JNIEnv.GetObjectClass(resolver.Handle);
-            var insert = JNIEnv.GetMethodID(resolverCls, "insert",
-                "(Landroid/net/Uri;Landroid/content/ContentValues;)Landroid/net/Uri;");
-            IntPtr added = JNIEnv.CallObjectMethod(resolver.Handle, insert,
-                new JValue[] { new JValue(downloads.Handle), new JValue(valuesHandle) });
-            if (added == IntPtr.Zero) throw new IOException("Falha ao criar arquivo em Downloads.");
-            created = Java.Lang.Object.GetObject<Android.Net.Uri>(added, JniHandleOwnership.TransferLocalRef);
-
-            var open = JNIEnv.GetMethodID(resolverCls, "openOutputStream",
-                "(Landroid/net/Uri;)Ljava/io/OutputStream;");
-            IntPtr javaStream = JNIEnv.CallObjectMethod(resolver.Handle, open,
-                new JValue[] { new JValue(created.Handle) });
-            if (javaStream == IntPtr.Zero) throw new IOException("Não foi possível gravar em Downloads.");
-            using (var output = Java.Lang.Object.GetObject<Java.IO.OutputStream>(
-                javaStream, JniHandleOwnership.TransferLocalRef))
+            using (var intent = new Android.Content.Intent("android.intent.action.CREATE_DOCUMENT"))
             {
-                output.Write(data, 0, data.Length);
-                output.Flush();
+                intent.AddCategory("android.intent.category.OPENABLE");
+                intent.SetType("text/plain");
+                intent.PutExtra("android.intent.extra.TITLE", filename);
+                activity.StartActivityForResult(intent, requestCode);
+            }
+            Android.Net.Uri document = await completion.Task;
+            if (document == null) return null; // User canceled.
+            using (document)
+            using (var descriptor = activity.ContentResolver.OpenFileDescriptor(document, "w"))
+            {
+                if (descriptor == null)
+                    throw new IOException("Não foi possível abrir o arquivo selecionado.");
+                WriteToDescriptor(descriptor, bytes);
             }
             return filename;
         }
-        catch
-        {
-            // Clean up a partial file instead of leaving a corrupted-looking backup.
-            if (created != null && resolverCls != IntPtr.Zero)
-            {
-                try
-                {
-                    var delete = JNIEnv.GetMethodID(resolverCls, "delete",
-                        "(Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I");
-                    JValue[] args = new JValue[]
-                    {
-                        new JValue(created.Handle),
-                        new JValue(IntPtr.Zero),
-                        new JValue(IntPtr.Zero)
-                    };
-                    fixed (JValue* ptr = args)
-                        JNIEnv.CallIntMethod(resolver.Handle, delete, ptr);
-                }
-                catch { }
-            }
-            throw;
-        }
         finally
         {
-            created?.Dispose();
-            if (valuesHandle != IntPtr.Zero) JNIEnv.DeleteLocalRef(valuesHandle);
-            if (resolverCls != IntPtr.Zero) JNIEnv.DeleteLocalRef(resolverCls);
-            if (cls != IntPtr.Zero) JNIEnv.DeleteLocalRef(cls);
+            unregister.Invoke(null, new object[] { requestCode });
         }
     }
 
-    static void PutString(IntPtr values, IntPtr put, string key, string value)
+    /// <summary>
+    /// The inherited Xamarin.Android assembly has OpenFileDescriptor but no typed
+    /// FileOutputStream(FileDescriptor) constructor. Construct the Java stream from
+    /// the document descriptor, with its own scoped JNI references.
+    /// </summary>
+    static unsafe void WriteToDescriptor(Android.OS.ParcelFileDescriptor descriptor, byte[] content)
     {
-        using var k = new Java.Lang.String(key);
-        using var v = new Java.Lang.String(value);
-        JNIEnv.CallVoidMethod(values, put,
-            new JValue[] { new JValue(k.Handle), new JValue(v.Handle) });
+        IntPtr descriptorClass = IntPtr.Zero;
+        IntPtr fd = IntPtr.Zero;
+        IntPtr outputClass = IntPtr.Zero;
+        try
+        {
+            descriptorClass = JNIEnv.GetObjectClass(descriptor.Handle);
+            IntPtr getter = JNIEnv.GetMethodID(descriptorClass, "getFileDescriptor",
+                "()Ljava/io/FileDescriptor;");
+            fd = JNIEnv.CallObjectMethod(descriptor.Handle, getter);
+            if (fd == IntPtr.Zero) throw new IOException("Descritor de arquivo indisponível.");
+
+            outputClass = JNIEnv.FindClass("java/io/FileOutputStream");
+            IntPtr constructor = JNIEnv.GetMethodID(outputClass, "<init>",
+                "(Ljava/io/FileDescriptor;)V");
+            JValue* arguments = stackalloc JValue[1];
+            arguments[0] = new JValue(fd);
+            IntPtr handle = JNIEnv.NewObject(outputClass, constructor, arguments);
+            if (handle == IntPtr.Zero) throw new IOException("Não foi possível iniciar a gravação.");
+            using (var output = Java.Lang.Object.GetObject<Java.IO.OutputStream>(
+                handle, JniHandleOwnership.TransferLocalRef))
+            {
+                output.Write(content, 0, content.Length);
+                output.Flush();
+            }
+        }
+        finally
+        {
+            if (outputClass != IntPtr.Zero) JNIEnv.DeleteLocalRef(outputClass);
+            if (fd != IntPtr.Zero) JNIEnv.DeleteLocalRef(fd);
+            if (descriptorClass != IntPtr.Zero) JNIEnv.DeleteLocalRef(descriptorClass);
+        }
     }
 }
