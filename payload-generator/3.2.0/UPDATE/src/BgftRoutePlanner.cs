@@ -23,18 +23,32 @@ public sealed class BgftRoutePlanner : IDisposable
 
     readonly Func<HttpMessageHandler> factory;
     readonly string workerBase;
+    readonly bool isStaging;
+    readonly Func<HttpRequestMessage, Task> stagingAuthorizer;
 
     public BgftRoutePlanner() : this(
         () => new HttpClientHandler { AllowAutoRedirect = false },
         DefaultWorkerBase) { }
 
-    public BgftRoutePlanner(Func<HttpMessageHandler> createHandler, string worker = DefaultWorkerBase)
+    public BgftRoutePlanner(Func<HttpMessageHandler> createHandler, string worker = DefaultWorkerBase, Func<HttpRequestMessage, Task> stagingAuthorize = null)
     {
         factory = createHandler ?? throw new ArgumentNullException(nameof(createHandler));
         Uri parsed = LinkPolicy.Parse(worker);
         if (parsed.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(parsed.Query))
             throw new ArgumentException("O endereço do Worker deve ser HTTPS e sem query string.", nameof(worker));
         workerBase = parsed.AbsoluteUri.TrimEnd('/');
+        isStaging = StagingRouteAuth.IsStagingWorker(workerBase);
+        if (!isStaging && parsed.IdnHost.Equals(StagingRouteAuth.Host, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("URL de homologação deve apontar para a raiz HTTPS sem parâmetros.", nameof(worker));
+        stagingAuthorizer = stagingAuthorize ?? StagingRouteAuth.AttachAsync;
+    }
+
+    async Task AuthorizeStagingRouteAsync(HttpRequestMessage request)
+    {
+        if (!isStaging) return;
+        await stagingAuthorizer(request).ConfigureAwait(false);
+        if (!request.Headers.TryGetValues("x-api-key", out _))
+            throw new InvalidOperationException("Autenticação do Worker de homologação não configurada.");
     }
 
     public void Dispose() { }
@@ -98,6 +112,8 @@ public sealed class BgftRoutePlanner : IDisposable
             routeError = ex;
         }
 
+        if (isStaging)
+            throw new InvalidDataException("Rota curta autenticada obrigatória em homologação; fallback inline bloqueado.");
         string inline = workerBase + "/r2.pkg?u=" + Base64Url(Encoding.UTF8.GetBytes(exact));
         string registration = PayloadPatcher.RegistrationUrl(inline);
         if (Encoding.UTF8.GetByteCount(registration) > PayloadUrlLimit)
@@ -119,6 +135,7 @@ public sealed class BgftRoutePlanner : IDisposable
         using var http = new HttpClient(factory()) { Timeout = TimeSpan.FromSeconds(15) };
         using var request = new HttpRequestMessage(HttpMethod.Post, workerBase + endpoint);
         request.Content = new StringContent(exactUpstream, Encoding.UTF8, "text/plain");
+        await AuthorizeStagingRouteAsync(request).ConfigureAwait(false);
         using HttpResponseMessage response = await http.SendAsync(
             request,
             HttpCompletionOption.ResponseHeadersRead,
@@ -132,7 +149,9 @@ public sealed class BgftRoutePlanner : IDisposable
             return ValidateWorkerRoute(text);
 
         int status = (int)response.StatusCode;
-        if (allowVikingInlineFallback && (status == 404 || status == 405 || status >= 500))
+        if (isStaging && (status == 401 || status == 403))
+            throw new InvalidDataException("Credencial de homologação recusada (HTTP " + status + ").");
+        if (!isStaging && allowVikingInlineFallback && (status == 404 || status == 405 || status >= 500))
         {
             string inline = workerBase + "/viking.pkg?u=" +
                 Base64Url(Encoding.UTF8.GetBytes(exactUpstream));
@@ -164,16 +183,21 @@ public sealed class BgftRoutePlanner : IDisposable
         using var http = new HttpClient(factory()) { Timeout = TimeSpan.FromSeconds(15) };
         using var request = new HttpRequestMessage(HttpMethod.Post, workerBase + "/api/routes");
         request.Content = new StringContent(exactUpstream, Encoding.UTF8, "text/plain");
+        await AuthorizeStagingRouteAsync(request).ConfigureAwait(false);
         using HttpResponseMessage response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
         string text = await ReadBoundedAsync(response.Content, RouteReplyLimit, timeout.Token).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
             int status = (int)response.StatusCode;
+            if (isStaging && (status == 401 || status == 403))
+                throw new InvalidDataException("Credencial de homologação recusada (HTTP " + status + ").");
             if (status == 400 || status == 401 || status == 403 || status == 410)
                 throw new InvalidDataException(string.IsNullOrWhiteSpace(text)
                     ? "O Worker recusou a URL R2 (HTTP " + status + ")."
                     : text.Trim());
+            if (isStaging && (status == 404 || status == 405 || status >= 500))
+                throw new InvalidDataException("Worker de homologação indisponível (HTTP " + status + ").");
             if (status == 404 || status == 405 || status >= 500) return null;
             throw new InvalidDataException("O Worker respondeu com um status inesperado (HTTP " + status + ").");
         }
@@ -202,12 +226,15 @@ public sealed class BgftRoutePlanner : IDisposable
                 : userAgent
         });
 
+        await AuthorizeStagingRouteAsync(request).ConfigureAwait(false);
         using HttpResponseMessage response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
         string text = await ReadBoundedAsync(response.Content, RouteReplyLimit, timeout.Token).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
             int status = (int)response.StatusCode;
+            if (isStaging && (status == 401 || status == 403))
+                throw new InvalidDataException("Credencial de homologação recusada (HTTP " + status + ").");
             if (status == 404 || status == 405)
                 throw new InvalidDataException("O Worker publicado ainda não suporta AkiraBox. Publique o Universal Transport Worker v8.");
             if (status == 400 || status == 401 || status == 403 || status == 410)

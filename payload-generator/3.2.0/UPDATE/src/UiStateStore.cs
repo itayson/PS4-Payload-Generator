@@ -103,6 +103,40 @@ public static class UiStateStore
         Write(items);
     }
 
+    /// <summary>
+    /// A user-entered attestation, NOT a BGFT status or cloud telemetry result.
+    /// Keeps only existing non-sensitive metadata; signed URLs are never stored.
+    /// </summary>
+    public static bool ConfirmCompletedManually(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return false;
+        var items = new List<UiHistoryItem>();
+        foreach (UiHistoryItem item in ReadHistory()) items.Add(item);
+        int found = items.FindIndex(x => string.Equals(x.Key, key, StringComparison.Ordinal));
+        if (found < 0) return false;
+        UiHistoryItem completed = items[found];
+        completed.Status = "CONCLUÍDO (MANUAL)";
+        items.RemoveAt(found);
+        items.Insert(0, completed);
+        Write(items);
+        return true;
+    }
+
+    public static string ExportHistoryBackup() =>
+        UiHistoryBackupCodec.Export(ReadHistory());
+
+    /// <summary>
+    /// Validates the entire backup before changing local preferences.
+    /// Existing local records take precedence; only non-sensitive history is merged.
+    /// </summary>
+    public static int RestoreHistoryBackup(string backup)
+    {
+        var imported = UiHistoryBackupCodec.Import(backup);
+        var merged = UiHistoryBackupCodec.Merge(ReadHistory(), imported);
+        Write(merged);
+        return merged.Count;
+    }
+
     public static void ClearHistory() => Preferences.Default.Set(HistoryKey, "");
 
     static void Write(IEnumerable<UiHistoryItem> items)

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../payload-generator/3.2.0/UPDATE/src/DownloadCore.cs" Link="DownloadCore.cs" />
+    <Compile Include="../../../payload-generator/3.2.0/UPDATE/src/BgftRoutePlanner.cs" Link="BgftRoutePlanner.cs" />
+    <Compile Include="../../../payload-generator/3.2.0/UPDATE/src/UiArtworkStore.cs" Link="UiArtworkStore.cs" />
+    <Compile Include="../../../payload-generator/3.2.0/UPDATE/src/StagingRouteAuth.cs" Link="StagingRouteAuth.cs" />
+  </ItemGroup>
+</Project>

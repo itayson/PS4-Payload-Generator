@@ -3,9 +3,9 @@
 import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile, zlib
 from pathlib import Path
 
-APP_VERSION = '3.4.3'
-APP_VERSION_CODE = 40
-APP_LABEL = 'Tayson PS4 Payload Generator'
+APP_VERSION = '3.4.3-staging.8.1'
+APP_VERSION_CODE = 45
+APP_LABEL = 'Tayson PS4 Backup Lab'
 APK_NAME = 'PS4-Payload-Generator-3.4.3-TaySon.apk'
 
 ICON_SIZES = {
@@ -237,7 +237,7 @@ def main():
     env={**os.environ,'DOTNET_ROOT':str(sdk),'DOTNET_CLI_TELEMETRY_OPTOUT':'1','PATH':str(sdk)+os.pathsep+os.environ['PATH']}
     def run(*cmd):subprocess.run([str(x) for x in cmd],check=True,env=env)
     csc=next((sdk/'sdk').glob('*/Roslyn/bincore/csc.dll'))
-    run(sdk/'dotnet',csc,'/noconfig','/nostdlib+','/target:library','/langversion:12','/optimize+',
+    run(sdk/'dotnet',csc,'/noconfig','/nostdlib+','/target:library','/langversion:12','/unsafe+','/optimize+',
         '/out:'+str(work/'Tayson.Providers.dll'),'/reference:'+str(runtime/'System.Private.CoreLib.dll'),
         *['/reference:'+str(p) for p in refs.glob('*.dll') if p.name!='System.Private.CoreLib.dll'],*sorted((project/'src').glob('*.cs')))
     patcher=project/'patcher/bin/Release/net8.0/Patcher.dll'
