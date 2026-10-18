@@ -48,10 +48,24 @@ public static class UiHistoryScreen
         body.Children.Add(hero);
 
         string latest = history.Count == 0 ? "—" : ShortStatus(history[0].Status);
-        body.Children.Add(KpiRow(
+        Label countKpi = null;
+        Label latestKpi = null;
+        body.Children.Add(KpiRow((index, label) =>
+            {
+                if (index == 0) countKpi = label;
+                if (index == 1) latestKpi = label;
+            },
             ("REGISTROS", history.Count.ToString(), Cyan),
             ("ÚLTIMO", latest, Green),
             ("PS4", string.IsNullOrWhiteSpace(ps4Ip) ? "—" : ps4Ip, Blue)));
+
+        void RefreshKpis()
+        {
+            var current = UiStateStore.ReadHistory();
+            if (countKpi != null) countKpi.Text = current.Count.ToString();
+            if (latestKpi != null) latestKpi.Text =
+                current.Count == 0 ? "—" : ShortStatus(current[0].Status);
+        }
 
         if (history.Count == 0)
         {
@@ -73,7 +87,7 @@ public static class UiHistoryScreen
 
             int shown = history.Count < 10 ? history.Count : 10;
             for (int i = 0; i < shown; i++)
-                body.Children.Add(HistoryCard(history[i], i, page));
+                body.Children.Add(HistoryCard(history[i], i, page, RefreshKpis));
 
             var clear = new Button
             {
@@ -95,6 +109,7 @@ public static class UiHistoryScreen
                     "Cancelar");
                 if (!yes) return;
                 UiStateStore.ClearHistory();
+                RefreshKpis();
                 clear.Text = "Histórico apagado";
                 clear.IsEnabled = false;
             };
@@ -112,7 +127,7 @@ public static class UiHistoryScreen
         return new ScrollView { BackgroundColor = Background, Content = body };
     }
 
-    static View HistoryCard(UiHistoryItem item, int index, MainPage page)
+    static View HistoryCard(UiHistoryItem item, int index, MainPage page, Action onHistoryChanged)
     {
         var frame = Card();
         var grid = new Grid { ColumnSpacing = 10, RowSpacing = 4 };
@@ -181,6 +196,7 @@ public static class UiHistoryScreen
                     "Cancelar");
                 if (!yes) return;
                 if (!UiStateStore.ConfirmCompletedManually(item.Key)) return;
+                onHistoryChanged?.Invoke();
                 confirm.IsEnabled = false;
                 confirm.Text = "✓ Confirmado manualmente";
                 if (status is Frame badge)
@@ -224,7 +240,7 @@ public static class UiHistoryScreen
         return frame;
     }
 
-    static View KpiRow(params (string Title, string Value, Color Color)[] items)
+    static View KpiRow(Action<int, Label> onValueCreated, params (string Title, string Value, Color Color)[] items)
     {
         var grid = new Grid { ColumnSpacing = 8 };
         for (int i = 0; i < items.Length; i++)
@@ -232,13 +248,22 @@ public static class UiHistoryScreen
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var frame = Card();
             frame.Padding = new Thickness(10, 11);
+            var value = new Label
+            {
+                Text = items[i].Value,
+                TextColor = items[i].Color,
+                FontSize = 13,
+                FontAttributes = FontAttributes.Bold,
+                LineBreakMode = LineBreakMode.TailTruncation
+            };
+            onValueCreated?.Invoke(i, value);
             frame.Content = new VerticalStackLayout
             {
                 Spacing = 3,
                 Children =
                 {
                     new Label { Text = items[i].Title, TextColor = Muted, FontSize = 9, FontAttributes = FontAttributes.Bold },
-                    new Label { Text = items[i].Value, TextColor = items[i].Color, FontSize = 13, FontAttributes = FontAttributes.Bold, LineBreakMode = LineBreakMode.TailTruncation }
+                    value
                 }
             };
             Grid.SetColumn(frame, i);
