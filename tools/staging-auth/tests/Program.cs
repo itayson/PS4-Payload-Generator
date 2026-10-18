@@ -43,7 +43,7 @@ static class Program
         await Throws<InvalidOperationException>(()=>StagingRouteAuth.AttachAsync(Req("/api/routes")),"missing credential blocks request");
         await StagingRouteAuth.SaveAsync("NONPRODUCTION-FAKE-KEY");
         Check(await StagingRouteAuth.IsConfiguredAsync(),"test credential available");
-        foreach(var path in new[]{"/api/routes","/api/akira-routes","/api/mocha-routes","/api/filek-routes","/api/viking-routes"})
+        foreach(var path in new[]{"/api/routes","/api/akira-routes","/api/mocha-routes","/api/filek-routes","/api/viking-routes","/api/v12/auth-check"})
         {
             using var req=Req(path);
             await StagingRouteAuth.AttachAsync(req);
