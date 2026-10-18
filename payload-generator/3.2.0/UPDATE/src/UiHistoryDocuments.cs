@@ -85,9 +85,11 @@ public static class UiHistoryDocuments
                 {
                     var delete = JNIEnv.GetMethodID(resolverCls, "delete",
                         "(Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I");
-                    JNIEnv.CallIntMethod(resolver.Handle, delete,
-                        new JValue[] { new JValue(created.Handle), new JValue(IntPtr.Zero),
-                            new JValue(IntPtr.Zero) });
+                    JValue* args = stackalloc JValue[3];
+                    args[0] = new JValue(created.Handle);
+                    args[1] = new JValue(IntPtr.Zero);
+                    args[2] = new JValue(IntPtr.Zero);
+                    JNIEnv.CallIntMethod(resolver.Handle, delete, args);
                 }
                 catch { }
             }
