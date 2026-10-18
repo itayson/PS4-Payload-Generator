@@ -50,7 +50,7 @@ public static class UiWorkerScreen
         body.Children.Add(endpoint);
 
         body.Children.Add(KpiRow(
-            ("WORKER", StagingRouteAuth.IsStagingWorker(worker) ? "v12 STG" : "ONLINE", Cyan),
+            ("WORKER", StagingRouteAuth.IsStagingWorker(worker) ? "v12 STG" : "ROTA", Cyan),
             ("KV", "ROUTES", Green),
             ("BGFT", ".pkg", Blue)));
 
