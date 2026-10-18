@@ -48,12 +48,13 @@ public static class UiSettingsScreen
         preparePs4.Clicked += (_, _) =>
         {
             string host = (ip.Text ?? "").Trim();
-            if (!IPAddress.TryParse(host, out _))
+            if (!Ps4LanAddressPolicy.TryNormalize(host, out string normalized))
             {
-                ps4Status.Text = "Informe um endereço IP válido do PS4.";
+                ps4Status.Text = Ps4LanAddressPolicy.RejectionMessage;
                 ps4Status.TextColor = Red;
                 return;
             }
+            host = normalized;
 
             UiStateStore.SavePs4Ip(host);
             if (realIp != null) realIp.Text = host;
