@@ -271,9 +271,10 @@ public static class UiHistoryScreen
                     ". Guarde-o fora do aplicativo. O arquivo não é criptografado.";
                 result.TextColor = Green;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                result.Text = "Não foi possível salvar .txt. Use Copiar backup do histórico como alternativa.";
+                result.Text = "Não foi possível salvar .txt (" + ex.GetType().Name +
+                    "). Use Copiar backup do histórico como alternativa.";
                 result.TextColor = Color.FromArgb("#FF4D6D");
             }
             finally { fileExport.IsEnabled = true; }
