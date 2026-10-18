@@ -137,21 +137,12 @@ public static class UiSettingsScreen
                 using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
                 using var request = new HttpRequestMessage(HttpMethod.Post, target.TrimEnd('/') + "/api/v12/auth-check");
                 await StagingRouteAuth.AttachAsync(request);
-                using HttpResponseMessage result = await http.SendAsync(request);
-                if (result.IsSuccessStatusCode)
+                using HttpResponseMessage result = await http.SendAsync(
+                    request, HttpCompletionOption.ResponseHeadersRead, System.Threading.CancellationToken.None);
+                if (result.StatusCode == HttpStatusCode.NoContent)
                 {
-                    string payload = await result.Content.ReadAsStringAsync();
-                    if (payload.IndexOf("\"authenticated\":true", StringComparison.Ordinal) >= 0 &&
-                        payload.IndexOf("\"route_written\":false", StringComparison.Ordinal) >= 0)
-                    {
-                        authCheckStatus.Text = "✓ Autenticação aprovada. Nenhum PKG ou payload enviado.";
-                        authCheckStatus.TextColor = Green;
-                    }
-                    else
-                    {
-                        authCheckStatus.Text = "Resposta inesperada do teste de autenticação.";
-                        authCheckStatus.TextColor = Red;
-                    }
+                    authCheckStatus.Text = "✓ Autenticação aprovada. Nenhum PKG ou payload enviado.";
+                    authCheckStatus.TextColor = Green;
                 }
                 else
                 {
