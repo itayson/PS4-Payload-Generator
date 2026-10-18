@@ -101,16 +101,37 @@ public static class UiSettingsScreen
         };
         body.Children.Add(workerCard);
 
+        // Opt-in staging configuration. Never echo the credential or persist it in Preferences.
+        var stagingKey = Input("", "Chave de homologação (somente staging)");
+        stagingKey.IsPassword = true;
+        stagingKey.MaxLength = 512;
+        var keyStatus = new Label { Text = "A chave fica protegida no Android e só autentica rotas de homologação.",
+                                    TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap };
+        var clearKey = Outline("Apagar chave de homologação");
+        clearKey.Clicked += (_, _) =>
+        {
+            StagingRouteAuth.Clear();
+            stagingKey.Text = "";
+            keyStatus.Text = "Chave apagada do armazenamento seguro.";
+        };
+        var stagingCard = Card();
+        stagingCard.Content = new VerticalStackLayout
+        {
+            Spacing = 8,
+            Children = { Title("Autenticação de homologação", Cyan), stagingKey, clearKey, keyStatus }
+        };
+        body.Children.Add(stagingCard);
+
         body.Children.Add(StatusCard("Validação de PKG", "Sempre ativa", Green,
             "Magic, Content ID, tamanho e comportamento HTTP são validados antes da geração do ELF."));
         body.Children.Add(StatusCard("Navegador de provedor", "Automático", Cyan,
             "O fluxo de navegador é acionado somente quando o provedor exige contexto de sessão, como AkiraBox."));
         body.Children.Add(StatusCard("Dados sensíveis", "Não persistidos", Blue,
-            "URLs assinadas, cookies e tokens não são gravados no histórico local."));
+            "URLs e cookies não são gravados no histórico. A chave do Worker de testes usa SecureStorage."));
 
         var saveStatus = new Label { TextColor = Muted, FontSize = 11, HorizontalTextAlignment = TextAlignment.Center };
         var save = Action("Salvar configurações", Blue);
-        save.Clicked += (_, _) =>
+        save.Clicked += async (_, _) =>
         {
             string workerValue = (worker.Text ?? "").Trim().TrimEnd('/');
             if (!Uri.TryCreate(workerValue, UriKind.Absolute, out Uri parsed) ||
@@ -129,6 +150,35 @@ public static class UiSettingsScreen
                 return;
             }
 
+            if (parsed.IdnHost.Equals(StagingRouteAuth.Host, StringComparison.OrdinalIgnoreCase) &&
+                !StagingRouteAuth.IsStagingWorker(workerValue))
+            {
+                saveStatus.Text = "Use somente o endereço HTTPS raiz do Worker de homologação.";
+                saveStatus.TextColor = Red;
+                return;
+            }
+            if (StagingRouteAuth.IsStagingWorker(workerValue))
+            {
+                try
+                {
+                    if (!string.IsNullOrEmpty(stagingKey.Text))
+                        await StagingRouteAuth.SaveAsync(stagingKey.Text);
+                    if (!await StagingRouteAuth.IsConfiguredAsync())
+                    {
+                        saveStatus.Text = "Configure uma chave válida para o Worker de homologação.";
+                        saveStatus.TextColor = Red;
+                        return;
+                    }
+                    stagingKey.Text = "";
+                    keyStatus.Text = "Chave protegida configurada.";
+                }
+                catch
+                {
+                    saveStatus.Text = "Falha ao armazenar chave no SecureStorage.";
+                    saveStatus.TextColor = Red;
+                    return;
+                }
+            }
             UiStateStore.SavePs4Ip(ipValue);
             UiStateStore.SaveWorkerUrl(workerValue);
             if (realIp != null) realIp.Text = ipValue;
