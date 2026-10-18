@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Include="../src/DownloadCore.cs" Link="DownloadCore.cs" />
     <Compile Include="../src/BgftRoutePlanner.cs" Link="BgftRoutePlanner.cs" />
+    <Compile Include="StagingRouteAuthStub.cs" Link="StagingRouteAuthStub.cs" />
     <Compile Include="../src/UiArtworkStore.cs" Link="UiArtworkStore.cs" />
   </ItemGroup>
 </Project>
