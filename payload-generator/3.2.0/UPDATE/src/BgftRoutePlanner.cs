@@ -47,7 +47,7 @@ public sealed class BgftRoutePlanner : IDisposable
     {
         if (!isStaging) return;
         await stagingAuthorizer(request).ConfigureAwait(false);
-        if (!request.Headers.Contains("x-api-key"))
+        if (!request.Headers.TryGetValues("x-api-key", out _))
             throw new InvalidOperationException("Autenticação do Worker de homologação não configurada.");
     }
 
