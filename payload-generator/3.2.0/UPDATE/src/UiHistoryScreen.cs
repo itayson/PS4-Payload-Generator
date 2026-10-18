@@ -222,7 +222,7 @@ public static class UiHistoryScreen
         var card = Card();
         var label = new Label
         {
-            Text = "Para conservar o histórico após desinstalar, copie o backup e SALVE o texto em uma nota ou arquivo fora deste aplicativo. A área de transferência não é um backup permanente.",
+            Text = "Exporte seu histórico como arquivo .txt em Downloads ou importe um .txt salvo. A opção de copiar texto continua disponível. Antes de desinstalar, guarde o arquivo em local seguro.",
             TextColor = Muted,
             FontSize = 11,
             LineBreakMode = LineBreakMode.WordWrap
@@ -233,6 +233,82 @@ public static class UiHistoryScreen
             TextColor = Muted,
             FontSize = 10,
             LineBreakMode = LineBreakMode.WordWrap
+        };
+        var fileExport = new Button
+        {
+            Text = "Salvar backup .txt em Downloads",
+            BackgroundColor = Surface2, TextColor = Cyan,
+            BorderColor = Stroke, BorderWidth = 1,
+            CornerRadius = 12, HeightRequest = 46
+        };
+        var fileImport = new Button
+        {
+            Text = "Importar backup .txt",
+            BackgroundColor = Surface2, TextColor = Cyan,
+            BorderColor = Stroke, BorderWidth = 1,
+            CornerRadius = 12, HeightRequest = 46
+        };
+        fileExport.Clicked += (_, _) =>
+        {
+            fileExport.IsEnabled = false;
+            try
+            {
+                var current = UiStateStore.ReadHistory();
+                if (current.Count == 0)
+                {
+                    result.Text = "Histórico vazio. Não há registros para exportar.";
+                    result.TextColor = Muted;
+                    return;
+                }
+                string file = UiHistoryDocuments.ExportToDownloads(UiStateStore.ExportHistoryBackup());
+                result.Text = "Arquivo salvo em Downloads/Tayson-PS4-Backups/" + file +
+                    ". Conserve esse .txt fora do aplicativo. Ele não é criptografado.";
+                result.TextColor = Green;
+            }
+            catch (Exception)
+            {
+                result.Text = "Falha ao exportar .txt. Verifique se seu Android permite salvar arquivos em Downloads.";
+                result.TextColor = Color.FromArgb("#FF4D6D");
+            }
+            finally { fileExport.IsEnabled = true; }
+        };
+        fileImport.Clicked += async (_, _) =>
+        {
+            fileImport.IsEnabled = false;
+            try
+            {
+                string data = await UiHistoryDocuments.PickBackupTextAsync();
+                if (data == null)
+                {
+                    result.Text = "Importação cancelada. Nenhum registro alterado.";
+                    result.TextColor = Muted;
+                    return;
+                }
+                var items = UiHistoryBackupCodec.Import(data);
+                if (items.Count == 0)
+                {
+                    result.Text = "O arquivo .txt não contém registros.";
+                    result.TextColor = Muted;
+                    return;
+                }
+                bool yes = await page.DisplayAlert(
+                    "Importar arquivo .txt",
+                    "Backup válido com " + items.Count +
+                    " registro(s). Mesclar sem apagar registros atuais?",
+                    "Importar", "Cancelar");
+                if (!yes) return;
+                int total = UiStateStore.RestoreHistoryBackup(data);
+                refreshKpis?.Invoke();
+                result.Text = "Arquivo importado: " + total +
+                    " registro(s) no aparelho. Vá à tela Início e retorne ao Histórico para atualizar os cartões.";
+                result.TextColor = Green;
+            }
+            catch (Exception)
+            {
+                result.Text = "Arquivo .txt inválido, inacessível ou incompleto. Nenhum registro alterado.";
+                result.TextColor = Color.FromArgb("#FF4D6D");
+            }
+            finally { fileImport.IsEnabled = true; }
         };
         var backup = new Button
         {
@@ -302,7 +378,7 @@ public static class UiHistoryScreen
             {
                 new Label { Text = "Backup e restauração", TextColor = Cyan, FontSize = 16,
                     FontAttributes = FontAttributes.Bold },
-                label, backup, restore, result
+                label, fileExport, fileImport, backup, restore, result
             }
         };
         return card;
