@@ -48,8 +48,11 @@ public static class Integration
         {
             if (e.PropertyName != nameof(Label.Text)) return;
             string text = bottom.Text ?? "";
+            // Explicit success messages only; never treat a generic sending status as completed.
             if (text.IndexOf("Payload enviado", StringComparison.OrdinalIgnoreCase) < 0 &&
-                text.IndexOf("sent", StringComparison.OrdinalIgnoreCase) < 0) return;
+                text.IndexOf("Enviado ao PS4", StringComparison.OrdinalIgnoreCase) < 0 &&
+                text.IndexOf("Successfully sent", StringComparison.OrdinalIgnoreCase) < 0 &&
+                text.IndexOf("Payload sent", StringComparison.OrdinalIgnoreCase) < 0) return;
             var meta = Field<PkgMetadata>(page, "_currentMeta");
             if (meta != null) UiStateStore.Record(meta, "PAYLOAD ENVIADO", ip.Text);
         };
