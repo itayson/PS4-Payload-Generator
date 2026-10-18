@@ -73,7 +73,7 @@ public static class UiHistoryScreen
 
             int shown = history.Count < 10 ? history.Count : 10;
             for (int i = 0; i < shown; i++)
-                body.Children.Add(HistoryCard(history[i], i));
+                body.Children.Add(HistoryCard(history[i], i, page));
 
             var clear = new Button
             {
@@ -103,7 +103,7 @@ public static class UiHistoryScreen
 
         body.Children.Add(InfoCard(
             "Significado dos estados",
-            "VALIDADO: metadados do arquivo. ELF: gerado localmente. ENVIANDO: transferência em andamento. ENVIADO: bytes do ELF transmitidos por TCP 9090. Não significa que o BGFT instalou o pacote."));
+            "VALIDADO: metadados. ELF: gerado localmente. ENVIANDO: transmissão em andamento. ENVIADO: bytes do ELF transmitidos ao BinLoader TCP 9090. MANUAL OK: conclusão informada por você; não é confirmação automática do BGFT."));
 
         body.Children.Add(InfoCard(
             "Privacidade",
@@ -112,7 +112,7 @@ public static class UiHistoryScreen
         return new ScrollView { BackgroundColor = Background, Content = body };
     }
 
-    static View HistoryCard(UiHistoryItem item, int index)
+    static View HistoryCard(UiHistoryItem item, int index, MainPage page)
     {
         var frame = Card();
         var grid = new Grid { ColumnSpacing = 10, RowSpacing = 4 };
@@ -157,7 +157,39 @@ public static class UiHistoryScreen
         Grid.SetColumnSpan(footer, 2);
         grid.Children.Add(footer);
 
-        frame.Content = grid;
+        var cardBody = new VerticalStackLayout { Spacing = 9 };
+        cardBody.Children.Add(grid);
+        if ((item.Status ?? "").IndexOf("CONCLUÍDO", StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            var confirm = new Button
+            {
+                Text = "Confirmar conclusão no PS4",
+                FontSize = 11,
+                BackgroundColor = Surface2,
+                TextColor = Cyan,
+                BorderColor = Stroke,
+                BorderWidth = 1,
+                CornerRadius = 10,
+                HeightRequest = 38
+            };
+            confirm.Clicked += async (_, _) =>
+            {
+                bool yes = await page.DisplayAlert(
+                    "Confirmação manual",
+                    "O download terminou, o pacote foi instalado e abriu no PS4? Essa confirmação não consulta o BGFT.",
+                    "Sim, confirmei",
+                    "Cancelar");
+                if (!yes) return;
+                if (!UiStateStore.ConfirmCompletedManually(item.Key)) return;
+                confirm.IsEnabled = false;
+                confirm.Text = "✓ Confirmado manualmente";
+                ((Label)status.Content).Text = "CONCLUÍDO";
+                ((Label)status.Content).TextColor = Green;
+                status.BorderColor = Green;
+            };
+            cardBody.Children.Add(confirm);
+        }
+        frame.Content = cardBody;
         return frame;
     }
 
@@ -233,6 +265,7 @@ public static class UiHistoryScreen
     static Color StatusColor(string status)
     {
         string value = (status ?? "").ToUpperInvariant();
+        if (value.Contains("CONCLUÍDO")) return Green;
         if (value.Contains("FALHA")) return Color.FromArgb("#FF4D6D");
         if (value.Contains("ENVIANDO")) return Cyan;
         if (value.Contains("ENVIADO")) return Purple;
@@ -245,6 +278,7 @@ public static class UiHistoryScreen
     {
         string value = (status ?? "").Trim().ToUpperInvariant();
         if (value.Length == 0) return "—";
+        if (value.Contains("CONCLUÍDO")) return "MANUAL OK";
         if (value.Contains("FALHA")) return "FALHA";
         if (value.Contains("ENVIANDO")) return "ENVIANDO";
         if (value.Contains("PAYLOAD ENVIADO")) return "ENVIADO";
