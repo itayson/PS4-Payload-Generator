@@ -183,9 +183,15 @@ public static class UiHistoryScreen
                 if (!UiStateStore.ConfirmCompletedManually(item.Key)) return;
                 confirm.IsEnabled = false;
                 confirm.Text = "✓ Confirmado manualmente";
-                ((Label)status.Content).Text = "CONCLUÍDO";
-                ((Label)status.Content).TextColor = Green;
-                status.BorderColor = Green;
+                if (status is Frame badge)
+                {
+                    badge.BorderColor = Green;
+                    if (badge.Content is Label badgeText)
+                    {
+                        badgeText.Text = "MANUAL OK";
+                        badgeText.TextColor = Green;
+                    }
+                }
             };
             cardBody.Children.Add(confirm);
         }
