@@ -1,35 +1,59 @@
 using System;
-using Android.App;
-using Android.Content;
+using Android.Runtime;
 
 namespace Tayson.Providers;
 
-/// <summary>Android clipboard bridge compatible with the trimmed MAUI base.</summary>
+/// <summary>
+/// Clipboard bridge using the same JNI APIs as the original app's paste fix.
+/// No additional trimmed MAUI types or persistently stored secrets.
+/// </summary>
 public static class UiHistoryClipboard
 {
-    static ClipboardManager Manager()
-    {
-        var context = Application.Context;
-        if (context == null)
-            throw new InvalidOperationException("Contexto Android indisponível.");
-        var service = context.GetSystemService(Context.ClipboardService) as ClipboardManager;
-        if (service == null)
-            throw new InvalidOperationException("Área de transferência indisponível.");
-        return service;
-    }
-
     public static void Copy(string backup)
     {
-        // Never persist backups to app-private files: they would be removed by uninstall.
-        var clip = ClipData.NewPlainText("Tayson PS4 - backup do histórico", backup ?? "");
-        Manager().PrimaryClip = clip;
+        IntPtr klass = IntPtr.Zero;
+        try
+        {
+            var context = Android.App.Application.Context;
+            using Java.Lang.Object service = context.GetSystemService("clipboard");
+            if (service == null) throw new InvalidOperationException("Clipboard indisponível.");
+            klass = JNIEnv.GetObjectClass(service.Handle);
+            IntPtr method = JNIEnv.GetMethodID(klass, "setText", "(Ljava/lang/CharSequence;)V");
+            if (method == IntPtr.Zero) throw new InvalidOperationException("Clipboard incompatível.");
+            using var value = new Java.Lang.String(backup ?? "");
+            JNIEnv.CallVoidMethod(service.Handle, method, new JValue(value.Handle));
+        }
+        finally
+        {
+            if (klass != IntPtr.Zero) JNIEnv.DeleteLocalRef(klass);
+        }
     }
 
     public static string Paste()
     {
-        var manager = Manager();
-        var clip = manager.PrimaryClip;
-        if (clip == null || clip.ItemCount < 1) return "";
-        return clip.GetItemAt(0)?.CoerceToText(Application.Context)?.ToString() ?? "";
+        IntPtr klass = IntPtr.Zero;
+        IntPtr charClass = IntPtr.Zero;
+        IntPtr chars = IntPtr.Zero;
+        try
+        {
+            var context = Android.App.Application.Context;
+            using Java.Lang.Object service = context.GetSystemService("clipboard");
+            if (service == null) return "";
+            klass = JNIEnv.GetObjectClass(service.Handle);
+            IntPtr get = JNIEnv.GetMethodID(klass, "getText", "()Ljava/lang/CharSequence;");
+            if (get == IntPtr.Zero) return "";
+            chars = JNIEnv.CallObjectMethod(service.Handle, get);
+            if (chars == IntPtr.Zero) return "";
+            charClass = JNIEnv.GetObjectClass(chars);
+            IntPtr str = JNIEnv.GetMethodID(charClass, "toString", "()Ljava/lang/String;");
+            IntPtr s = JNIEnv.CallObjectMethod(chars, str);
+            return s == IntPtr.Zero ? "" : JNIEnv.GetString(s, JniHandleOwnership.TransferLocalRef) ?? "";
+        }
+        finally
+        {
+            if (charClass != IntPtr.Zero) JNIEnv.DeleteLocalRef(charClass);
+            if (chars != IntPtr.Zero) JNIEnv.DeleteLocalRef(chars);
+            if (klass != IntPtr.Zero) JNIEnv.DeleteLocalRef(klass);
+        }
     }
 }
