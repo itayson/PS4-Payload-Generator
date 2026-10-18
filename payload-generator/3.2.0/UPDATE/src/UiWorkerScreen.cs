@@ -54,6 +54,58 @@ public static class UiWorkerScreen
             ("KV", "ROUTES", Green),
             ("BGFT", ".pkg", Blue)));
 
+        var preflight = Card();
+        var preflightLabel = new Label
+        {
+            Text = "Valida IP local e configuração de chave. Não abre TCP 9090, não envia ELF e não consulta o BGFT.",
+            TextColor = Muted,
+            FontSize = 11,
+            LineBreakMode = LineBreakMode.WordWrap
+        };
+        var preflightButton = Action("Verificar preparo (sem PS4)", Blue);
+        preflightButton.Clicked += async (_, _) =>
+        {
+            preflightButton.IsEnabled = false;
+            try
+            {
+                string configuredIp = UiStateStore.LoadPs4Ip();
+                if (!Ps4LanAddressPolicy.TryNormalize(configuredIp, out string destination))
+                {
+                    preflightLabel.Text = "IP do PS4 inválido. Confira Ajustes antes do envio.";
+                    preflightLabel.TextColor = Red;
+                    return;
+                }
+                if (StagingRouteAuth.IsStagingWorker(worker) &&
+                    !await StagingRouteAuth.IsConfiguredAsync())
+                {
+                    preflightLabel.Text = "PS4 " + destination +
+                        ": informe novamente a chave de homologação em Ajustes.";
+                    preflightLabel.TextColor = Red;
+                    return;
+                }
+                preflightLabel.Text = "Configuração local OK: " + destination +
+                    ":9090. Isso NÃO confirma conectividade, execução ELF nem BGFT.";
+                preflightLabel.TextColor = Green;
+            }
+            catch (Exception)
+            {
+                preflightLabel.Text = "Não foi possível verificar a configuração local.";
+                preflightLabel.TextColor = Red;
+            }
+            finally { preflightButton.IsEnabled = true; }
+        };
+        preflight.Content = new VerticalStackLayout
+        {
+            Spacing = 8,
+            Children =
+            {
+                Title("Diagnóstico local (sem payload)", Cyan),
+                preflightLabel,
+                preflightButton
+            }
+        };
+        body.Children.Add(preflight);
+
         body.Children.Add(InfoCard("Transporte R2",
             "VikingFile e Rootz usam rota curta no Worker quando o endereço final é AWS SigV4/Cloudflare R2."));
         body.Children.Add(InfoCard("AkiraBox",
