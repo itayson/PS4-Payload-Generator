@@ -59,7 +59,7 @@ public static class StagingRouteAuth
             uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 ||
             (uri.AbsolutePath != "/api/routes" && uri.AbsolutePath != "/api/akira-routes" &&
              uri.AbsolutePath != "/api/mocha-routes" && uri.AbsolutePath != "/api/filek-routes" &&
-             uri.AbsolutePath != "/api/viking-routes"))
+             uri.AbsolutePath != "/api/viking-routes" && uri.AbsolutePath != "/api/v12/auth-check"))
             throw new InvalidOperationException("Destino de homologação não autorizado.");
         string secret;
         lock (Gate) secret = currentCredential;
