@@ -228,10 +228,18 @@ def main():
     parser.add_argument("--storepass", default="android")
     parser.add_argument("--keypass", default="android")
     parser.add_argument("--alias", default="tayson-test")
+    parser.add_argument("--storepass-ref", help="apksigner env:NAME reference, never actual password")
+    parser.add_argument("--keypass-ref", help="apksigner env:NAME reference, never actual password")
     parser.add_argument("--build-info", type=Path)
     parser.add_argument("--old-package", default=OLD_PACKAGE)
     parser.add_argument("--new-package", default=NEW_PACKAGE)
     args = parser.parse_args()
+    for ref in (args.storepass_ref, args.keypass_ref):
+        if ref is not None:
+            if not re.fullmatch(r"env:[A-Z][A-Z0-9_]*", ref):
+                raise ValueError("Signing password refs must be environment variable names.")
+            if not os.environ.get(ref[4:]):
+                raise ValueError("Required signing secret environment variable is missing.")
 
     android = args.tools / "android/android-15"
     zipalign = android / "zipalign"
@@ -281,8 +289,8 @@ def main():
         run("java", "-jar", signer, "sign",
             "--ks", args.keystore,
             "--ks-key-alias", args.alias,
-            "--ks-pass", "pass:" + args.storepass,
-            "--key-pass", "pass:" + args.keypass,
+            "--ks-pass", args.storepass_ref or ("pass:" + args.storepass),
+            "--key-pass", args.keypass_ref or ("pass:" + args.keypass),
             "--out", args.output, args.unsigned_output)
         run("java", "-jar", signer, "verify", "--verbose", args.output)
 
