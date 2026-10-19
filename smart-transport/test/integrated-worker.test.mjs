@@ -76,6 +76,12 @@ assert.equal(direct.status,307,await direct.clone().text());
 assert.equal(direct.headers.get('location'),signed);
 assert.equal(direct.headers.get('x-tayson-transport'),'DIRECT');
 checks.push('DIRECT 307 only with provider-scoped opt-in');
+// Even with DIRECT enabled, HEAD must retain the Worker metadata adapter.
+const headWhenDirectOn=await worker.fetch(new Request(route,{method:'HEAD'}),env);
+assert.equal(headWhenDirectOn.status,200);
+assert.equal(headWhenDirectOn.headers.get('content-length'),total);
+assert.equal(headWhenDirectOn.headers.get('location'),null);
+checks.push('HEAD metadata retained when DIRECT GET is enabled');
 console.log('INTEGRATED_TEST_RESULTS='+JSON.stringify({passed:checks.length,checks,upstreamProbes:hits.length,storedRoutes:kv.size}));
 
 
