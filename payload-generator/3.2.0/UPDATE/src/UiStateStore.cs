@@ -120,6 +120,26 @@ public static class UiStateStore
         return true;
     }
 
+    /// <summary>
+    /// Explicit user observation. This is NOT an automatic BGFT query or a
+    /// progress percentage. Only allow this after local ELF delivery.
+    /// </summary>
+    public static bool ConfirmDownloadingManually(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return false;
+        var items = new List<UiHistoryItem>(ReadHistory());
+        int index = items.FindIndex(x => string.Equals(x.Key, key, StringComparison.Ordinal));
+        if (index < 0) return false;
+        UiHistoryItem item = items[index];
+        if (!string.Equals(item.Status, "PAYLOAD ENVIADO", StringComparison.OrdinalIgnoreCase))
+            return false;
+        item.Status = "BAIXANDO (MANUAL)";
+        items.RemoveAt(index);
+        items.Insert(0, item);
+        Write(items);
+        return true;
+    }
+
     public static void ClearHistory() => Preferences.Default.Set(HistoryKey, "");
 
     static void Write(IEnumerable<UiHistoryItem> items)
