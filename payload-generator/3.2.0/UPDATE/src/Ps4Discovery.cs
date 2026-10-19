@@ -38,22 +38,24 @@ public static class Ps4Discovery
             var found = new List<string>();
             try
             {
-                using var client = new UdpClient(new IPEndPoint(IPAddress.Any, 0));
-                client.EnableBroadcast = true;
-                client.Client.ReceiveTimeout = 500;
+                using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
+                socket.ReceiveTimeout = 500;
+                socket.Bind(new IPEndPoint(IPAddress.Any, 0));
                 byte[] bytes = Encoding.ASCII.GetBytes(Request);
-                client.Send(bytes, bytes.Length, new IPEndPoint(IPAddress.Broadcast, DiscoveryPort));
+                socket.SendTo(bytes, new IPEndPoint(IPAddress.Broadcast, DiscoveryPort));
                 DateTime stop = DateTime.UtcNow.AddSeconds(3);
                 while (DateTime.UtcNow < stop)
                 {
                     try
                     {
-                        var remote = new IPEndPoint(IPAddress.Any, 0);
-                        byte[] reply = client.Receive(ref remote);
-                        if (reply.Length == 0 || reply.Length > 4096) continue;
-                        string message = Encoding.ASCII.GetString(reply);
+                        EndPoint remote = new IPEndPoint(IPAddress.Any, 0);
+                        byte[] reply = new byte[4096];
+                        int length = socket.ReceiveFrom(reply, ref remote);
+                        if (length <= 0 || length > 4096) continue;
+                        string message = Encoding.ASCII.GetString(reply, 0, length);
                         if (!IsPs4Response(message)) continue;
-                        string ip = remote.Address.ToString();
+                        string ip = (remote as IPEndPoint)?.Address.ToString() ?? "";
                         if (Ps4LanAddressPolicy.TryNormalize(ip, out string normalized) &&
                             !found.Contains(normalized)) found.Add(normalized);
                     }
