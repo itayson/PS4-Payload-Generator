@@ -90,7 +90,8 @@ async function smartTransportDecision(route, env = {}, options = {}) {
 
 /** Returns a redirect only when explicitly enabled and compatible; otherwise null. */
 async function smartTransportMaybeRedirect(request, route, env, options = {}) {
-  if (request.method !== 'GET' && request.method !== 'HEAD') return null;
+  // Keep HEAD on Worker metadata path; GET Range can work even if origin HEAD fails.
+  if (request.method !== 'GET') return null;
   const decision = await smartTransportDecision(route, env, options);
   if (decision.mode !== 'direct') return null;
   return new Response(null, {
