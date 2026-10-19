@@ -8,6 +8,11 @@ export async function smartTransportDecision(route, env = {}, options = {}) {
   if (env.SMART_BGFT_REDIRECT_VERIFIED !== 'true') return { mode: 'proxy', reason: 'bgft_not_verified' };
   if (!route || !['r2', 'viking'].includes(route.kind))
     return { mode: 'proxy', reason: 'provider_not_approved' };
+  // Require an explicit allowlist: verification for one provider must not enable another.
+  const enabledProviders = String(env.SMART_DIRECT_PROVIDERS || '')
+    .split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
+  if (!enabledProviders.includes(route.kind))
+    return { mode: 'proxy', reason: 'provider_not_enabled' };
   if (route.cookie || route.referer || route.userAgent)
     return { mode: 'proxy', reason: 'provider_requires_context' };
 
