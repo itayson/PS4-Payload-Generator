@@ -350,47 +350,89 @@ public static class UiHomeScreen
         package.Content = packageBody;
         body.Children.Add(package);
 
+        // Never infer that the current link has a valid ELF from btnInjetar.IsEnabled:
+        // the inherited button can remain enabled when a new/empty link is shown.
         var stageText = new Label { TextColor = Text, FontSize = 14, FontAttributes = FontAttributes.Bold };
         var stageDetail = new Label { TextColor = Muted, FontSize = 11 };
         void RefreshStage()
         {
-            string status = bottom?.Text ?? "";
-            if (status.IndexOf("enviado", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                status.IndexOf("sent", StringComparison.OrdinalIgnoreCase) >= 0)
+            var stage = UiStageTracker.Current(url?.Text);
+            stageText.Text = UiStageTracker.Title(stage);
+            stageText.TextColor = stage switch
             {
-                stageText.Text = "✓ Payload enviado ao PS4";
-                stageText.TextColor = Purple;
-                stageDetail.Text = "Confirme o registro/download no console.";
-            }
-            else if (inject != null && inject.IsEnabled)
+                UiStageTracker.Stage.AwaitingLink => Muted,
+                UiStageTracker.Stage.LinkReceived => Cyan,
+                UiStageTracker.Stage.Validating => Cyan,
+                UiStageTracker.Stage.Validated => Green,
+                UiStageTracker.Stage.ElfGenerated => Blue,
+                UiStageTracker.Stage.Sending => Cyan,
+                UiStageTracker.Stage.ElfSent => Purple,
+                UiStageTracker.Stage.Failed => Color.FromArgb("#FF6D79"),
+                _ => Muted
+            };
+            stageDetail.Text = UiStageTracker.Detail(stage);
+        }
+
+        // A validation attempt establishes which link subsequent async callbacks
+        // belong to; changing the link invalidates ALL visible progress evidence.
+        if (url != null)
+        {
+            UiStageTracker.LinkChanged(url.Text);
+            url.TextChanged += (_, _) =>
             {
-                stageText.Text = "✓ ELF pronto";
-                stageText.TextColor = Blue;
-                stageDetail.Text = "Pronto para enviar ao GoldHEN BinLoader 9090.";
-            }
-            else if (generate != null && generate.IsEnabled)
+                UiStageTracker.LinkChanged(url.Text);
+                RefreshStage();
+            };
+        }
+        if (scan != null)
+            scan.Clicked += (_, _) =>
             {
-                stageText.Text = "✓ PKG validado";
-                stageText.TextColor = Green;
-                stageDetail.Text = "Metadados confirmados; gere o ELF.";
-            }
-            else if (!string.IsNullOrWhiteSpace(url?.Text))
+                UiStageTracker.BeginValidation(url?.Text);
+                RefreshStage();
+            };
+        void ObserveValidation()
+        {
+            if (UiStageTracker.Current(url?.Text) != UiStageTracker.Stage.Validating)
+                return;
+            if (Field<PkgMetadata>(page, "_currentMeta") == null)
+                return;
+            if (generate != null && generate.IsEnabled)
             {
-                stageText.Text = "○ Link recebido";
-                stageText.TextColor = Cyan;
-                stageDetail.Text = "Valide o PKG antes de gerar o payload.";
-            }
-            else
-            {
-                stageText.Text = "○ Aguardando link";
-                stageText.TextColor = Muted;
-                stageDetail.Text = "Cole um link compatível para iniciar.";
+                UiStageTracker.MarkValidated(url?.Text);
+                RefreshStage();
             }
         }
-        if (generate != null) generate.PropertyChanged += (_, e) => { if (e.PropertyName == "IsEnabled") RefreshStage(); };
-        if (inject != null) inject.PropertyChanged += (_, e) => { if (e.PropertyName == "IsEnabled") RefreshStage(); };
-        if (bottom != null) bottom.PropertyChanged += (_, e) => { if (e.PropertyName == "Text") RefreshStage(); };
-        if (url != null) url.TextChanged += (_, _) => RefreshStage();
+        if (generate != null) generate.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == "IsEnabled") ObserveValidation();
+        };
+        if (title != null) title.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == "Text") ObserveValidation();
+        };
+        if (bottom != null) bottom.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != "Text") return;
+            string status = bottom.Text ?? "";
+            var currentStage = UiStageTracker.Current(url?.Text);
+            if (currentStage >= UiStageTracker.Stage.Validated &&
+                currentStage != UiStageTracker.Stage.Failed)
+            {
+                // Only explicit local operation results can advance stage.
+                if (status.IndexOf("ELF transmitido ao BinLoader", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    status.IndexOf("Successfully sent to PS4", StringComparison.OrdinalIgnoreCase) >= 0)
+                    UiStageTracker.MarkSent(url?.Text);
+                else if (status.IndexOf("Payload salvo", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         status.IndexOf("ELF gerado", StringComparison.OrdinalIgnoreCase) >= 0)
+                    UiStageTracker.MarkGenerated(url?.Text);
+            }
+            if (status.StartsWith("[PS4-", StringComparison.Ordinal) ||
+                status.StartsWith("[WORKER-", StringComparison.Ordinal) ||
+                status.StartsWith("[PKG-", StringComparison.Ordinal) ||
+                status.StartsWith("[FLUXO-", StringComparison.Ordinal))
+                UiStageTracker.MarkFailed(url?.Text);
+            RefreshStage();
+        };
         RefreshStage();
 
         var progress = Card();
