@@ -7,7 +7,7 @@ const stamp = new Date(now).toISOString().replace(/[-:]/g,'').replace('.000','')
 const host = 'vikingfile.' + 'a'.repeat(32) + '.r2.cloudflarestorage.com';
 const url = 'https://' + host + '/game.pkg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=' + stamp + '&X-Amz-Expires=86400&X-Amz-Signature=abc123';
 const route = {kind:'viking',url,routeExpiresAt:now+86370*1000};
-const env = {SMART_DIRECT_ENABLED:'true',SMART_BGFT_REDIRECT_VERIFIED:'true'};
+const env = {SMART_DIRECT_ENABLED:'true',SMART_BGFT_REDIRECT_VERIFIED:'true',SMART_DIRECT_PROVIDERS:'viking'};
 const magic = new Uint8Array([0x7f,0x43,0x4e,0x54]);
 function goodFetch(total='5368709120') { return async (_u, req) => {
   assert.equal(req.headers.Range,'bytes=0-3');
@@ -41,3 +41,17 @@ test('rejects false PKG signature',async()=>assert.equal((await decide(route,env
 test('rejects extra bytes despite Content-Length=4',async()=>assert.equal((await decide(route,env,async()=>new Response(new Uint8Array([127,67,78,84,1]),{status:206,headers:{'Content-Range':'bytes 0-3/5000','Content-Length':'4'}}))).reason,'oversized_probe_body'));
 test('network failure returns PROXY',async()=>assert.equal((await decide(route,env,async()=>{throw new Error('upstream failed')})).reason,'probe_failed'));
 test('valid 10 GiB integer-safe size',async()=>assert.equal((await decide(route,env,goodFetch('10737418240'))).totalBytes,'10737418240'));
+
+// v0.2: provider opt-in is mandatory, independent of the global feature switches.
+test('direct mode is disabled until a provider is explicitly enabled', async()=>{
+  const result = await decide(route, {SMART_DIRECT_ENABLED:'true',SMART_BGFT_REDIRECT_VERIFIED:'true'});
+  assert.equal(result.reason, 'provider_not_enabled');
+});
+test('enabled r2 does not enable viking', async()=>{
+  const result = await decide(route, {...env, SMART_DIRECT_PROVIDERS:'r2'});
+  assert.equal(result.reason, 'provider_not_enabled');
+});
+test('allowlist cannot bypass forbidden provider kind', async()=>{
+  const result = await decide({...route,kind:'akira'}, {...env, SMART_DIRECT_PROVIDERS:'akira'});
+  assert.equal(result.reason, 'provider_not_approved');
+});
