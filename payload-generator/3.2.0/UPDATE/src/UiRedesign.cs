@@ -15,7 +15,7 @@ namespace Tayson.Providers;
 /// </summary>
 public static class UiRedesign
 {
-    const string WorkerEndpoint = "https://drive.itaysondaniel.workers.dev";
+    const string WorkerEndpoint = "https://seek.itayson.workers.dev";
 
     static readonly Color Background = Color.FromArgb("#030B14");
     static readonly Color Surface = Color.FromArgb("#071827");
@@ -117,7 +117,7 @@ public static class UiRedesign
         if (h.Clear != null) h.Clear.Text = "Limpar";
         if (h.LocalFile != null) h.LocalFile.Text = "Arquivo local";
         if (h.BottomStatus != null)
-            h.BottomStatus.Text = "Tayson 3.3.1 • BGFT universal • BinLoader 9090";
+            h.BottomStatus.Text = "Tayson PS4 • BGFT • 9090";
 
         StyleAction(h.Scan, Green, Color.FromArgb("#031A16"));
         StyleAction(h.Generate, Blue, Text);
@@ -201,7 +201,7 @@ public static class UiRedesign
         var brand = new VerticalStackLayout { Spacing = 0 };
         brand.Children.Add(new Label
         {
-            Text = "TAYSON",
+            Text = "TAYSON PS4",
             TextColor = Text,
             FontSize = 23,
             FontAttributes = FontAttributes.Bold,
@@ -209,7 +209,7 @@ public static class UiRedesign
         });
         brand.Children.Add(new Label
         {
-            Text = "PS4 PAYLOAD GENERATOR",
+            Text = "Link → Validar → Enviar",
             TextColor = Cyan,
             FontSize = 10,
             CharacterSpacing = 1.8
