@@ -1,0 +1,123 @@
+name: Tayson PS4 v6.4 Candidate - safe build
+on:
+  push:
+    branches:
+      - fix/v6.4-keep-staging-upgrade-identity
+    paths:
+      - 'payload-generator/3.2.0/UPDATE/**'
+      - 'tools/ps4-v63/tests/**'
+      - 'tools/ps4-v64-stage/tests/**'
+      - '.github/workflows/ps4-v64-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-and-release-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Validate DDP wire format and release guard
+        run: |
+          set -euo pipefail
+          python3 tools/ps4-v63/tests/test_ddp_wire.py
+          python3 tools/ps4-v64-stage/tests/test_release_signing_guard.py
+      - name: Compile and run discovery tests
+        run: dotnet run --project tools/ps4-v63/tests/DiscoveryTests.csproj -c Release --no-launch-profile
+      - name: Run v6.4 state/history tests
+        run: dotnet run --project tools/ps4-v64-stage/tests/StageTests.csproj -c Release --no-launch-profile
+
+  unsigned-android-candidate:
+    needs: protocol-and-release-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install version-matched assembly extraction dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq liblz4-1 unzip curl
+      - name: Retrieve checksum-pinned base (no private assets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAGE='https://www.mediafire.com/file/hi4h13wzunr2bjm/phoenixx.ps4remotepkg_v3.0%2B%282%29.apk/file'
+          curl -fL --retry 3 -A 'Mozilla/5.0' "$PAGE" -o /tmp/mediafire.html
+          python3 - <<'PY' >/tmp/tayson-base-url.txt
+          import html,re
+          content=open('/tmp/mediafire.html', encoding='utf-8', errors='ignore').read()
+          for pattern in (r'id=["\x27]downloadButton["\x27][^>]*href=["\x27]([^"\x27]+)',r'href=["\x27]([^"\x27]+)["\x27][^>]*id=["\x27]downloadButton'):
+              found=re.search(pattern,content,re.I)
+              if found:
+                  print(html.unescape(found.group(1)))
+                  break
+          else:
+              raise SystemExit('Pinned base download URL unavailable')
+          PY
+          curl -fL --retry 3 -A 'Mozilla/5.0' "$(cat /tmp/tayson-base-url.txt)" -o /tmp/original.apk
+          echo 'a441a8321edba13ebd2597863477c409004e7d4475b9221951bf2991e2feee81  /tmp/original.apk' | sha256sum -c -
+          rm -f /tmp/mediafire.html /tmp/tayson-base-url.txt
+      - name: Reconstruct base files and prepare toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tayson-source /tmp/tayson-tools /tmp/tayson-out
+          unzip -q /tmp/original.apk -d /tmp/tayson-source
+          mkdir -p /tmp/tayson-source/UPDATE/base
+          cp /tmp/tayson-source/assets/template.elf /tmp/tayson-source/UPDATE/base/original-template.elf
+          cp /tmp/tayson-source/assemblies/assemblies.blob /tmp/tayson-source/UPDATE/base/original-assemblies.blob
+          cp /tmp/tayson-source/AndroidManifest.xml /tmp/tayson-source/UPDATE/base/original-AndroidManifest.xml
+          cp -a payload-generator/3.2.0/UPDATE/. /tmp/tayson-source/UPDATE/
+          python3 /tmp/tayson-source/UPDATE/scripts/patch_diagnostics.py
+          python3 /tmp/tayson-source/UPDATE/scripts/prepare.py --base /tmp/tayson-source --tools /tmp/tayson-tools
+      - name: Run existing core tests
+        run: |
+          set -euo pipefail
+          /tmp/tayson-tools/dotnet/dotnet run --project /tmp/tayson-source/UPDATE/tests/Tests.csproj -- /tmp/tayson-source/assets/template.elf | tee /tmp/tayson-out/core-tests.log
+          grep -q 'RESULT: 103 checks passed' /tmp/tayson-out/core-tests.log
+      - name: Compile v6.4 candidate - no release signing
+        run: |
+          set -euo pipefail
+          python3 /tmp/tayson-source/UPDATE/scripts/build.py --base /tmp/tayson-source --tools /tmp/tayson-tools --output /tmp/tayson-out | tee /tmp/tayson-out/build.log
+          test -s /tmp/tayson-source/UPDATE/build/aligned.apk
+          cp /tmp/tayson-source/UPDATE/build/aligned.apk /tmp/tayson-out/tayson-v6.4-pre-identity-UNSIGNED.apk
+          cp /tmp/tayson-tools/android/android-15/lib/apksigner.jar /tmp/tayson-out/apksigner.jar
+          /tmp/tayson-tools/android/android-15/aapt dump badging /tmp/tayson-out/tayson-v6.4-pre-identity-UNSIGNED.apk | grep -E 'versionCode|versionName' > /tmp/tayson-out/badging.txt
+          grep -q 'versionCode=\x2746\x27' /tmp/tayson-out/badging.txt
+          grep -q 'versionName=\x273.4.3-staging.6.4\x27' /tmp/tayson-out/badging.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, zipfile, json
+          p=Path('/tmp/tayson-out/tayson-v6.4-pre-identity-UNSIGNED.apk')
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              for name in ('AndroidManifest.xml','classes.dex','classes2.dex','assets/template.elf','assemblies/assemblies.blob'):
+                  assert name in z.namelist(), name
+              template=z.read('assets/template.elf')
+          expected='ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc'
+          assert hashlib.sha256(template).hexdigest()==expected
+          print(json.dumps({'status':'UNSIGNED build complete, not installable over existing v6.3.1','sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'template_sha256':expected},indent=2))
+          PY
+          sha256sum /tmp/tayson-out/tayson-v6.4-pre-identity-UNSIGNED.apk /tmp/tayson-out/apksigner.jar > /tmp/tayson-out/SHA256SUMS.txt
+      - name: Upload build inputs for private offline signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: tayson-v64-unsigned-candidate-and-tools
+          path: |
+            /tmp/tayson-out/tayson-v6.4-pre-identity-UNSIGNED.apk
+            /tmp/tayson-out/apksigner.jar
+            /tmp/tayson-out/build.log
+            /tmp/tayson-out/core-tests.log
+            /tmp/tayson-out/badging.txt
+            /tmp/tayson-out/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 3

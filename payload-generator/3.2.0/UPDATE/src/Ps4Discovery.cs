@@ -74,12 +74,21 @@ public static class Ps4Discovery
         return address;
     }
 
+    // The address policy already validates each digit and 0..255 range.
+    // Avoid Byte.Parse: that method is trimmed from the inherited Android runtime.
+    static byte ParseValidatedOctet(string octet)
+    {
+        int value = 0;
+        foreach (char digit in octet) value = value * 10 + digit - '0';
+        return (byte)value;
+    }
+
     static byte[] KnownAddress(string knownIp)
     {
         if (!Ps4LanAddressPolicy.TryNormalize(knownIp, out string ip)) return null;
         var octets = ip.Split('.');
-        return MakeAddress(byte.Parse(octets[0]), byte.Parse(octets[1]),
-                           byte.Parse(octets[2]), byte.Parse(octets[3]));
+        return MakeAddress(ParseValidatedOctet(octets[0]), ParseValidatedOctet(octets[1]),
+                           ParseValidatedOctet(octets[2]), ParseValidatedOctet(octets[3]));
     }
 
     public static bool TryBuildKnownTarget(string knownIp, out byte[] address)
@@ -105,8 +114,7 @@ public static class Ps4Discovery
                 fd = OpenSocket(AfInet, SockDgram, IpProtoUdp);
                 if (fd < 0)
                 {
-                    LastDiagnostic = "Android não abriu socket UDP (código " +
-                        Marshal.GetLastWin32Error() + ").";
+                    LastDiagnostic = "Android não abriu socket UDP (sem acesso à rede ou permissão).";
                     return found;
                 }
                 // Prefer the widely-used DDP source port 1987. If occupied,
@@ -127,16 +135,14 @@ public static class Ps4Discovery
                         {
                             long n = SendTo(fd, bytes, (UIntPtr)(uint)bytes.Length, 0, direct, 16);
                             if (n == bytes.Length) sent++;
-                            else issue = "Consulta direta UDP recusada (" +
-                                Marshal.GetLastWin32Error() + ").";
+                            else issue = "Consulta direta UDP recusada (envio falhou).";
                         }
                         if (broadcastAllowed)
                         {
                             var broadcast = MakeAddress(255, 255, 255, 255);
                             long n = SendTo(fd, bytes, (UIntPtr)(uint)bytes.Length, 0, broadcast, 16);
                             if (n == bytes.Length) sent++;
-                            else if (issue.Length == 0) issue = "Broadcast UDP recusado (" +
-                                Marshal.GetLastWin32Error() + ").";
+                            else if (issue.Length == 0) issue = "Broadcast UDP recusado (envio falhou).";
                         }
                         rounds++;
                         nextProbe = DateTime.UtcNow.AddSeconds(2);
@@ -146,7 +152,7 @@ public static class Ps4Discovery
                     int ready = Poll(poll, 1, timeout);
                     if (ready < 0)
                     {
-                        issue = "Recepção UDP falhou (" + Marshal.GetLastWin32Error() + ").";
+                        issue = "Recepção UDP falhou (poll).";
                         break;
                     }
                     if (ready == 0 || (poll[0].Returned & PollIn) == 0) continue;
