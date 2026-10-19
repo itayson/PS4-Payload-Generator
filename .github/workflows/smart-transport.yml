@@ -30,7 +30,7 @@ jobs:
           node --check smart-transport/src/smart-transport.mjs
           node --check smart-transport/builds/seek-smart-transport-v0.1.js
       - name: Regression tests
-        run: node --test smart-transport/test/smart-transport.test.mjs
+        run: node --test smart-transport/test/*.test.mjs
       - name: Repeatable baseline integration
         run: |
           node smart-transport/scripts/apply-smart-transport.mjs \
