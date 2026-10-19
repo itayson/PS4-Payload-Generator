@@ -14,6 +14,7 @@ namespace Tayson.Providers;
 public static class Ps4Discovery
 {
     const int DiscoveryPort = 987;
+    public static string LastDiagnostic { get; private set; } = "Busca não iniciada.";
     const string Request = "SRCH * HTTP/1.1\r\ndevice-discovery-protocol-version:00020020\r\n\r\n";
     const int AfInet = 2, SockDgram = 2, IpProtoUdp = 17, SolSocket = 1, SoBroadcast = 6, PollIn = 1;
     [StructLayout(LayoutKind.Sequential)]
@@ -36,7 +37,7 @@ public static class Ps4Discovery
     {
         if (string.IsNullOrWhiteSpace(response) || response.Length > 4096) return false;
         string[] lines = response.Replace("\r\n", "\n").Split('\n');
-        if (lines.Length < 2 || lines[0].Trim() != "HTTP/1.1 200 OK") return false;
+        if (lines.Length < 2 || !lines[0].Trim().Equals("HTTP/1.1 200 OK", StringComparison.OrdinalIgnoreCase)) return false;
         foreach (string line in lines)
         {
             int sep = line.IndexOf(':');
@@ -48,57 +49,117 @@ public static class Ps4Discovery
         return false;
     }
 
-    static byte[] BroadcastAddress()
+    static byte[] MakeAddress(byte a, byte b, byte c, byte d)
     {
-        // sockaddr_in: sin_family in host byte order, port in network byte order.
+        // sockaddr_in: native-endian family, network-endian port, raw IPv4 octets.
         var addr = new byte[16];
         addr[0] = BitConverter.IsLittleEndian ? (byte)2 : (byte)0;
         addr[1] = BitConverter.IsLittleEndian ? (byte)0 : (byte)2;
         addr[2] = (byte)(DiscoveryPort >> 8);
         addr[3] = (byte)(DiscoveryPort & 255);
-        for (int i = 4; i < 8; i++) addr[i] = 255;
+        addr[4] = a; addr[5] = b; addr[6] = c; addr[7] = d;
         return addr;
     }
 
-    public static Task<IReadOnlyList<string>> DiscoverAsync()
+    static byte[] KnownAddress(string knownIp)
+    {
+        if (!Ps4LanAddressPolicy.TryNormalize(knownIp, out string ip)) return null;
+        var octets = ip.Split('.');
+        return MakeAddress(byte.Parse(octets[0]), byte.Parse(octets[1]),
+                           byte.Parse(octets[2]), byte.Parse(octets[3]));
+    }
+
+    public static bool TryBuildKnownTarget(string knownIp, out byte[] address)
+    {
+        address = KnownAddress(knownIp);
+        return address != null;
+    }
+
+    // Only a user-invoked discovery; knownIp is never scanned or altered.
+    public static Task<IReadOnlyList<string>> DiscoverAsync(string knownIp = null)
         => Task.Run<IReadOnlyList<string>>(() =>
         {
             var found = new List<string>();
             int fd = -1;
+            int sent = 0;
+            int receivedCount = 0;
+            int validResponses = 0;
+            string issue = "";
+            byte[] direct = KnownAddress(knownIp);
             try
             {
+                LastDiagnostic = "Consultando UDP 987…";
                 fd = OpenSocket(AfInet, SockDgram, IpProtoUdp);
-                if (fd < 0) return found;
-                int enabled = 1;
-                if (SetOption(fd, SolSocket, SoBroadcast, ref enabled, 4) != 0) return found;
-                byte[] bytes = Encoding.ASCII.GetBytes(Request);
-                if (SendTo(fd, bytes, (UIntPtr)(uint)bytes.Length, 0, BroadcastAddress(), 16) < 0)
+                if (fd < 0)
+                {
+                    LastDiagnostic = "Android não abriu socket UDP (código " +
+                        Marshal.GetLastWin32Error() + ").";
                     return found;
-
-                DateTime stop = DateTime.UtcNow.AddSeconds(3);
+                }
+                int enabled = 1;
+                bool broadcastAllowed = SetOption(fd, SolSocket, SoBroadcast, ref enabled, 4) == 0;
+                byte[] bytes = Encoding.ASCII.GetBytes(Request);
+                DateTime stop = DateTime.UtcNow.AddSeconds(4);
+                DateTime nextProbe = DateTime.UtcNow;
+                int rounds = 0;
                 var poll = new[] { new PollFd { File = fd, Events = PollIn } };
                 while (DateTime.UtcNow < stop)
                 {
-                    int timeout = (int)Math.Min(500, Math.Max(1, (stop - DateTime.UtcNow).TotalMilliseconds));
+                    if (rounds < 2 && DateTime.UtcNow >= nextProbe)
+                    {
+                        if (direct != null)
+                        {
+                            long n = SendTo(fd, bytes, (UIntPtr)(uint)bytes.Length, 0, direct, 16);
+                            if (n == bytes.Length) sent++;
+                            else issue = "Consulta direta UDP recusada (" +
+                                Marshal.GetLastWin32Error() + ").";
+                        }
+                        if (broadcastAllowed)
+                        {
+                            var broadcast = MakeAddress(255, 255, 255, 255);
+                            long n = SendTo(fd, bytes, (UIntPtr)(uint)bytes.Length, 0, broadcast, 16);
+                            if (n == bytes.Length) sent++;
+                            else if (issue.Length == 0) issue = "Broadcast UDP recusado (" +
+                                Marshal.GetLastWin32Error() + ").";
+                        }
+                        rounds++;
+                        nextProbe = DateTime.UtcNow.AddSeconds(2);
+                    }
+                    int timeout = (int)Math.Min(450, Math.Max(1, (stop - DateTime.UtcNow).TotalMilliseconds));
                     poll[0].Returned = 0;
                     int ready = Poll(poll, 1, timeout);
-                    if (ready < 0) break;
+                    if (ready < 0)
+                    {
+                        issue = "Recepção UDP falhou (" + Marshal.GetLastWin32Error() + ").";
+                        break;
+                    }
                     if (ready == 0 || (poll[0].Returned & PollIn) == 0) continue;
-
                     var reply = new byte[4096];
                     var origin = new byte[16];
                     uint originLength = 16;
                     long received = ReceiveFrom(fd, reply, (UIntPtr)(uint)reply.Length, 0, origin, ref originLength);
                     if (received <= 0 || received > reply.Length || originLength < 8) continue;
+                    receivedCount++;
                     if (!IsPs4Response(Encoding.ASCII.GetString(reply, 0, (int)received))) continue;
+                    validResponses++;
                     string ip = origin[4] + "." + origin[5] + "." + origin[6] + "." + origin[7];
                     if (Ps4LanAddressPolicy.TryNormalize(ip, out string normalized) &&
                         !found.Contains(normalized)) found.Add(normalized);
                 }
+                if (found.Count > 0)
+                    LastDiagnostic = "PS4 respondeu ao protocolo UDP 987.";
+                else if (sent == 0)
+                    LastDiagnostic = issue.Length > 0 ? issue : "Não foi possível enviar consultas UDP.";
+                else if (receivedCount == 0)
+                    LastDiagnostic = "Consultas UDP enviadas, mas nenhuma resposta chegou (verifique Wi-Fi e Segunda Tela).";
+                else if (validResponses == 0)
+                    LastDiagnostic = "Houve resposta UDP, mas nenhuma identificada como PS4.";
+                else
+                    LastDiagnostic = "Respostas PS4 recebidas fora dos endereços locais permitidos.";
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Android Wi-Fi may block broadcasts. Never attempt TCP 9090 as a fallback.
+                LastDiagnostic = "Erro na descoberta UDP (" + ex.GetType().Name + ").";
             }
             finally
             {
