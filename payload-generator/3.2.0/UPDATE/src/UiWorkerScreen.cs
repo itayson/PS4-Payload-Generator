@@ -30,9 +30,9 @@ public static class UiWorkerScreen
             BackgroundColor = Background
         };
 
-        body.Children.Add(Hero("Worker", "Roteamento BGFT e transporte universal"));
+        body.Children.Add(Hero("Worker", "Atualização automática no mesmo endereço"));
 
-        var status = new Label { Text = "● Aguardando teste", TextColor = Muted, FontSize = 12, FontAttributes = FontAttributes.Bold };
+        var status = new Label { Text = "● Verificando versão do Worker…", TextColor = Muted, FontSize = 12, FontAttributes = FontAttributes.Bold };
         var response = new Label { Text = "Health ainda não consultado.", TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap };
 
         var endpoint = Card();
@@ -57,7 +57,7 @@ public static class UiWorkerScreen
         var preflight = Card();
         var preflightLabel = new Label
         {
-            Text = "Valida IP local e configuração de chave. Não abre TCP 9090, não envia ELF e não consulta o BGFT.",
+            Text = "Valida somente o IP local. Não abre TCP 9090, não envia ELF e não consulta o BGFT.",
             TextColor = Muted,
             FontSize = 11,
             LineBreakMode = LineBreakMode.WordWrap
@@ -72,14 +72,6 @@ public static class UiWorkerScreen
                 if (!Ps4LanAddressPolicy.TryNormalize(configuredIp, out string destination))
                 {
                     preflightLabel.Text = "IP do PS4 inválido. Confira Ajustes antes do envio.";
-                    preflightLabel.TextColor = Red;
-                    return;
-                }
-                if (StagingRouteAuth.IsStagingWorker(worker) &&
-                    !await StagingRouteAuth.IsConfiguredAsync())
-                {
-                    preflightLabel.Text = "PS4 " + destination +
-                        ": informe novamente a chave de homologação em Ajustes.";
                     preflightLabel.TextColor = Red;
                     return;
                 }
@@ -106,15 +98,10 @@ public static class UiWorkerScreen
         };
         body.Children.Add(preflight);
 
-        body.Children.Add(InfoCard("Transporte R2",
-            "VikingFile e Rootz usam rota curta no Worker quando o endereço final é AWS SigV4/Cloudflare R2."));
-        body.Children.Add(InfoCard("AkiraBox",
-            "A rota temporária pode manter cookies, Referer e User-Agent no KV sem expor esses dados dentro do ELF."));
-        body.Children.Add(InfoCard("Normalização BGFT",
-            "O transporte pode responder a HEAD por GET Range bytes=0-0 e preservar GET/Range; confirme o BGFT no PS4."));
+
 
         var test = Action("Testar Worker", Blue);
-        test.Clicked += async (_, _) =>
+        async System.Threading.Tasks.Task CheckWorkerAsync()
         {
             test.IsEnabled = false;
             status.Text = "● Testando /health…";
@@ -136,12 +123,14 @@ public static class UiWorkerScreen
             {
                 status.Text = "● Worker indisponível";
                 status.TextColor = Red;
-                response.Text = ex.GetType().Name + ": " + ex.Message;
+                response.Text = "Falha ao consultar /health (" + ex.GetType().Name + ").";
                 response.TextColor = Red;
             }
             finally { test.IsEnabled = true; }
-        };
+        }
+        test.Clicked += async (_, _) => await CheckWorkerAsync();
         body.Children.Add(test);
+        _ = CheckWorkerAsync(); // Reads current deployed Worker /health when screen is opened.
 
         body.Children.Add(new Label
         {
