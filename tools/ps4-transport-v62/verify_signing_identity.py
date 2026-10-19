@@ -23,7 +23,8 @@ def verify(apksigner: str, aapt: str, apk: str) -> None:
     if len(fingerprints) != 1 or fingerprints[0].lower() != EXPECTED_CERT_SHA256:
         raise ValueError("Signing certificate mismatch: not an in-place v6.1 update.")
     for scheme in ("v2", "v3"):
-        if f"Verified using {scheme} scheme" not in signed.stdout:
+        if not re.search(r"^Verified using " + scheme + r" scheme.*:\s*true\s*$",
+                         signed.stdout, re.M):
             raise ValueError("Required APK signature scheme missing.")
 
     identity = subprocess.run([aapt, "dump", "badging", apk], check=True,
