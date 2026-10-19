@@ -228,7 +228,8 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--unsigned-output", required=True, type=Path)
     parser.add_argument("--tools", required=True, type=Path)
-    parser.add_argument("--keystore", required=True, type=Path)
+    parser.add_argument("--keystore", type=Path)
+    parser.add_argument("--unsigned-only", action="store_true", help="Produce a staging-aligned APK for private offline signing; no keystore or password is accessed.")
     parser.add_argument("--alias", default="tayson-v631-permanent")
     # NEVER accept plaintext passwords in CLI/process listings for releases.
     # Both refs may point to the same environment variable for a PKCS#12 file.
@@ -241,8 +242,11 @@ def main():
     if args.new_package != NEW_PACKAGE:
         raise ValueError("Release package mismatch: existing experimental installs require "
                          + NEW_PACKAGE + "; refusing a package rename.")
-    if not args.storepass_ref or not args.keypass_ref:
-        raise ValueError("Release signing requires --storepass-ref and --keypass-ref env:VARIABLE references.")
+    if args.unsigned_only:
+        if args.keystore or args.storepass_ref or args.keypass_ref:
+            raise ValueError("Unsigned-only mode rejects all signing inputs.")
+    elif not args.keystore or not args.storepass_ref or not args.keypass_ref:
+        raise ValueError("Release signing requires --storepass-ref and --keypass-ref env:VARIABLE references and --keystore.")
     for ref in (args.storepass_ref, args.keypass_ref):
         if ref is not None:
             if not re.fullmatch(r"env:[A-Z][A-Z0-9_]*", ref):
@@ -295,6 +299,21 @@ def main():
                 pass
 
         run(zipalign, "-f", "-p", "4", rewritten, args.unsigned_output)
+        if args.unsigned_only:
+            with zipfile.ZipFile(args.unsigned_output) as staged, zipfile.ZipFile(args.apk) as original:
+                if staged.testzip() is not None:
+                    raise ValueError("Unsigned staging APK ZIP integrity failed")
+                manifest = staged.read("AndroidManifest.xml").decode("utf-16-le", errors="ignore")
+                for required in (args.new_package, args.new_package + ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+                                 args.new_package + ".androidx-startup", MONO_PROVIDER):
+                    if required not in manifest:
+                        raise ValueError("Unsigned staging manifest missing " + required)
+                for name in ("classes.dex", "classes2.dex", "assets/template.elf", "resources.arsc"):
+                    if staged.read(name) != original.read(name):
+                        raise ValueError("Unsigned staging file mutation: " + name)
+            print(json.dumps({"unsigned": True, "installable": False, "package": args.new_package,
+                              "sha256": hashlib.sha256(args.unsigned_output.read_bytes()).hexdigest()}))
+            return
         run("java", "-jar", signer, "sign",
             "--ks", args.keystore,
             "--ks-key-alias", args.alias,
