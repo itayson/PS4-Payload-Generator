@@ -111,9 +111,11 @@ public static class UiAutoPipeline
         PkgMetadata attemptedMeta = null;
         string attemptedIp = "";
         bool transportStarted = false;
+        string operationUrl = "";
         try
         {
             string currentUrl = (url?.Text ?? "").Trim();
+            operationUrl = currentUrl;
             lock (Gate)
             {
                 if (!Pending) return;
@@ -131,11 +133,14 @@ public static class UiAutoPipeline
             PkgMetadata meta = Field<PkgMetadata>(page, "_currentMeta");
             if (meta == null || generate == null || !generate.IsEnabled) return;
             attemptedMeta = meta;
+            UiStageTracker.BeginValidation(currentUrl);
+            UiStageTracker.MarkValidated(currentUrl);
 
             string ps4Ip = (ip?.Text ?? "").Trim();
             if (!Ps4LanAddressPolicy.TryNormalize(ps4Ip, out attemptedIp))
             {
-                Fail(bottom, Ps4LanAddressPolicy.RejectionMessage);
+                UiStageTracker.MarkFailed(currentUrl);
+                Fail(bottom, "[PS4-IP] " + Ps4LanAddressPolicy.RejectionMessage);
                 return;
             }
             ps4Ip = attemptedIp;
@@ -152,39 +157,37 @@ public static class UiAutoPipeline
             if (payload == null || payload.Length == 0)
                 throw new InvalidOperationException("O ELF gerado está vazio.");
             UiStateStore.Record(meta, "ELF GERADO", ps4Ip);
+            UiStageTracker.MarkGenerated(currentUrl);
 
             // The ELF stays in memory. Nothing is written to Downloads and no
             // Storage Access Framework/file-picker flow is invoked.
+            // A new link invalidates an ELF generated for a previous selection.
+            if (!string.Equals((url?.Text ?? "").Trim(), currentUrl, StringComparison.Ordinal))
+                throw new OperationCanceledException("Link changed while preparing ELF.");
             UiStateStore.Record(meta, "ENVIANDO ELF", ps4Ip);
+            UiStageTracker.MarkSending(currentUrl);
             SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
             transportStarted = true;
             await SendToBinLoaderAsync(ps4Ip, payload);
 
             // A completed TCP write is not an acknowledgement from BGFT.
             UiStateStore.Record(meta, "PAYLOAD ENVIADO", ps4Ip);
+            UiStageTracker.MarkSent(currentUrl);
             SetStatus(page, bottom, "ELF transmitido ao BinLoader. Confira o download no PS4.");
             Reset();
         }
-        catch (TimeoutException)
+        catch (OperationCanceledException) when (!transportStarted)
         {
-            RecordFailedStage(attemptedMeta, attemptedIp, transportStarted);
-            Fail(bottom, "O PS4:9090 não respondeu após várias tentativas. Confirme que o GoldHEN BinLoader está ativado.");
-        }
-        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
-        {
-            RecordFailedStage(attemptedMeta, attemptedIp, transportStarted);
-            Fail(bottom, "PS4 recusou a conexão na porta 9090 após várias tentativas. Reative o GoldHEN BinLoader e tente novamente.");
-        }
-        catch (SocketException ex)
-        {
-            RecordFailedStage(attemptedMeta, attemptedIp, transportStarted);
-            Fail(bottom, "Falha de rede ao conectar ao PS4:9090 (" + ex.SocketErrorCode + ").");
+            UiStageTracker.MarkFailed(operationUrl);
+            // This is a local cancellation before TCP 9090 is contacted.
+            Fail(bottom, "[PKG-ALTERADO] Link mudou durante a geração. Valide novamente antes de enviar.");
         }
         catch (Exception ex)
         {
+            UiStageTracker.MarkFailed(operationUrl);
             RecordFailedStage(attemptedMeta, attemptedIp, transportStarted);
-            // Do not echo exception messages: some providers include signed URLs.
-            Fail(bottom, "Falha no fluxo automático (" + ex.GetType().Name + "). Confira o link, Worker e BinLoader.");
+            // Never include exception.Message: signed provider links may be embedded.
+            Fail(bottom, UiTransportDiagnostics.Describe(ex, transportStarted));
         }
         finally
         {
