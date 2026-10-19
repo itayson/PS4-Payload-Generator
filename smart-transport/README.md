@@ -1,24 +1,39 @@
-# TaySon Smart Transport — desenvolvimento isolado
+# TaySon Smart Transport — fase de homologação
 
-Status: v0.1 experimental. **Nao habilitar direct mode em producao.**
+**Status:** código integrado e Worker de laboratório publicado. **DIRECT desabilitado** até validação BGFT no console.
 
-## Baseline verificada
-- Worker `seek`, versao `v12.2-transport-validation`.
-- Codigo integral preservado em `baselines/seek-v12.2-transport-validation.js` nesta branch.
-- APK 3.4.3, payload/ELF e BGFT permanecem inalterados.
+## Arquitetura
+APK 3.4.3 → rotas antigas do Worker → `servePkg()` com decisão Smart Transport → DIRECT (307) ou PROXY existente → BGFT.
 
-## Primeira implementacao (artefato v0.1)
-O modulo `smart-transport.mjs` foi implementado e testado localmente (15 cenarios). Ele escolhe PROXY por padrao; so considera DIRECT para URLs R2/Rootz/VikingFile assinadas quando as flags `SMART_DIRECT_ENABLED=true` e `SMART_BGFT_REDIRECT_VERIFIED=true` estao presentes e a sonda GET parcial real confirma assinatura PKG, Range e validade suficiente.
+## Componentes na branch
+- `baselines/seek-v12.2-transport-validation.js`: cópia integral verificada do código `seek`.
+- `src/smart-transport.mjs`: política DIRECT fail-closed por provedor e expiração.
+- `scripts/apply-smart-transport.mjs`: integrador com duas âncoras obrigatórias.
+- `builds/seek-smart-transport-v0.1.js`: Worker completo gerado do baseline.
+- `test/smart-transport.test.mjs`: testes unitários.
+- `.github/workflows/smart-transport.yml`: CI Node 22, valida sintaxe, testes e reprodutibilidade.
 
-A integracao preserva o formato das rotas `/api/routes`, `/api/akira-routes`, `/api/mocha-routes`, `/api/filek-routes` e `/api/viking-routes`. O modulo nao fica ativo simplesmente por existir nesta branch.
+## Implantação isolada confirmada
+- Worker: `tayson-smart-transport-lab` na conta Cloudflare.
+- URL esperada: https://tayson-smart-transport-lab.itayson.workers.dev/health
+- KV separado: `tayson-smart-transport-lab-routes`.
+- Bindings: `ROUTE_API_KEY` secreta; `SMART_DIRECT_ENABLED=false`; `SMART_BGFT_REDIRECT_VERIFIED=false`; `DISABLE_PUBLIC_FALLBACK=true`.
+- Produção `seek` e APK 3.4.3 não alterados.
+- A API de homologação exige credencial ausente no APK 3.4.3: **não trocar o endereço do app para o laboratório**.
 
-O pacote inicial, incluindo modulo, testes e aplicador de patch, foi entregue no ChatGPT sob o nome `TaySon_Smart_Transport_v0.1.zip`.
+## Resultados em 19/10/2026
+- Node 22: **31/31 testes locais PASS**, incluindo intervalos inválidos, expiração, SSRF, assinatura, autenticação contextual, >4 GiB.
+- Motor integrado: duas âncoras do código real substituídas e sintaxe validada.
+- API Cloudflare aceitou o Worker completo: **HTTP 200**, deploy isolado.
+- CI GitHub Actions: workflows novo e legado falharam sem etapas/logs disponíveis; causa **não comprovada**.
+- Smoke HTTP externo: bloqueado pela restrição da ferramenta para domínio workers.dev (não implica erro no Worker).
+- Teste físico 307 → BGFT / instalação no PS4: **PENDENTE**.
 
-## Proximas validacoes antes de habilitar DIRECT
-1. Integrar o modulo a uma copia verificada da baseline e passar testes em workerd.
-2. Publicar em ambiente staging isolado mantendo secrets e KV protegidos.
-3. Testar somente Range e cabecalho de PKG de URLs autorizadas e validas.
-4. Confirmar em PS4 fisico que BGFT segue HTTP 307 preservando Range, ETag e retomada.
-5. Habilitar por provedor somente depois de aprovar regresao e rollback.
+## Gate antes de habilitar DIRECT
+1. Confirmar que o laboratório atende `/health` (via navegador Android ou canal não bloqueado).
+2. Validar link PKG autorizado com GET parcial e assinatura real; não baixar arquivo inteiro na sonda.
+3. Observar se o BGFT aceita 307, mantém Range, inicia, retoma e conclui a instalação.
+4. Só então habilitar as duas flags para o provedor testado e planejar rollout canário e rollback.
+5. **Nunca promover para `seek` só por sucesso em mocks.**
 
-Nenhuma alteracao foi feita na publicacao `seek` por este trabalho.
+PR de implementação: https://github.com/itayson/PS4-Payload-Generator/pull/32
