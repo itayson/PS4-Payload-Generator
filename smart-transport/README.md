@@ -37,3 +37,16 @@ APK 3.4.3 → rotas antigas do Worker → `servePkg()` com decisão Smart Transp
 5. **Nunca promover para `seek` só por sucesso em mocks.**
 
 PR de implementação: https://github.com/itayson/PS4-Payload-Generator/pull/32
+
+## Atualização v0.2 — 19/10/2026
+
+- DIRECT agora depende também de `SMART_DIRECT_PROVIDERS`, uma lista explícita de provedores permitidos (`r2`, `viking`). Sem a lista, permanece PROXY mesmo que as duas flags globais sejam ligadas.
+- Código completo atualizado no Worker isolado `tayson-smart-transport-lab` via API de conteúdo, sem alterar os bindings ou segredos.
+- O Worker de produção `seek` permanece `v12.2-transport-validation`.
+- Testes unitários do pacote v0.2: **34/34 PASS** em Node.js 22.16.0.
+- Nova suíte versionada na PR (`test/integrated-worker.test.mjs`): **30/30 PASS** ao executar os arquivos do GitHub em Node.js 20.20.2, incluindo onze asserções no Worker completo com HTTP e KV simulados.
+- O modo DIRECT **continua desativado** no laboratório (`SMART_DIRECT_ENABLED=false`, `SMART_BGFT_REDIRECT_VERIFIED=false`).
+- CI GitHub Actions: **failure** reportado para o workflow legado e para Smart Transport; o serviço de logs respondeu 404 BlobNotFound, impossibilitando diagnóstico da causa. Os testes externos foram executados separadamente e não equivalem a CI aprovado.
+- O HTTP externo real dos Workers foi bloqueado pelo ambiente de consulta. O teste físico do PS4/BGFT (307, Range, retomada, instalação) **não foi realizado**.
+
+**Não habilitar DIRECT ou mesclar o PR até haver evidência de compatibilidade do BGFT e correção do CI.**
