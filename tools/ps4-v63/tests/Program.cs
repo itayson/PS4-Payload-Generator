@@ -24,6 +24,10 @@ static class Program
         Check(!Ps4Discovery.IsPs4Response(new string('A', 4097)), "reject oversized");
         Check(Ps4LanAddressPolicy.TryNormalize("192.168.0.7", out var address) && address == "192.168.0.7","accept last PS4 LAN");
         Check(Ps4LanAddressPolicy.BinLoaderPort==9090, "preserve original BinLoader port");
+        var start = DateTime.UtcNow;
+        var detected = Ps4Discovery.DiscoverAsync().GetAwaiter().GetResult();
+        Check(detected != null && (DateTime.UtcNow - start).TotalSeconds < 8,
+            "libc UDP discovery completes within bounded window in build sandbox");
         Console.WriteLine("RESULT: "+checks+" discovery protocol checks passed");
     }
 }
