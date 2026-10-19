@@ -42,14 +42,12 @@ public static class UiStateStore
         if (value.Length > 0) Preferences.Default.Set(Ps4IpKey, value);
     }
 
+    // Fixed, upgrade-safe Worker endpoint. Its deployed code changes without APK replacement.
     public static string LoadWorkerUrl(string fallback = BgftRoutePlanner.DefaultWorkerBase)
-        => Preferences.Default.Get(WorkerUrlKey, fallback ?? BgftRoutePlanner.DefaultWorkerBase);
+        => BgftRoutePlanner.DefaultWorkerBase;
 
-    public static void SaveWorkerUrl(string value)
-    {
-        value = (value ?? "").Trim();
-        if (value.Length > 0) Preferences.Default.Set(WorkerUrlKey, value);
-    }
+    // Previous custom/staging Worker URLs are ignored to prevent stale endpoints.
+    public static void SaveWorkerUrl(string value) { }
 
     public static IReadOnlyList<UiHistoryItem> ReadHistory()
     {
