@@ -129,6 +129,7 @@ public static class UiHomeScreen
         Grid.SetColumn(port, 1); Grid.SetRowSpan(port, 3); connectionGrid.Children.Add(port);
         var connectionBody = new VerticalStackLayout { Spacing = 9 };
         connectionBody.Children.Add(connectionGrid);
+        if (ip != null) connectionBody.Children.Add(ip);
         var findPs4 = new Button
         {
             Text = "Localizar PS4",
@@ -413,22 +414,6 @@ public static class UiHomeScreen
         if (local != null) { local.IsVisible = false; payloadBody.Children.Add(local); }
         payloadActions.Content = payloadBody;
         body.Children.Add(payloadActions);
-
-        if (ip != null)
-        {
-            var ipCard = Card();
-            ipCard.Content = new VerticalStackLayout
-            {
-                Spacing = 6,
-                Children =
-                {
-                    SectionTitle("Destino", Cyan),
-                    new Label { Text = "IP do PS4 · TCP 9090", TextColor = Muted, FontSize = 10 },
-                    ip
-                }
-            };
-            body.Children.Add(ipCard);
-        }
 
         if (bottom != null)
         {
