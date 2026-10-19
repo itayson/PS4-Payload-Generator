@@ -1,0 +1,33 @@
+name: Tayson Transport v6.2 — Pure Checks
+
+on:
+  push:
+    branches:
+      - feature/ps4-transport-diagnostics-v6.2
+  pull_request:
+    paths:
+      - 'tools/ps4-transport-v62/**'
+      - 'payload-generator/3.2.0/UPDATE/src/Ps4LanAddressPolicy.cs'
+      - '.github/workflows/transport-v62-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  destination-policy:
+    name: PS4 destination and signing guard syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Execute 33 PS4 address policy tests
+        run: dotnet run --project tools/ps4-transport-v62/tests/TransportTests.csproj -c Release --no-launch-profile
+      - name: Verify signing identity guard parses
+        run: python3 -m py_compile tools/ps4-transport-v62/verify_signing_identity.py
+
+# Intentionally no Android APK signing, no keystore generation, no deploy
+# to Cloudflare, no payload transmission, and no production promotion.
