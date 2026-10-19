@@ -19,6 +19,9 @@ from pathlib import Path
 
 OLD_PACKAGE = "com.phoenixx.ps4remotepkg"
 NEW_PACKAGE = "com.tayson.ps4payloadgenerator"
+# Established after the owner-approved clean install of experimental v6.3.1.
+# A mismatch would require another uninstall; never publish such an APK.
+PERMANENT_STAGING_SIGNER_SHA256 = "3d8daee7afa38dedd1378f6a6dd0c7cf6604785ef594413c344a5f94e1d56219"
 MONO_PROVIDER = OLD_PACKAGE + ".mono.MonoRuntimeProvider.__mono_init__"
 ICON_NAMES = ("icone.png", "icone_round.png", "icone_background.png", "icone_foreground.png")
 DENSITIES = ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
@@ -226,15 +229,17 @@ def main():
     parser.add_argument("--unsigned-output", required=True, type=Path)
     parser.add_argument("--tools", required=True, type=Path)
     parser.add_argument("--keystore", required=True, type=Path)
-    parser.add_argument("--storepass", default="android")
-    parser.add_argument("--keypass", default="android")
-    parser.add_argument("--alias", default="tayson-test")
+    parser.add_argument("--alias", default="tayson-v631-permanent")
+    # NEVER accept plaintext passwords in CLI/process listings for releases.
+    # Both refs may point to the same environment variable for a PKCS#12 file.
     parser.add_argument("--storepass-ref", help="apksigner env:NAME reference, never actual password")
     parser.add_argument("--keypass-ref", help="apksigner env:NAME reference, never actual password")
     parser.add_argument("--build-info", type=Path)
     parser.add_argument("--old-package", default=OLD_PACKAGE)
     parser.add_argument("--new-package", default=NEW_PACKAGE)
     args = parser.parse_args()
+    if not args.storepass_ref or not args.keypass_ref:
+        raise ValueError("Release signing requires --storepass-ref and --keypass-ref env:VARIABLE references.")
     for ref in (args.storepass_ref, args.keypass_ref):
         if ref is not None:
             if not re.fullmatch(r"env:[A-Z][A-Z0-9_]*", ref):
@@ -290,10 +295,23 @@ def main():
         run("java", "-jar", signer, "sign",
             "--ks", args.keystore,
             "--ks-key-alias", args.alias,
-            "--ks-pass", args.storepass_ref or ("pass:" + args.storepass),
-            "--key-pass", args.keypass_ref or ("pass:" + args.keypass),
+            "--ks-pass", args.storepass_ref,
+            "--key-pass", args.keypass_ref,
             "--out", args.output, args.unsigned_output)
-        run("java", "-jar", signer, "verify", "--verbose", args.output)
+        verification = subprocess.run(
+            ["java", "-jar", str(signer), "verify", "--verbose",
+             "--print-certs", str(args.output)],
+            check=True, capture_output=True, text=True)
+        match = re.search(
+            r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F:]+)",
+            verification.stdout, re.IGNORECASE)
+        fingerprint = (match.group(1).replace(":", "").lower()
+                       if match else "")
+        if fingerprint != PERMANENT_STAGING_SIGNER_SHA256:
+            args.output.unlink(missing_ok=True)
+            raise ValueError(
+                "Certificate mismatch: unsigned APK was not released. "
+                "Use only the permanent v6.3.1 signing key.")
 
     with zipfile.ZipFile(args.output, "r") as final_zip, zipfile.ZipFile(args.apk, "r") as base_zip:
         if final_zip.testzip() is not None:
