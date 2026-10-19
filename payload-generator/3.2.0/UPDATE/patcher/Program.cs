@@ -107,6 +107,19 @@ var scanIL = scan.Body.GetILProcessor();
 var first = scan.Body.Instructions[0];
 scanIL.InsertBefore(first, Instruction.Create(OpCodes.Ldarg_0));
 scanIL.InsertBefore(first, Instruction.Create(OpCodes.Call, Target("Tayson.Providers.Integration", "Invalidate")));
+// Guard the ORIGINAL manual send handler too. The async-void method itself is
+// a state-machine launcher; checking here prevents its creation for invalid IPs.
+// This leaves the complete, previously working sender body untouched.
+var legacyManual = main.Methods.Single(m => m.Name == "BtnInjetar_Clicked" &&
+    m.Parameters.Count == 2 && m.ReturnType.FullName == "System.Void");
+var manualIL = legacyManual.Body.GetILProcessor();
+var originalFirst = legacyManual.Body.Instructions[0];
+manualIL.InsertBefore(originalFirst, Instruction.Create(OpCodes.Ldarg_0));
+manualIL.InsertBefore(originalFirst, Instruction.Create(OpCodes.Call,
+    Target("Tayson.Providers.ManualSendGuard", "Allow")));
+manualIL.InsertBefore(originalFirst, Instruction.Create(OpCodes.Brtrue_S, originalFirst));
+manualIL.InsertBefore(originalFirst, Instruction.Create(OpCodes.Ret));
+
 merged.Write(args[3]);
 using var check = AssemblyDefinition.ReadAssembly(args[3], read);
 var tokens = original.MainModule.GetTypes().ToDictionary(t => t.FullName, t => t.MetadataToken.ToUInt32());
