@@ -20,7 +20,7 @@ test('requires BGFT verification',async()=>assert.equal((await decide(route,{SMA
 test('requires DIRECT enable',async()=>assert.equal((await decide(route,{SMART_BGFT_REDIRECT_VERIFIED:'true'})).reason,'disabled'));
 test('valid 5 GiB R2 route',async()=>{const d=await decide();assert.equal(d.mode,'direct');assert.equal(d.totalBytes,'5368709120');});
 test('redirect 307 preserves signed URL',async()=>{const r=await smartTransportMaybeRedirect(new Request('https://worker.example/d/test.pkg'),route,env,{fetch:goodFetch(),now:()=>now});assert.equal(r.status,307);assert.equal(r.headers.get('location'),url);assert.equal(r.headers.get('Cache-Control'),'no-store');});
-test('HEAD allowed only with two flags',async()=>{const r=await smartTransportMaybeRedirect(new Request('https://worker.example/d/test.pkg',{method:'HEAD'}),route,env,{fetch:goodFetch(),now:()=>now});assert.equal(r.status,307);});
+test('HEAD stays on Worker metadata path and never makes a direct probe',async()=>{const r=await smartTransportMaybeRedirect(new Request('https://worker.example/d/test.pkg',{method:'HEAD'}),route,env,{fetch:()=>{throw Error('HEAD probe is forbidden')},now:()=>now});assert.equal(r,null);});
 test('POST never redirects',async()=>assert.equal(await smartTransportMaybeRedirect(new Request('https://worker.example/d/test.pkg',{method:'POST'}),route,env,{fetch:goodFetch(),now:()=>now}),null));
 test('cookie-dependent route stays in proxy',async()=>assert.equal((await decide({...route,cookie:'secret'})).mode,'proxy'));
 test('provider requiring context stays in proxy',async()=>assert.equal((await decide({...route,kind:'akira'})).reason,'provider_not_approved'));
