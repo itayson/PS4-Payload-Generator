@@ -15,7 +15,10 @@ public static class Ps4Discovery
 {
     const int DiscoveryPort = 987;
     public static string LastDiagnostic { get; private set; } = "Busca não iniciada.";
-    const string Request = "SRCH * HTTP/1.1\r\ndevice-discovery-protocol-version:00020020\r\n\r\n";
+    // Canonical DDP search uses LF, without an extra blank line.
+    const string Request = "SRCH * HTTP/1.1\n" +
+                           "device-discovery-protocol-version:00020020\n";
+    public static byte[] BuildSearchPacket() => Encoding.ASCII.GetBytes(Request);
     const int AfInet = 2, SockDgram = 2, IpProtoUdp = 17, SolSocket = 1, SoBroadcast = 6, PollIn = 1;
     [StructLayout(LayoutKind.Sequential)]
     struct PollFd { public int File; public short Events; public short Returned; }
@@ -24,6 +27,8 @@ public static class Ps4Discovery
     static extern int OpenSocket(int family, int socketType, int protocol);
     [DllImport("libc", EntryPoint = "setsockopt", SetLastError = true)]
     static extern int SetOption(int socket, int level, int option, ref int value, uint valueLength);
+    [DllImport("libc", EntryPoint = "bind", SetLastError = true)]
+    static extern int BindSocket(int socket, byte[] address, uint addressLength);
     [DllImport("libc", EntryPoint = "sendto", SetLastError = true)]
     static extern long SendTo(int socket, byte[] bytes, UIntPtr length, int flags, byte[] address, uint lengthAddress);
     [DllImport("libc", EntryPoint = "recvfrom", SetLastError = true)]
@@ -61,6 +66,14 @@ public static class Ps4Discovery
         return addr;
     }
 
+    static byte[] BindAddress(int port)
+    {
+        var address = MakeAddress(0, 0, 0, 0);
+        address[2] = (byte)(port >> 8);
+        address[3] = (byte)(port & 255);
+        return address;
+    }
+
     static byte[] KnownAddress(string knownIp)
     {
         if (!Ps4LanAddressPolicy.TryNormalize(knownIp, out string ip)) return null;
@@ -96,9 +109,12 @@ public static class Ps4Discovery
                         Marshal.GetLastWin32Error() + ").";
                     return found;
                 }
+                // Prefer the widely-used DDP source port 1987. If occupied,
+                // let sendto auto-bind an ephemeral port rather than failing.
+                bool bound1987 = BindSocket(fd, BindAddress(1987), 16) == 0;
                 int enabled = 1;
                 bool broadcastAllowed = SetOption(fd, SolSocket, SoBroadcast, ref enabled, 4) == 0;
-                byte[] bytes = Encoding.ASCII.GetBytes(Request);
+                byte[] bytes = BuildSearchPacket();
                 DateTime stop = DateTime.UtcNow.AddSeconds(4);
                 DateTime nextProbe = DateTime.UtcNow;
                 int rounds = 0;
@@ -147,7 +163,8 @@ public static class Ps4Discovery
                         !found.Contains(normalized)) found.Add(normalized);
                 }
                 if (found.Count > 0)
-                    LastDiagnostic = "PS4 respondeu ao protocolo UDP 987.";
+                    LastDiagnostic = "PS4 respondeu ao protocolo UDP 987 (" +
+                        (bound1987 ? "origem 1987" : "porta de origem dinâmica") + ").";
                 else if (sent == 0)
                     LastDiagnostic = issue.Length > 0 ? issue : "Não foi possível enviar consultas UDP.";
                 else if (receivedCount == 0)
