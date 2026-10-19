@@ -521,4 +521,513 @@ async function createAkiraRoute(request, env, origin) {
     return new Response("Invalid AkiraBox route: " + e.message + "\n", { status: 400 });
   }
   const short = await putRoute(env, route, origin, "a");
-  if (short) return new Response(short + "\n", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } }) --- TRUNCATED --- 46,724 chars
+  if (short) return new Response(short + "\n", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+  // Public fallback cannot preserve custom upstream headers or cookies.
+  if (route.cookie || route.referer !== "https://akirabox.to/" ||
+      route.userAgent !== DEFAULT_AKIRA_UA || !fallbackPermitted(env, route.url))
+    return new Response("Route storage required for Akira context\n", { status: 503 });
+  return new Response(`${origin}/akira.pkg?u=${encodeBase64Url(route.url)}\n`, {
+    status: 200,
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Akira-Context": "no-kv-cookie-omitted" }
+  });
+}
+
+
+async function createProviderRoute(request, env, origin, provider) {
+  const length = Number(request.headers.get("content-length") || 0);
+  if (length > MAX_ROUTE_BODY)
+    return new Response("URL too large\n", { status: 413 });
+
+  const raw = (await readBoundedBody(request)).trim();
+  let route;
+  let prefix;
+
+  try {
+    if (provider === "mocha") {
+      route = validateMocha(raw);
+      prefix = "m";
+    } else if (provider === "filek") {
+      route = validateFileK(raw);
+      prefix = "f";
+    } else if (provider === "viking") {
+      route = validateViking(raw);
+      prefix = "v";
+    } else {
+      throw new Error("unsupported provider route");
+    }
+  } catch (e) {
+    return new Response(
+      "Invalid " + provider + " URL: " + e.message + "\n",
+      { status: 400 }
+    );
+  }
+
+  const short = await putRoute(env, route, origin, prefix);
+  if (short) {
+    return new Response(short + "\n", {
+      status: 200,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Tayson-Provider": provider
+      }
+    });
+  }
+
+  if (provider === "viking" && fallbackPermitted(env, route.url)) {
+    return new Response(
+      origin + "/viking.pkg?u=" + encodeBase64Url(route.url) + "\n",
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Tayson-Provider": provider
+        }
+      }
+    );
+  }
+
+  return new Response("Route storage required for " + provider + "\n", {
+    status: 503,
+    headers: { "Cache-Control": "no-store" }
+  });
+}
+
+function validateStoredRoute(stored) {
+  let parsed;
+  try { parsed = JSON.parse(stored); }
+  catch (_) {
+    if (stored.trim().startsWith("{")) throw safeError("invalid stored route", 410);
+    return validateR2(stored, 1); // Legacy raw R2 record.
+  }
+  try {
+    let route;
+    if (parsed?.kind === "akira")
+      route = validateAkira(parsed.url, parsed.cookie, parsed.referer, parsed.userAgent, 1);
+    else if (parsed?.kind === "mocha")
+      route = validateMocha(parsed.url, parsed.referer, parsed.userAgent, 1);
+    else if (parsed?.kind === "filek")
+      route = validateFileK(parsed.url, parsed.referer, parsed.userAgent);
+    else if (parsed?.kind === "viking") route = validateViking(parsed.url, 1);
+    else if (parsed?.kind === "r2") route = validateR2(parsed.url, 1);
+    else throw new Error("unknown route kind");
+    if (parsed.routeExpiresAt !== undefined) {
+      if (!Number.isSafeInteger(parsed.routeExpiresAt) || parsed.routeExpiresAt <= Date.now())
+        throw new Error("route expired");
+      route.routeExpiresAt = parsed.routeExpiresAt;
+    }
+    return route;
+  } catch (_) { throw safeError("route expired or invalid", 410); }
+}
+
+async function loadStoredRoute(env, token) {
+  let stored;
+  try {
+    if (env.ROUTE_STORE_MODE === "durable") {
+      stored = await getDurableRoute(env, token);
+    } else {
+      if (!env.ROUTES || typeof env.ROUTES.get !== "function")
+        throw safeError("route storage is not configured", 503);
+      stored = await env.ROUTES.get(token);
+    }
+  } catch (_) { throw safeError("route storage unavailable", 503); }
+  if (!stored) throw safeError("route expired or missing", 410);
+  return validateStoredRoute(stored);
+}
+
+async function resolveRoute(url, env) {
+  if (env.DISABLE_PUBLIC_FALLBACK === "true" &&
+      ["/r2.pkg", "/viking.pkg", "/mocha.pkg", "/filek.pkg", "/akira.pkg"].includes(url.pathname))
+    throw safeError("public fallback disabled", 404);
+  let m = /^\/d\/([a-f0-9]{32})\.pkg$/i.exec(url.pathname);
+  if (m) return loadStoredRoute(env, m[1]);
+  m = /^\/a\/([a-f0-9]{32})\.pkg$/i.exec(url.pathname);
+  if (m) return loadStoredRoute(env, m[1]);
+  m = /^\/m\/([a-f0-9]{32})\.pkg$/i.exec(url.pathname);
+  if (m) return loadStoredRoute(env, m[1]);
+  m = /^\/f\/([a-f0-9]{32})\.pkg$/i.exec(url.pathname);
+  if (m) return loadStoredRoute(env, m[1]);
+  m = /^\/v\/([a-f0-9]{32})\.pkg$/i.exec(url.pathname);
+  if (m) return loadStoredRoute(env, m[1]);
+
+  if (url.pathname === "/r2.pkg")
+    return validateR2(decodeBase64Url(url.searchParams.get("u")), 1);
+  if (url.pathname === "/viking.pkg")
+    return validateViking(decodeBase64Url(url.searchParams.get("u")), 1);
+  if (url.pathname === "/mocha.pkg")
+    return validateMocha(decodeBase64Url(url.searchParams.get("u")), undefined, undefined, 1);
+  if (url.pathname === "/filek.pkg")
+    return validateFileK(decodeBase64Url(url.searchParams.get("u")));
+  if (url.pathname === "/akira.pkg")
+    return validateAkira(decodeBase64Url(url.searchParams.get("u")), "", "https://akirabox.to/", DEFAULT_AKIRA_UA, 1);
+  throw Object.assign(new Error("not found"), { status: 404 });
+}
+
+async function servePkg(request, route) {
+  if (request.method === "HEAD") {
+    const probe = await probeSize(route);
+    if (!probe.ok) {
+      if (route.transportTrace && !route.transportTrace.rejection)
+        route.transportTrace.rejection = "HEAD probe rejected";
+      return new Response(null, {
+        status: probe.status || 502, headers: { "Cache-Control": "no-store" }
+      });
+    }
+    const h = pkgHeaders();
+    h.set("Content-Length", String(probe.size));
+    h.set("X-Tayson-Range-Support", probe.supportsRanges ? "yes" : "no");
+    if (probe.supportsRanges) h.set("Accept-Ranges", "bytes");
+    if (probe.etag) h.set("ETag", probe.etag);
+    if (probe.lastModified) h.set("Last-Modified", probe.lastModified);
+    return new Response(null, { status: 200, headers: h });
+  }
+  if (request.method !== "GET")
+    return new Response("Method not allowed\n", { status: 405, headers: { "Allow": "GET, HEAD" } });
+
+  let range;
+  try { range = parseClientRange(request.headers.get("range")); }
+  catch (e) {
+    if (route.transportTrace) route.transportTrace.rejection = e.message;
+    return new Response(e.message + "\n", {
+      status: e.status || 416,
+      headers: { "Accept-Ranges": "bytes", "Cache-Control": "no-store" }
+    });
+  }
+  const ifRange = range ? request.headers.get("if-range") : null;
+  const upstream = await fetchUpstream(route, range?.header || null, ifRange);
+  if (upstream.status !== 200 && upstream.status !== 206) {
+    // Error pages are not packages. Keep the upstream status, not its HTML body.
+    const headers = new Headers({ "Cache-Control": "no-store", "X-Tayson-Worker-Version": VERSION });
+    if (upstream.status === 416 && upstream.headers.has("content-range"))
+      headers.set("Content-Range", upstream.headers.get("content-range"));
+    if ([429, 503].includes(upstream.status) && upstream.headers.has("retry-after"))
+      headers.set("Retry-After", upstream.headers.get("retry-after"));
+    try { await upstream.body?.cancel(); } catch (_) {}
+    return new Response(null, { status: upstream.status, headers });
+  }
+  try { validateRepresentation(upstream, range, ifRange); }
+  catch (e) {
+    try { await upstream.body?.cancel(); } catch (_) {}
+    if (route.transportTrace) route.transportTrace.rejection = e.message;
+    return new Response(e.message + "\n", { status: e.status || 502, headers: { "Cache-Control": "no-store" } });
+  }
+
+  const h = pkgHeaders();
+  for (const name of ["content-length", "content-range", "etag", "last-modified"]) {
+    const value = upstream.headers.get(name);
+    if (value) h.set(name, value);
+  }
+  // Preserve octet-stream regardless of a provider's filename or text/plain hint.
+  if (upstream.status === 206 || upstream.headers.get("accept-ranges") === "bytes")
+    h.set("Accept-Ranges", "bytes");
+  h.set("X-Upstream-Status", String(upstream.status));
+  let body;
+  // A 200 after If-Range mismatch is a full representation: verify its PKG magic.
+  try { body = await guardPkgPrefix(upstream, upstream.status === 200 ? null : range?.header || null); }
+  catch (e) {
+    if (route.transportTrace) route.transportTrace.rejection = e.message;
+    return new Response("PKG signature check failed\n", {
+      status: e.status || 502, headers: { "Cache-Control": "no-store" }
+    });
+  }
+  return new Response(body, { status: upstream.status, headers: h });
+}
+
+
+function durableStub(env, token) {
+  const namespace = env.ROUTE_DIRECTORY;
+  if (!namespace) throw safeError("ROUTE_DIRECTORY Durable Object binding is missing", 503);
+  const shard = token.slice(0, 2);
+  return namespace.get(namespace.idFromName(shard));
+}
+
+async function putDurableRoute(env, token, route, ttl) {
+  const stub = durableStub(env, token);
+  const expiresAt = route.routeExpiresAt ?? Date.now() + ttl * 1000;
+  const response = await stub.fetch("https://route-directory.internal/put", {
+    method: "POST", headers: { "Content-Type":"application/json" },
+    body: JSON.stringify({token, route, expires_at: expiresAt})
+  });
+  if (response.status !== 204) throw safeError("durable route store rejected write", 503);
+}
+
+async function getDurableRoute(env, token) {
+  const stub = durableStub(env, token);
+  const response = await stub.fetch("https://route-directory.internal/get/"+token);
+  if (response.status === 404 || response.status === 410) return null;
+  if (response.status !== 200) throw safeError("durable route store unavailable", 503);
+  const value = await response.text();
+  if (value.length > MAX_ROUTE_BODY + 16384) throw safeError("durable record too large", 502);
+  return value;
+}
+
+// SQLite-backed DO: 256 deterministic shards keyed by two characters of a
+// random route token. This is storage/lookup only, NOT a download manager.
+export class TaysonRouteDirectory {
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.sql = ctx.storage.sql;
+    this.sql.exec("CREATE TABLE IF NOT EXISTS routes (token TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, payload TEXT NOT NULL)");
+    this.sql.exec("CREATE INDEX IF NOT EXISTS routes_expire_idx ON routes(expires_at)");
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/put" && request.method === "POST") {
+      let record;
+      try { record = await request.json(); } catch (_) { return new Response(null,{status:400}); }
+      if (!record || !/^[a-f0-9]{32}$/.test(record.token || "") ||
+          typeof record.expires_at !== "number" || !Number.isSafeInteger(record.expires_at) ||
+          record.expires_at < Date.now() || record.expires_at > Date.now() + MAX_ROUTE_TTL_SECONDS * 1000 ||
+          !record.route || typeof record.route.url !== "string") return new Response(null,{status:400});
+      const serialized = JSON.stringify(record.route);
+      if (serialized.length > MAX_ROUTE_BODY + 16000) return new Response(null,{status:413});
+      this.sql.exec("INSERT OR REPLACE INTO routes(token, expires_at, payload) VALUES(?,?,?)",
+        record.token, record.expires_at, serialized);
+      const current = await this.ctx.storage.getAlarm();
+      if (current === null || current > record.expires_at) await this.ctx.storage.setAlarm(record.expires_at);
+      return new Response(null,{status:204});
+    }
+    const match = /^\/get\/([a-f0-9]{32})$/.exec(url.pathname);
+    if (request.method === "GET" && match) {
+      const row = this.sql.exec("SELECT expires_at, payload FROM routes WHERE token = ?", match[1]).toArray()[0];
+      if (!row) return new Response(null,{status:404});
+      if (row.expires_at <= Date.now()) {
+        this.sql.exec("DELETE FROM routes WHERE token = ?",match[1]);
+        return new Response(null,{status:410});
+      }
+      return new Response(row.payload,{status:200,headers:{"Content-Type":"application/json","Cache-Control":"no-store"}});
+    }
+    return new Response(null,{status:404});
+  }
+
+  async alarm() {
+    this.sql.exec("DELETE FROM routes WHERE expires_at <= ?", Date.now());
+    const next = this.sql.exec("SELECT MIN(expires_at) AS next_due FROM routes").one().next_due;
+    if (next !== null && next > Date.now()) await this.ctx.storage.setAlarm(next);
+  }
+}
+
+// Opt-in diagnostics, separate from BGFT and the frozen Android 3.4.3 client.
+// Calls require DIAGNOSTIC_API_KEY and never return the original signed URL.
+async function diagnosticKeyAccepted(request, env) {
+  const expected = String(env.DIAGNOSTIC_API_KEY || "");
+  const given = String(request.headers.get("x-diagnostic-key") || "");
+  if (expected.length < 16 || given.length > 512) return false;
+  const sha = async x => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(x)));
+  const a = await sha(expected), b = await sha(given);
+  let difference = 0;
+  for (let i = 0; i < a.length; i++) difference |= a[i] ^ b[i];
+  return difference === 0;
+}
+
+function expiryKnown(route) {
+  if (route.kind === "r2" || route.kind === "viking" || route.kind === "akira") return true;
+  return route.kind === "mocha" && new URL(route.url).searchParams.has("expires");
+}
+
+function normalizeContentId(bytes) {
+  if (bytes.byteLength < 100) return null;
+  const id = new TextDecoder("ascii").decode(bytes.subarray(0x40, 0x40 + 36));
+  return /^[A-Z]{2}[0-9]{4}-[A-Z]{4}[0-9]{5}_[0-9A-Z]{2}-[A-Z0-9_]{16}$/.test(id) ? id : null;
+}
+
+async function probePackage(route, mbps) {
+  const received = await fetchUpstream(route, "bytes=0-127", null);
+  const upstreamStatus = received.status;
+  const contentType = received.headers.get("content-type") || "";
+  const contentRange = received.headers.get("content-range") || "";
+  const parsed = parseResponseRange(contentRange);
+  const indicatedLength = received.headers.get("content-length");
+  const totalBytes = upstreamStatus === 206 && parsed && parsed.total !== null ? parsed.total :
+    (upstreamStatus === 200 && Number.isSafeInteger(Number(indicatedLength)) ? Number(indicatedLength) : null);
+  const result = {
+    ok: false, provider: route.kind, upstream_status: upstreamStatus,
+    content_type: contentType.split(";")[0], content_encoding: received.headers.get("content-encoding") || "identity",
+    range_supported: upstreamStatus === 206 && !!parsed && parsed.first === 0 && parsed.last === 127,
+    size_bytes: totalBytes, pkg_magic_valid: false, content_id: null,
+    expiration_known: expiryKnown(route), remaining_seconds: expiryKnown(route) ? route.remaining : null,
+    provider_expires_at: route.providerExpiresAt ?? null,
+    route_expires_at: route.routeExpiresAt ?? null,
+    route_remaining_seconds: Number.isSafeInteger(route.routeExpiresAt) ?
+      Math.max(0, Math.floor((route.routeExpiresAt - Date.now()) / 1000)) : null,
+    effective_remaining_seconds: null,
+    estimated_seconds: null, lifetime_sufficient: null, diagnostic: "upstream_unavailable"
+  };
+  try {
+    if (![200, 206].includes(upstreamStatus)) return result;
+    if (isWrongContentType(contentType) || !identityEncoding(received)) {
+      result.diagnostic = "invalid_content_type_or_encoding";
+      return result;
+    }
+    try { validateRepresentation(received, parseClientRange("bytes=0-127"), null, true); }
+    catch (_) { result.diagnostic = "invalid_range_or_length"; return result; }
+    const reader = received.body?.getReader();
+    if (!reader) { result.diagnostic = "empty_response"; return result; }
+    const prefix = new Uint8Array(128);
+    let n = 0;
+    const deadline = Date.now() + PREFIX_TIMEOUT_MS;
+    try {
+      while (n < prefix.length) {
+        const part = await beforeDeadline(() => reader.read(), deadline,
+          () => { void reader.cancel().catch(() => {}); });
+        if (part.done) break;
+        const length = Math.min(prefix.length - n, part.value.byteLength);
+        prefix.set(part.value.subarray(0, length), n); n += length;
+      }
+    } finally { try { await reader.cancel(); } catch (_) {} try { reader.releaseLock(); } catch (_) {} }
+    result.pkg_magic_valid = n >= 4 && hasPkgMagic(prefix);
+    result.content_id = n >= 100 ? normalizeContentId(prefix) : null;
+    if (!result.pkg_magic_valid) { result.diagnostic = "invalid_pkg_magic"; return result; }
+    if (upstreamStatus !== 206 || !result.range_supported) {
+      result.diagnostic = "range_ignored_or_invalid";
+      return result;
+    }
+    if (n !== 128 || !Number.isSafeInteger(totalBytes) || totalBytes < 128) {
+      result.diagnostic = "truncated_or_unknown_size";
+      return result;
+    }
+    result.estimated_seconds = Math.ceil(totalBytes * 8 / (mbps * 1_000_000)) + 600;
+    const limits = [
+      result.provider_expires_at, result.route_expires_at
+    ].filter(Number.isSafeInteger).map(t => Math.max(0, Math.floor((t - Date.now()) / 1000)));
+    result.effective_remaining_seconds = limits.length ? Math.min(...limits) : null;
+    result.remaining_seconds = result.provider_expires_at === null ? null :
+      Math.max(0, Math.floor((result.provider_expires_at - Date.now()) / 1000));
+    result.lifetime_sufficient = limits.length ?
+      result.effective_remaining_seconds >= result.estimated_seconds : null;
+    if (result.lifetime_sufficient === false) {
+      result.diagnostic = result.route_remaining_seconds !== null &&
+        result.route_remaining_seconds < result.estimated_seconds ? "route_expiry_risk" : "url_expiry_risk";
+      return result;
+    }
+    result.ok = true;
+    result.diagnostic = result.expiration_known ? "ready_for_bgft_http" : "http_ready_expiry_unknown";
+    return result;
+  } finally {
+    try { await received.body?.cancel(); } catch (_) {}
+  }
+}
+
+async function diagnoseRoute(request, env) {
+  if (!env.DIAGNOSTIC_API_KEY) return new Response("Not found\n", { status: 404 });
+  if (!await diagnosticKeyAccepted(request, env)) return new Response("Unauthorized\n", { status: 401 });
+  if (request.method !== "POST") return new Response("Method not allowed\n", { status: 405 });
+  let data;
+  try { data = JSON.parse(await readBoundedBody(request)); }
+  catch (_) { return new Response("Invalid diagnostic request\n", { status: 400 }); }
+  if (!data || typeof data.path !== "string" || !/^\/(?:d|a|m|f|v)\/[a-f0-9]{32}\.pkg$/i.test(data.path))
+    return new Response("Invalid route path\n", { status: 400 });
+  const mbps = data.mbps === undefined ? 25 : data.mbps;
+  if (typeof mbps !== "number" || !Number.isFinite(mbps) || mbps <= 0 || mbps > 10000)
+    return new Response("Invalid bandwidth estimate\n", { status: 400 });
+  try {
+    const route = await resolveRoute(new URL(data.path, request.url), env);
+    const report = await probePackage(route, mbps);
+    return Response.json(report, { headers: { "Cache-Control": "no-store" } });
+  } catch (e) {
+    return Response.json({ ok:false, diagnostic: e.status === 410 ? "route_expired" : "probe_failed", error_status:e.status || 502 },
+      { status: e.status === 410 ? 410 : 502, headers: { "Cache-Control":"no-store" } });
+  }
+}
+
+function safeRequestCategory(range) {
+  if (!range) return "full";
+  if (/^bytes=0-0$/i.test(range)) return "probe";
+  if (/^bytes=0-\d+$/i.test(range)) return "initial";
+  if (/^bytes=\d+-\d*$/i.test(range)) return "resume";
+  return "unsupported";
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === "/" || url.pathname === "/health") {
+      if (request.method !== "GET" && request.method !== "HEAD")
+        return new Response("Method not allowed\n", { status: 405, headers: { "Allow": "GET, HEAD" } });
+      const kvReady = !!(env.ROUTES &&
+        typeof env.ROUTES.get === "function" &&
+        typeof env.ROUTES.put === "function");
+      const durableReady = !!env.ROUTE_DIRECTORY;
+      const mode = env.ROUTE_STORE_MODE === "durable" ? "durable" : "kv";
+      const routesReady = mode === "durable" ? durableReady : kvReady;
+      return new Response(request.method === "HEAD" ? null :
+        "Tayson Payload Generator Universal Transport Worker " + VERSION + ": OK\n" +
+        "ROUTES: " + (routesReady ? "OK" : "MISSING") + "\n" +
+        "ROUTE_STORE_MODE: " + mode + "\n" +
+        "PUBLIC_FALLBACK: " + (env.DISABLE_PUBLIC_FALLBACK === "true" ? "OFF" : "ON") + "\n" +
+        "PROVIDERS: AkiraBox, Rootz, Mocha, FileKeeper, VikingFile\n" +
+        "AKIRA_REGIONAL_HOSTS: ON\n" +
+        "FILEK_EXTENSION_NORMALIZATION: ON\n" +
+        "FILEK_DLPROXY: ON\n" +
+        "MOCHA_ROUTE: /m/<token>.pkg\n" +
+        "FILEK_ROUTE: /f/<token>.pkg\n" +
+        "VIKING_ROUTE: /v/<token>.pkg\n",
+        {
+          status: 200,
+          headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
+        }
+      );
+    }
+    if (url.pathname === "/api/diagnose") return diagnoseRoute(request, env);
+    if (url.pathname.startsWith("/api/")) {
+      const denied = requireRouteAuth(request, env);
+      if (denied) return denied;
+    }
+    try {
+    if (url.pathname === "/api/routes") {
+      if (request.method !== "POST") return new Response("Method not allowed\n", { status: 405 });
+      return await createR2Route(request, env, url.origin);
+    }
+    if (url.pathname === "/api/akira-routes") {
+      if (request.method !== "POST") return new Response("Method not allowed\n", { status: 405 });
+      return await createAkiraRoute(request, env, url.origin);
+    }
+    if (url.pathname === "/api/mocha-routes") {
+      if (request.method !== "POST") return new Response("Method not allowed\n", { status: 405 });
+      return await createProviderRoute(request, env, url.origin, "mocha");
+    }
+    if (url.pathname === "/api/filek-routes") {
+      if (request.method !== "POST") return new Response("Method not allowed\n", { status: 405 });
+      return await createProviderRoute(request, env, url.origin, "filek");
+    }
+    if (url.pathname === "/api/viking-routes") {
+      if (request.method !== "POST") return new Response("Method not allowed\n", { status: 405 });
+      return await createProviderRoute(request, env, url.origin, "viking");
+    }
+    } catch (e) { return new Response(e.status === 413 ? "Request body too large\n" : "Route creation failed\n", { status: e.status || 500 }); }
+    let route;
+    try { route = await resolveRoute(url, env); }
+    catch (e) {
+      const status = e.status === 404 || e.status === 410 || e.status === 503 ? e.status : 400;
+      return new Response(status === 410 ? "Route expired or missing\n" :
+        status === 503 ? "Route storage unavailable\n" :
+        status === 404 ? "Not found\n" : "Invalid route\n", {
+        status, headers: { "Cache-Control": "no-store" }
+      });
+    }
+    route.transportTrace = {};
+    const traceId = crypto.randomUUID();
+    const started = Date.now();
+    let outcome;
+    try { outcome = await servePkg(request, route); }
+    catch (e) {
+      route.transportTrace.rejection = e.status === 504 ? "upstream timeout" : "upstream request failed";
+      outcome = new Response("Upstream request failed\n", {
+        status: e.status || 502, headers: { "Cache-Control": "no-store" }
+      });
+    }
+    const response = new Response(outcome.body, outcome);
+    response.headers.set("X-Tayson-Trace-Id", traceId);
+    console.log(JSON.stringify({
+      event: "tayson_transport", version: VERSION, trace_id: traceId,
+      provider: route.kind, method: request.method,
+      range_category: safeRequestCategory(request.headers.get("range")),
+      response_status: outcome.status, response_ready_ms: Date.now() - started,
+      requested_range: (() => { try { return parseClientRange(request.headers.get("range")); } catch (_) { return null; } })(),
+      ...route.transportTrace
+    }));
+    return response;
+  }
+};
