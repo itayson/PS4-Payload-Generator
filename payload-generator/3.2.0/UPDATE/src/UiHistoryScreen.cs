@@ -42,7 +42,7 @@ public static class UiHistoryScreen
             Children =
             {
                 new Label { Text = "Histórico", TextColor = Text, FontSize = 25, FontAttributes = FontAttributes.Bold },
-                new Label { Text = "Etapas locais verificadas • sem confirmação automática BGFT", TextColor = Cyan, FontSize = 12 }
+                new Label { Text = "Transporte local e confirmações manuais • BGFT sem telemetria automática", TextColor = Cyan, FontSize = 12 }
             }
         };
         body.Children.Add(hero);
@@ -118,7 +118,7 @@ public static class UiHistoryScreen
 
         body.Children.Add(InfoCard(
             "Significado dos estados",
-            "VALIDADO: metadados. ELF: gerado localmente. ENVIANDO: transmissão em andamento. ENVIADO: bytes do ELF transmitidos ao BinLoader TCP 9090. MANUAL OK: conclusão informada por você; não é confirmação automática do BGFT."));
+            "VALIDADO: metadados. ELF: gerado para o link atual. ENVIADO: bytes entregues ao BinLoader TCP 9090. BAIXANDO (MANUAL): download visto por você no PS4. MANUAL OK: instalação e execução confirmadas por você. O BinLoader 9090 não fornece progresso automático BGFT."));
 
         body.Children.Add(InfoCard(
             "Privacidade",
@@ -174,6 +174,38 @@ public static class UiHistoryScreen
 
         var cardBody = new VerticalStackLayout { Spacing = 9 };
         cardBody.Children.Add(grid);
+        if (string.Equals(item.Status, "PAYLOAD ENVIADO", StringComparison.OrdinalIgnoreCase))
+        {
+            var downloading = new Button
+            {
+                Text = "Marcar download visto no PS4 (manual)",
+                FontSize = 11,
+                BackgroundColor = Surface2,
+                TextColor = Cyan,
+                BorderColor = Stroke,
+                BorderWidth = 1,
+                CornerRadius = 10,
+                HeightRequest = 38
+            };
+            downloading.Clicked += async (_, _) =>
+            {
+                bool yes = await page.DisplayAlert(
+                    "Download observado no console",
+                    "O PS4 realmente mostrou este pacote em Notificações > Downloads? Isso registra apenas sua confirmação, sem consultar o BGFT.",
+                    "Sim, está baixando",
+                    "Cancelar");
+                if (!yes || !UiStateStore.ConfirmDownloadingManually(item.Key)) return;
+                onHistoryChanged?.Invoke();
+                downloading.IsEnabled = false;
+                downloading.Text = "✓ Baixando (confirmação manual)";
+                if (status is Frame badge && badge.Content is Label badgeText)
+                {
+                    badgeText.Text = "BAIXANDO";
+                    badgeText.TextColor = Cyan;
+                }
+            };
+            cardBody.Children.Add(downloading);
+        }
         if ((item.Status ?? "").IndexOf("CONCLUÍDO", StringComparison.OrdinalIgnoreCase) < 0)
         {
             var confirm = new Button
@@ -298,6 +330,7 @@ public static class UiHistoryScreen
         string value = (status ?? "").ToUpperInvariant();
         if (value.Contains("CONCLUÍDO")) return Green;
         if (value.Contains("FALHA")) return Color.FromArgb("#FF4D6D");
+        if (value.Contains("BAIXANDO")) return Cyan;
         if (value.Contains("ENVIANDO")) return Cyan;
         if (value.Contains("ENVIADO")) return Purple;
         if (value.Contains("GERADO")) return Blue;
@@ -311,6 +344,7 @@ public static class UiHistoryScreen
         if (value.Length == 0) return "—";
         if (value.Contains("CONCLUÍDO")) return "MANUAL OK";
         if (value.Contains("FALHA")) return "FALHA";
+        if (value.Contains("BAIXANDO")) return "BAIXANDO";
         if (value.Contains("ENVIANDO")) return "ENVIANDO";
         if (value.Contains("PAYLOAD ENVIADO")) return "ENVIADO";
         if (value.Contains("ELF GERADO")) return "ELF";
