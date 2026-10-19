@@ -106,10 +106,10 @@ Check(BgftRoutePlanner.IsFileKeeperDownloadUrl(LinkPolicy.Parse("https://tunnel1
 Check(BgftRoutePlanner.IsMochaDownloadUrl(LinkPolicy.Parse("https://cdn.mocha.my/download/abc123?token=x&expires=4070908800")),
     "Recognize Mocha final URL without .pkg extension");
 {
-    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/d/abc123.pkg\n");
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://seek.itayson.workers.dev/d/abc123.pkg\n");
     using var router = new BgftRoutePlanner(()=>routeHandler);
     string route = await router.PrepareAsync(r2);
-    Check(route == "https://drive.itaysondaniel.workers.dev/d/abc123.pkg", "VikingFile uses short Worker route");
+    Check(route == "https://seek.itayson.workers.dev/d/abc123.pkg", "VikingFile uses short Worker route");
     Check(routeHandler.PostedBody == r2, "Worker receives exact signed R2 URL without reserialization");
     Check(routeHandler.LastPath == "/api/viking-routes", "VikingFile uses dedicated v11 route endpoint");
 }
@@ -117,7 +117,7 @@ Check(BgftRoutePlanner.IsMochaDownloadUrl(LinkPolicy.Parse("https://cdn.mocha.my
     var routeHandler = new RouteHandler(HttpStatusCode.NotFound, "missing");
     using var router = new BgftRoutePlanner(()=>routeHandler);
     string route = await router.PrepareAsync(r2);
-    Check(route.StartsWith("https://drive.itaysondaniel.workers.dev/viking.pkg?u=", StringComparison.Ordinal),
+    Check(route.StartsWith("https://seek.itayson.workers.dev/viking.pkg?u=", StringComparison.Ordinal),
         "Worker registration failure falls back to inline route");
     Check(PayloadPatcher.RegistrationUrl(route).EndsWith("#tayson.pkg", StringComparison.Ordinal),
         "Inline Viking route is BGFT-compatible");
@@ -134,38 +134,38 @@ await Reject(async()=>
 }
 {
     string mocha = "https://cdn.mocha.my/game.pkg?token=abc&expires=4070908800&node=sugar";
-    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/m/abc123.pkg\n");
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://seek.itayson.workers.dev/m/abc123.pkg\n");
     using var router = new BgftRoutePlanner(()=>routeHandler);
     string route = await router.PrepareAsync(mocha);
-    Check(route == "https://drive.itaysondaniel.workers.dev/m/abc123.pkg", "Mocha uses short Worker route");
+    Check(route == "https://seek.itayson.workers.dev/m/abc123.pkg", "Mocha uses short Worker route");
     Check(routeHandler.LastPath == "/api/mocha-routes" && routeHandler.PostedBody == mocha,
         "Mocha Worker receives exact authenticated URL");
 }
 {
     string filek = "https://cdn.filekeeper.net/abc123/game.pkg?token=XYZ";
-    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/f/def456.pkg\n");
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://seek.itayson.workers.dev/f/def456.pkg\n");
     using var router = new BgftRoutePlanner(()=>routeHandler);
     string route = await router.PrepareAsync(filek);
-    Check(route == "https://drive.itaysondaniel.workers.dev/f/def456.pkg", "FileKeeper uses short Worker route");
+    Check(route == "https://seek.itayson.workers.dev/f/def456.pkg", "FileKeeper uses short Worker route");
     Check(routeHandler.LastPath == "/api/filek-routes" && routeHandler.PostedBody == filek,
         "FileKeeper Worker receives exact final URL");
 }
 {
     string opaqueFinal = "https://downloads.example.test/get/abc123?token=XYZ";
-    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/f/context123.pkg\n");
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://seek.itayson.workers.dev/f/context123.pkg\n");
     using var router = new BgftRoutePlanner(()=>routeHandler);
     string route = await router.PrepareAsync(opaqueFinal, Provider.FileKeeper);
-    Check(routeHandler.LastPath == "/api/filek-routes" && route == "https://drive.itaysondaniel.workers.dev/f/context123.pkg",
+    Check(routeHandler.LastPath == "/api/filek-routes" && route == "https://seek.itayson.workers.dev/f/context123.pkg",
         "Preserved FileKeeper provider context forces .pkg Worker route after resolver host change");
 }
 {
     string dlproxy = "https://tunnel1.dlproxy.uk/download/j974CvvJb3EFHa_LkH?token=XYZ";
-    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://drive.itaysondaniel.workers.dev/f/dlproxy123.pkg\n");
+    var routeHandler = new RouteHandler(HttpStatusCode.OK, "https://seek.itayson.workers.dev/f/dlproxy123.pkg\n");
     using var router = new BgftRoutePlanner(()=>routeHandler);
     string route = await router.PrepareAsync(dlproxy);
     Check(routeHandler.LastPath == "/api/filek-routes" &&
           routeHandler.PostedBody == dlproxy &&
-          route == "https://drive.itaysondaniel.workers.dev/f/dlproxy123.pkg",
+          route == "https://seek.itayson.workers.dev/f/dlproxy123.pkg",
         "Direct FileKeeper dlproxy link is normalized to .pkg Worker route");
 }
 string badDateR2 = r2.Replace("20990101T000000Z", "2099-01-01T00Z");
