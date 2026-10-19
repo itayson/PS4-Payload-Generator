@@ -48,8 +48,27 @@ public static class Integration
         {
             if (e.PropertyName != nameof(Label.Text)) return;
             string text = bottom.Text ?? "";
+            // The legacy manual sender reports explicit localized failures through
+            // this same status label. Persist diagnostic stage only on unambiguous
+            // failure; never infer BGFT download completion from a TCP response.
+            bool elfFailure = text.IndexOf("Falha ao gerar o payload", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool sendFailure = text.IndexOf("Falha ao enviar o payload", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (elfFailure || sendFailure)
+            {
+                try
+                {
+                    PkgMetadata current = Field<PkgMetadata>(page, "_currentMeta");
+                    if (current != null && Ps4LanAddressPolicy.TryNormalize(ip.Text, out string host))
+                        UiStateStore.Record(current, elfFailure ? "FALHA ELF" : "FALHA ENVIO", host);
+                }
+                catch { /* History diagnostics must not change original send behavior. */ }
+                return;
+            }
+            // Explicit success messages only; never treat a generic sending status as completed.
             if (text.IndexOf("Payload enviado", StringComparison.OrdinalIgnoreCase) < 0 &&
-                text.IndexOf("sent", StringComparison.OrdinalIgnoreCase) < 0) return;
+                text.IndexOf("Enviado ao PS4", StringComparison.OrdinalIgnoreCase) < 0 &&
+                text.IndexOf("Successfully sent", StringComparison.OrdinalIgnoreCase) < 0 &&
+                text.IndexOf("Payload sent", StringComparison.OrdinalIgnoreCase) < 0) return;
             var meta = Field<PkgMetadata>(page, "_currentMeta");
             if (meta != null) UiStateStore.Record(meta, "PAYLOAD ENVIADO", ip.Text);
         };

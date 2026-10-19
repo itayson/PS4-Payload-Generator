@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Net.Http;
 using System.Reflection;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
@@ -47,12 +48,13 @@ public static class UiSettingsScreen
         preparePs4.Clicked += (_, _) =>
         {
             string host = (ip.Text ?? "").Trim();
-            if (!IPAddress.TryParse(host, out _))
+            if (!Ps4LanAddressPolicy.TryNormalize(host, out string normalized))
             {
-                ps4Status.Text = "Informe um endereço IP válido do PS4.";
+                ps4Status.Text = Ps4LanAddressPolicy.RejectionMessage;
                 ps4Status.TextColor = Red;
                 return;
             }
+            host = normalized;
 
             UiStateStore.SavePs4Ip(host);
             if (realIp != null) realIp.Text = host;
@@ -101,16 +103,84 @@ public static class UiSettingsScreen
         };
         body.Children.Add(workerCard);
 
+        // Opt-in staging configuration. Never echo the credential or persist it in Preferences.
+        var stagingKey = Input("", "Chave de homologação (somente staging)");
+        stagingKey.IsPassword = true;
+        stagingKey.MaxLength = 512;
+        var keyStatus = new Label { Text = "Chave apenas nesta sessão: informe novamente ao reiniciar o aplicativo.",
+                                    TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap };
+        var clearKey = Outline("Apagar chave de homologação");
+        clearKey.Clicked += (_, _) =>
+        {
+            StagingRouteAuth.Clear();
+            stagingKey.Text = "";
+            keyStatus.Text = "Chave desta sessão apagada.";
+        };
+        var authCheckStatus = new Label
+        {
+            Text = "Teste isolado: verifica a chave sem criar rota, baixar PKG ou contatar o PS4.",
+            TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap
+        };
+        var checkAuth = Outline("Testar autenticação (sem PS4)");
+        checkAuth.Clicked += async (_, _) =>
+        {
+            checkAuth.IsEnabled = false;
+            try
+            {
+                // Only send credentials to the exact, saved HTTPS staging host.
+                string target = UiStateStore.LoadWorkerUrl();
+                if (!StagingRouteAuth.IsStagingWorker(target))
+                {
+                    authCheckStatus.Text = "Salve primeiro o endereço do Worker de homologação em Ajustes.";
+                    authCheckStatus.TextColor = Red;
+                    return;
+                }
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                using var request = new HttpRequestMessage(HttpMethod.Post, target.TrimEnd('/') + "/api/v12/auth-check");
+                await StagingRouteAuth.AttachAsync(request);
+                using HttpResponseMessage result = await http.SendAsync(
+                    request, HttpCompletionOption.ResponseHeadersRead, System.Threading.CancellationToken.None);
+                if (result.StatusCode == HttpStatusCode.NoContent)
+                {
+                    authCheckStatus.Text = "✓ Autenticação aprovada. Nenhum PKG ou payload enviado.";
+                    authCheckStatus.TextColor = Green;
+                }
+                else
+                {
+                    authCheckStatus.Text = result.StatusCode == HttpStatusCode.Unauthorized ||
+                        result.StatusCode == HttpStatusCode.Forbidden ?
+                        "Chave recusada pelo Worker de homologação (HTTP " + (int)result.StatusCode + ")." :
+                        "Falha no teste de autenticação (HTTP " + (int)result.StatusCode + ").";
+                    authCheckStatus.TextColor = Red;
+                }
+            }
+            catch (Exception)
+            {
+                authCheckStatus.Text = "Teste indisponível. Verifique conexão, chave da sessão e Worker.";
+                authCheckStatus.TextColor = Red;
+            }
+            finally { checkAuth.IsEnabled = true; }
+        };
+
+        var stagingCard = Card();
+        stagingCard.Content = new VerticalStackLayout
+        {
+            Spacing = 8,
+            Children = { Title("Autenticação de homologação", Cyan), stagingKey, clearKey,
+                         keyStatus, checkAuth, authCheckStatus }
+        };
+        body.Children.Add(stagingCard);
+
         body.Children.Add(StatusCard("Validação de PKG", "Sempre ativa", Green,
             "Magic, Content ID, tamanho e comportamento HTTP são validados antes da geração do ELF."));
         body.Children.Add(StatusCard("Navegador de provedor", "Automático", Cyan,
             "O fluxo de navegador é acionado somente quando o provedor exige contexto de sessão, como AkiraBox."));
         body.Children.Add(StatusCard("Dados sensíveis", "Não persistidos", Blue,
-            "URLs assinadas, cookies e tokens não são gravados no histórico local."));
+            "URLs e cookies não são gravados no histórico. A chave de testes fica só na memória."));
 
         var saveStatus = new Label { TextColor = Muted, FontSize = 11, HorizontalTextAlignment = TextAlignment.Center };
         var save = Action("Salvar configurações", Blue);
-        save.Clicked += (_, _) =>
+        save.Clicked += async (_, _) =>
         {
             string workerValue = (worker.Text ?? "").Trim().TrimEnd('/');
             if (!Uri.TryCreate(workerValue, UriKind.Absolute, out Uri parsed) ||
@@ -129,6 +199,35 @@ public static class UiSettingsScreen
                 return;
             }
 
+            if (parsed.IdnHost.Equals(StagingRouteAuth.Host, StringComparison.OrdinalIgnoreCase) &&
+                !StagingRouteAuth.IsStagingWorker(workerValue))
+            {
+                saveStatus.Text = "Use somente o endereço HTTPS raiz do Worker de homologação.";
+                saveStatus.TextColor = Red;
+                return;
+            }
+            if (StagingRouteAuth.IsStagingWorker(workerValue))
+            {
+                try
+                {
+                    if (!string.IsNullOrEmpty(stagingKey.Text))
+                        await StagingRouteAuth.SaveAsync(stagingKey.Text);
+                    if (!await StagingRouteAuth.IsConfiguredAsync())
+                    {
+                        saveStatus.Text = "Configure uma chave válida para o Worker de homologação.";
+                        saveStatus.TextColor = Red;
+                        return;
+                    }
+                    stagingKey.Text = "";
+                    keyStatus.Text = "Chave desta sessão configurada.";
+                }
+                catch
+                {
+                    saveStatus.Text = "Falha ao configurar chave desta sessão.";
+                    saveStatus.TextColor = Red;
+                    return;
+                }
+            }
             UiStateStore.SavePs4Ip(ipValue);
             UiStateStore.SaveWorkerUrl(workerValue);
             if (realIp != null) realIp.Text = ipValue;

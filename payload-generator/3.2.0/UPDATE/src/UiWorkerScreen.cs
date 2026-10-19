@@ -50,16 +50,68 @@ public static class UiWorkerScreen
         body.Children.Add(endpoint);
 
         body.Children.Add(KpiRow(
-            ("WORKER", "v8", Cyan),
+            ("WORKER", StagingRouteAuth.IsStagingWorker(worker) ? "v12 STG" : "ROTA", Cyan),
             ("KV", "ROUTES", Green),
             ("BGFT", ".pkg", Blue)));
+
+        var preflight = Card();
+        var preflightLabel = new Label
+        {
+            Text = "Valida IP local e configuração de chave. Não abre TCP 9090, não envia ELF e não consulta o BGFT.",
+            TextColor = Muted,
+            FontSize = 11,
+            LineBreakMode = LineBreakMode.WordWrap
+        };
+        var preflightButton = Action("Verificar preparo (sem PS4)", Blue);
+        preflightButton.Clicked += async (_, _) =>
+        {
+            preflightButton.IsEnabled = false;
+            try
+            {
+                string configuredIp = UiStateStore.LoadPs4Ip();
+                if (!Ps4LanAddressPolicy.TryNormalize(configuredIp, out string destination))
+                {
+                    preflightLabel.Text = "IP do PS4 inválido. Confira Ajustes antes do envio.";
+                    preflightLabel.TextColor = Red;
+                    return;
+                }
+                if (StagingRouteAuth.IsStagingWorker(worker) &&
+                    !await StagingRouteAuth.IsConfiguredAsync())
+                {
+                    preflightLabel.Text = "PS4 " + destination +
+                        ": informe novamente a chave de homologação em Ajustes.";
+                    preflightLabel.TextColor = Red;
+                    return;
+                }
+                preflightLabel.Text = "Configuração local OK: " + destination +
+                    ":9090. Isso NÃO confirma conectividade, execução ELF nem BGFT.";
+                preflightLabel.TextColor = Green;
+            }
+            catch (Exception)
+            {
+                preflightLabel.Text = "Não foi possível verificar a configuração local.";
+                preflightLabel.TextColor = Red;
+            }
+            finally { preflightButton.IsEnabled = true; }
+        };
+        preflight.Content = new VerticalStackLayout
+        {
+            Spacing = 8,
+            Children =
+            {
+                Title("Diagnóstico local (sem payload)", Cyan),
+                preflightLabel,
+                preflightButton
+            }
+        };
+        body.Children.Add(preflight);
 
         body.Children.Add(InfoCard("Transporte R2",
             "VikingFile e Rootz usam rota curta no Worker quando o endereço final é AWS SigV4/Cloudflare R2."));
         body.Children.Add(InfoCard("AkiraBox",
             "A rota temporária pode manter cookies, Referer e User-Agent no KV sem expor esses dados dentro do ELF."));
         body.Children.Add(InfoCard("Normalização BGFT",
-            "O Worker v8 pode responder ao HEAD do BGFT por meio de GET Range bytes=0-0 e preserva GET/Range para o download."));
+            "O transporte pode responder a HEAD por GET Range bytes=0-0 e preservar GET/Range; confirme o BGFT no PS4."));
 
         var test = Action("Testar Worker", Blue);
         test.Clicked += async (_, _) =>
@@ -75,8 +127,7 @@ public static class UiWorkerScreen
                 string compact = (health ?? "").Trim();
                 if (compact.Length > 160) compact = compact.Substring(0, 160) + "…";
                 bool ok = compact.IndexOf("OK", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool v8 = compact.IndexOf("v8", StringComparison.OrdinalIgnoreCase) >= 0;
-                status.Text = ok ? (v8 ? "● Online • Worker v8 OK" : "● Online • health OK") : "● Resposta recebida";
+                status.Text = ok ? "● Online • health OK" : "● Resposta recebida";
                 status.TextColor = ok ? Green : Cyan;
                 response.Text = compact.Length == 0 ? "Resposta vazia." : compact;
                 response.TextColor = ok ? Green : Muted;
@@ -94,7 +145,7 @@ public static class UiWorkerScreen
 
         body.Children.Add(new Label
         {
-            Text = "O teste /health confirma o endpoint publicado. KV ROUTES é utilizado pelo fluxo real ao registrar rotas temporárias.",
+            Text = "O teste /health confirma o endpoint, não confirma criação de rota, transferência completa ou instalação no PS4.",
             TextColor = Muted,
             FontSize = 9,
             HorizontalTextAlignment = TextAlignment.Center,

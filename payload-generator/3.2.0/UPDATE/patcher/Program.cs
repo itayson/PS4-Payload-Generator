@@ -69,7 +69,7 @@ void SetMessage(string property, string text)
 SetMessage("AlertSuccess", "Sucesso");
 SetMessage("AlertError", "Erro");
 SetMessage("AlertNetError", "Erro de rede");
-SetMessage("AlertInjected", "Payload enviado ao PS4. Isso confirma apenas o envio. Confira na TV se o download iniciou; se aparecer Registro: 0x..., fotografe o código completo. Versão Tayson 3.4.0.");
+SetMessage("AlertInjected", "Payload enviado ao PS4. Isso confirma apenas o envio. Confira na TV se o download iniciou; se aparecer Registro: 0x..., fotografe o código completo. Versão experimental de homologação.");
 SetMessage("BtnScan", "Validar PKG");
 SetMessage("BtnInject", "Enviar ao PS4");
 SetMessage("BtnSending", "Enviando…");
@@ -91,7 +91,7 @@ foreach (var method in type.Methods.Where(m => m.HasBody))
 foreach (var instruction in method.Body.Instructions)
     if (instruction.OpCode == OpCodes.Ldstr && (string)instruction.Operand == "PS4 Payload Generator")
     {
-        instruction.Operand = "Tayson PS4 Payload Generator 3.4.0";
+        instruction.Operand = "Tayson PS4 Payload Generator v6 STAGING";
         titleChanges++;
     }
 if (titleChanges == 0) throw new InvalidOperationException("Application title was not located");
@@ -107,6 +107,19 @@ var scanIL = scan.Body.GetILProcessor();
 var first = scan.Body.Instructions[0];
 scanIL.InsertBefore(first, Instruction.Create(OpCodes.Ldarg_0));
 scanIL.InsertBefore(first, Instruction.Create(OpCodes.Call, Target("Tayson.Providers.Integration", "Invalidate")));
+// Guard the ORIGINAL manual send handler too. The async-void method itself is
+// a state-machine launcher; checking here prevents its creation for invalid IPs.
+// This leaves the complete, previously working sender body untouched.
+var legacyManual = main.Methods.Single(m => m.Name == "BtnInjetar_Clicked" &&
+    m.Parameters.Count == 2 && m.ReturnType.FullName == "System.Void");
+var manualIL = legacyManual.Body.GetILProcessor();
+var originalFirst = legacyManual.Body.Instructions[0];
+manualIL.InsertBefore(originalFirst, Instruction.Create(OpCodes.Ldarg_0));
+manualIL.InsertBefore(originalFirst, Instruction.Create(OpCodes.Call,
+    Target("Tayson.Providers.ManualSendGuard", "Allow")));
+manualIL.InsertBefore(originalFirst, Instruction.Create(OpCodes.Brtrue_S, originalFirst));
+manualIL.InsertBefore(originalFirst, Instruction.Create(OpCodes.Ret));
+
 merged.Write(args[3]);
 using var check = AssemblyDefinition.ReadAssembly(args[3], read);
 var tokens = original.MainModule.GetTypes().ToDictionary(t => t.FullName, t => t.MetadataToken.ToUInt32());

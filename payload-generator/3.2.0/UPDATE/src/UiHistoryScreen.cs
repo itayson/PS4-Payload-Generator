@@ -42,22 +42,36 @@ public static class UiHistoryScreen
             Children =
             {
                 new Label { Text = "Histórico", TextColor = Text, FontSize = 25, FontAttributes = FontAttributes.Bold },
-                new Label { Text = "Validações, payloads e envios recentes", TextColor = Cyan, FontSize = 12 }
+                new Label { Text = "Etapas locais verificadas • sem confirmação automática BGFT", TextColor = Cyan, FontSize = 12 }
             }
         };
         body.Children.Add(hero);
 
         string latest = history.Count == 0 ? "—" : ShortStatus(history[0].Status);
-        body.Children.Add(KpiRow(
+        Label countKpi = null;
+        Label latestKpi = null;
+        body.Children.Add(KpiRow((index, label) =>
+            {
+                if (index == 0) countKpi = label;
+                if (index == 1) latestKpi = label;
+            },
             ("REGISTROS", history.Count.ToString(), Cyan),
             ("ÚLTIMO", latest, Green),
             ("PS4", string.IsNullOrWhiteSpace(ps4Ip) ? "—" : ps4Ip, Blue)));
+
+        void RefreshKpis()
+        {
+            var current = UiStateStore.ReadHistory();
+            if (countKpi != null) countKpi.Text = current.Count.ToString();
+            if (latestKpi != null) latestKpi.Text =
+                current.Count == 0 ? "—" : ShortStatus(current[0].Status);
+        }
 
         if (history.Count == 0)
         {
             body.Children.Add(InfoCard(
                 "Nenhum histórico ainda",
-                "Valide um PKG na tela Início. As próximas validações, gerações de ELF e confirmações de envio aparecerão aqui mesmo depois de fechar o aplicativo."));
+                "Valide um PKG na tela Início. As etapas de geração e envio do ELF podem aparecer aqui. Download e instalação dependem de confirmação no PS4."));
         }
         else
         {
@@ -73,7 +87,7 @@ public static class UiHistoryScreen
 
             int shown = history.Count < 10 ? history.Count : 10;
             for (int i = 0; i < shown; i++)
-                body.Children.Add(HistoryCard(history[i], i));
+                body.Children.Add(HistoryCard(history[i], i, page, RefreshKpis));
 
             var clear = new Button
             {
@@ -95,11 +109,16 @@ public static class UiHistoryScreen
                     "Cancelar");
                 if (!yes) return;
                 UiStateStore.ClearHistory();
+                RefreshKpis();
                 clear.Text = "Histórico apagado";
                 clear.IsEnabled = false;
             };
             body.Children.Add(clear);
         }
+
+        body.Children.Add(InfoCard(
+            "Significado dos estados",
+            "VALIDADO: metadados. ELF: gerado localmente. ENVIANDO: transmissão em andamento. ENVIADO: bytes do ELF transmitidos ao BinLoader TCP 9090. MANUAL OK: conclusão informada por você; não é confirmação automática do BGFT."));
 
         body.Children.Add(InfoCard(
             "Privacidade",
@@ -108,7 +127,7 @@ public static class UiHistoryScreen
         return new ScrollView { BackgroundColor = Background, Content = body };
     }
 
-    static View HistoryCard(UiHistoryItem item, int index)
+    static View HistoryCard(UiHistoryItem item, int index, MainPage page, Action onHistoryChanged)
     {
         var frame = Card();
         var grid = new Grid { ColumnSpacing = 10, RowSpacing = 4 };
@@ -153,7 +172,46 @@ public static class UiHistoryScreen
         Grid.SetColumnSpan(footer, 2);
         grid.Children.Add(footer);
 
-        frame.Content = grid;
+        var cardBody = new VerticalStackLayout { Spacing = 9 };
+        cardBody.Children.Add(grid);
+        if ((item.Status ?? "").IndexOf("CONCLUÍDO", StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            var confirm = new Button
+            {
+                Text = "Confirmar conclusão no PS4",
+                FontSize = 11,
+                BackgroundColor = Surface2,
+                TextColor = Cyan,
+                BorderColor = Stroke,
+                BorderWidth = 1,
+                CornerRadius = 10,
+                HeightRequest = 38
+            };
+            confirm.Clicked += async (_, _) =>
+            {
+                bool yes = await page.DisplayAlert(
+                    "Confirmação manual",
+                    "O download terminou, o pacote foi instalado e abriu no PS4? Essa confirmação não consulta o BGFT.",
+                    "Sim, confirmei",
+                    "Cancelar");
+                if (!yes) return;
+                if (!UiStateStore.ConfirmCompletedManually(item.Key)) return;
+                onHistoryChanged?.Invoke();
+                confirm.IsEnabled = false;
+                confirm.Text = "✓ Confirmado manualmente";
+                if (status is Frame badge)
+                {
+                    badge.BorderColor = Green;
+                    if (badge.Content is Label badgeText)
+                    {
+                        badgeText.Text = "MANUAL OK";
+                        badgeText.TextColor = Green;
+                    }
+                }
+            };
+            cardBody.Children.Add(confirm);
+        }
+        frame.Content = cardBody;
         return frame;
     }
 
@@ -182,7 +240,7 @@ public static class UiHistoryScreen
         return frame;
     }
 
-    static View KpiRow(params (string Title, string Value, Color Color)[] items)
+    static View KpiRow(Action<int, Label> onValueCreated, params (string Title, string Value, Color Color)[] items)
     {
         var grid = new Grid { ColumnSpacing = 8 };
         for (int i = 0; i < items.Length; i++)
@@ -190,13 +248,22 @@ public static class UiHistoryScreen
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var frame = Card();
             frame.Padding = new Thickness(10, 11);
+            var value = new Label
+            {
+                Text = items[i].Value,
+                TextColor = items[i].Color,
+                FontSize = 13,
+                FontAttributes = FontAttributes.Bold,
+                LineBreakMode = LineBreakMode.TailTruncation
+            };
+            onValueCreated?.Invoke(i, value);
             frame.Content = new VerticalStackLayout
             {
                 Spacing = 3,
                 Children =
                 {
                     new Label { Text = items[i].Title, TextColor = Muted, FontSize = 9, FontAttributes = FontAttributes.Bold },
-                    new Label { Text = items[i].Value, TextColor = items[i].Color, FontSize = 13, FontAttributes = FontAttributes.Bold, LineBreakMode = LineBreakMode.TailTruncation }
+                    value
                 }
             };
             Grid.SetColumn(frame, i);
@@ -229,6 +296,9 @@ public static class UiHistoryScreen
     static Color StatusColor(string status)
     {
         string value = (status ?? "").ToUpperInvariant();
+        if (value.Contains("CONCLUÍDO")) return Green;
+        if (value.Contains("FALHA")) return Color.FromArgb("#FF4D6D");
+        if (value.Contains("ENVIANDO")) return Cyan;
         if (value.Contains("ENVIADO")) return Purple;
         if (value.Contains("GERADO")) return Blue;
         if (value.Contains("VALIDADO")) return Green;
@@ -239,6 +309,9 @@ public static class UiHistoryScreen
     {
         string value = (status ?? "").Trim().ToUpperInvariant();
         if (value.Length == 0) return "—";
+        if (value.Contains("CONCLUÍDO")) return "MANUAL OK";
+        if (value.Contains("FALHA")) return "FALHA";
+        if (value.Contains("ENVIANDO")) return "ENVIANDO";
         if (value.Contains("PAYLOAD ENVIADO")) return "ENVIADO";
         if (value.Contains("ELF GERADO")) return "ELF";
         if (value.Contains("VALIDADO")) return "VALIDADO";

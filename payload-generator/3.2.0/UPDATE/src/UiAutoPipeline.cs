@@ -108,6 +108,9 @@ public static class UiAutoPipeline
             Busy = true;
         }
 
+        PkgMetadata attemptedMeta = null;
+        string attemptedIp = "";
+        bool transportStarted = false;
         try
         {
             string currentUrl = (url?.Text ?? "").Trim();
@@ -127,13 +130,15 @@ public static class UiAutoPipeline
             // save-file picker.
             PkgMetadata meta = Field<PkgMetadata>(page, "_currentMeta");
             if (meta == null || generate == null || !generate.IsEnabled) return;
+            attemptedMeta = meta;
 
             string ps4Ip = (ip?.Text ?? "").Trim();
-            if (ps4Ip.Length == 0)
+            if (!Ps4LanAddressPolicy.TryNormalize(ps4Ip, out attemptedIp))
             {
-                Fail(bottom, "Informe o IP do PS4 antes de usar o envio automático.");
+                Fail(bottom, Ps4LanAddressPolicy.RejectionMessage);
                 return;
             }
+            ps4Ip = attemptedIp;
 
             lock (Gate)
             {
@@ -141,35 +146,45 @@ public static class UiAutoPipeline
                 SendStarted = true;
             }
 
-            SetStatus(page, bottom, "PKG validado. Preparando envio direto ao PS4...");
+            SetStatus(page, bottom, "PKG validado. Preparando o ELF...");
 
             byte[] payload = await Integration.GenerateAsync(page);
             if (payload == null || payload.Length == 0)
                 throw new InvalidOperationException("O ELF gerado está vazio.");
+            UiStateStore.Record(meta, "ELF GERADO", ps4Ip);
 
             // The ELF stays in memory. Nothing is written to Downloads and no
             // Storage Access Framework/file-picker flow is invoked.
+            UiStateStore.Record(meta, "ENVIANDO ELF", ps4Ip);
             SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
+            transportStarted = true;
             await SendToBinLoaderAsync(ps4Ip, payload);
 
-            SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
+            // A completed TCP write is not an acknowledgement from BGFT.
+            UiStateStore.Record(meta, "PAYLOAD ENVIADO", ps4Ip);
+            SetStatus(page, bottom, "ELF transmitido ao BinLoader. Confira o download no PS4.");
             Reset();
         }
         catch (TimeoutException)
         {
+            RecordFailedStage(attemptedMeta, attemptedIp, transportStarted);
             Fail(bottom, "O PS4:9090 não respondeu após várias tentativas. Confirme que o GoldHEN BinLoader está ativado.");
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
         {
+            RecordFailedStage(attemptedMeta, attemptedIp, transportStarted);
             Fail(bottom, "PS4 recusou a conexão na porta 9090 após várias tentativas. Reative o GoldHEN BinLoader e tente novamente.");
         }
         catch (SocketException ex)
         {
+            RecordFailedStage(attemptedMeta, attemptedIp, transportStarted);
             Fail(bottom, "Falha de rede ao conectar ao PS4:9090 (" + ex.SocketErrorCode + ").");
         }
         catch (Exception ex)
         {
-            Fail(bottom, "Falha no envio automático: " + ex.Message);
+            RecordFailedStage(attemptedMeta, attemptedIp, transportStarted);
+            // Do not echo exception messages: some providers include signed URLs.
+            Fail(bottom, "Falha no fluxo automático (" + ex.GetType().Name + "). Confira o link, Worker e BinLoader.");
         }
         finally
         {
@@ -230,6 +245,19 @@ public static class UiAutoPipeline
         {
             await stream.WriteAsync(payload, 0, payload.Length);
             await stream.FlushAsync();
+        }
+    }
+
+    static void RecordFailedStage(PkgMetadata meta, string ps4Ip, bool transportStarted)
+    {
+        if (meta == null || string.IsNullOrEmpty(ps4Ip)) return;
+        try
+        {
+            UiStateStore.Record(meta, transportStarted ? "FALHA ENVIO" : "FALHA ELF", ps4Ip);
+        }
+        catch
+        {
+            // History must never mask the original error or trigger retries.
         }
     }
 
