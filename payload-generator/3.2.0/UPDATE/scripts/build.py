@@ -3,8 +3,8 @@
 import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile, zlib
 from pathlib import Path
 
-APP_VERSION = '3.4.3-staging.6.3.1'
-APP_VERSION_CODE = 45
+APP_VERSION = '3.4.3-staging.6.4'
+APP_VERSION_CODE = 46
 APP_LABEL = 'Tayson PS4 Payload Generator'
 APK_NAME = 'PS4-Payload-Generator-3.4.3-TaySon.apk'
 
