@@ -50,3 +50,22 @@ PR de implementação: https://github.com/itayson/PS4-Payload-Generator/pull/32
 - O HTTP externo real dos Workers foi bloqueado pelo ambiente de consulta. O teste físico do PS4/BGFT (307, Range, retomada, instalação) **não foi realizado**.
 
 **Não habilitar DIRECT ou mesclar o PR até haver evidência de compatibilidade do BGFT e correção do CI.**
+
+
+## Atualização v0.3 — proteção HEAD / diagnóstico de CI
+
+- O retorno HTTP 307 do Smart Transport passa a ser considerado **somente em requisições GET**. As requisições HEAD seguem usando o adaptador de metadados do Worker existente, mesmo se DIRECT estiver habilitado para um provedor.
+- Novo teste unitário comprova que HEAD não dispara sondagem direta; suíte local do módulo: **34/34 PASS** em Node.js 22.16.0.
+- Teste integrado também ganhou um caso de HEAD com flags DIRECT habilitadas, sem redirecionamento; execução desse novo caso **ainda não confirmada em CI**.
+- Código v0.3 publicado exclusivamente no `tayson-smart-transport-lab`. A origem de produção `seek` está intacta. O código do laboratório e o candidato da branch foram comparados via hash FNV-1a (mesmos 52.669 caracteres, hash `33ec9573`).
+- O erro do GitHub Actions foi determinado por anotação oficial do próprio check-run `118319431107` (workflow run `39328215169`):
+  > The job was not started because recent account payments have failed or your spending limit needs to be increased.
+- **Causa do CI: bloqueio de faturamento ou limite de gastos da conta GitHub**, não falha nos testes. O job recebeu `runner_id=0`, `steps=[]`. Exige ação do titular em [GitHub Billing](https://github.com/settings/billing). Não alterar testes, workflow ou billing programaticamente para contornar esse estado.
+
+### Gate restante
+
+1. Titular regulariza o GitHub Actions na conta, depois reexecuta o workflow.
+2. Verificar `/health` do laboratório de uma rede sem bloqueio.
+3. Testar uma URL PKG autorizada válida (sondas curtas HTTP e assinatura), sem transferir o PKG integral nas sondas.
+4. Validar REDIRECT GET 307 e retomada física no BGFT/PS4; somente depois decidir sobre habilitar `SMART_DIRECT_ENABLED`, `SMART_BGFT_REDIRECT_VERIFIED` e `SMART_DIRECT_PROVIDERS`.
+5. A PR #32 permanece rascunho; `seek` não deve ser alterado até os gates passarem.
