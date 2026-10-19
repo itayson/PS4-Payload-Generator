@@ -303,7 +303,7 @@ def main():
              "--print-certs", str(args.output)],
             check=True, capture_output=True, text=True)
         match = re.search(
-            r"Signer #1 certificate SHA-256 digest:\\s*([0-9a-fA-F:]+)",
+            r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F:]+)",
             verification.stdout, re.IGNORECASE)
         fingerprint = (match.group(1).replace(":", "").lower()
                        if match else "")
