@@ -143,11 +143,11 @@ public static class UiHomeScreen
             findPs4.Text = "Procurando na rede…";
             try
             {
-                var devices = await Ps4Discovery.DiscoverAsync();
+                var devices = await Ps4Discovery.DiscoverAsync(ip?.Text ?? UiStateStore.LoadPs4Ip());
                 if (devices.Count == 0)
                 {
                     if (bottom != null) bottom.Text =
-                        "PS4 não encontrado por UDP. Informe o IP manualmente em Ajustes.";
+                        "Não localizado. " + Ps4Discovery.LastDiagnostic;
                 }
                 else
                 {
@@ -159,7 +159,7 @@ public static class UiHomeScreen
                         ip.Text = chosen;
                         UiStateStore.SavePs4Ip(chosen);
                         if (bottom != null) bottom.Text =
-                            "PS4 detectado: " + chosen + ". BinLoader 9090 não foi acessado.";
+                            "PS4 respondeu em " + chosen + " (UDP 987). BinLoader 9090 não foi acessado.";
                     }
                 }
             }

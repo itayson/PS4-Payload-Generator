@@ -63,10 +63,10 @@ public static class UiSettingsScreen
             status.TextColor = Muted;
             try
             {
-                var candidates = await Ps4Discovery.DiscoverAsync();
+                var candidates = await Ps4Discovery.DiscoverAsync(ip.Text);
                 if (candidates.Count == 0)
                 {
-                    status.Text = "PS4 não encontrado por UDP. Digite o IP manualmente; a porta 9090 não foi utilizada.";
+                    status.Text = "Não localizado. " + Ps4Discovery.LastDiagnostic + " O BinLoader 9090 não foi utilizado.";
                     status.TextColor = Muted;
                 }
                 else
