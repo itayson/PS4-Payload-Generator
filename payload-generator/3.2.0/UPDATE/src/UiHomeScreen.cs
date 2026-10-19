@@ -125,9 +125,55 @@ public static class UiHomeScreen
         connectionGrid.Children.Add(new Label { Text = "CONEXÃO PS4", TextColor = Cyan, FontSize = 10, FontAttributes = FontAttributes.Bold, CharacterSpacing = 1.2 });
         Grid.SetRow(ps4Value, 1); connectionGrid.Children.Add(ps4Value);
         Grid.SetRow(ps4Status, 2); connectionGrid.Children.Add(ps4Status);
-        var port = StatusPill("BinLoader 9090", Blue);
+        var port = StatusPill("BGFT", Blue);
         Grid.SetColumn(port, 1); Grid.SetRowSpan(port, 3); connectionGrid.Children.Add(port);
-        connection.Content = connectionGrid;
+        var connectionBody = new VerticalStackLayout { Spacing = 9 };
+        connectionBody.Children.Add(connectionGrid);
+        var findPs4 = new Button
+        {
+            Text = "Localizar PS4",
+            BackgroundColor = Surface2, TextColor = Cyan,
+            CornerRadius = 12, HeightRequest = 42,
+            FontSize = 12
+        };
+        findPs4.Clicked += async (_, _) =>
+        {
+            findPs4.IsEnabled = false;
+            findPs4.Text = "Procurando na rede…";
+            try
+            {
+                var devices = await Ps4Discovery.DiscoverAsync();
+                if (devices.Count == 0)
+                {
+                    if (bottom != null) bottom.Text =
+                        "PS4 não encontrado por UDP. Informe o IP manualmente em Ajustes.";
+                }
+                else
+                {
+                    string chosen = devices.Count == 1 ? devices[0] :
+                        await page.DisplayActionSheet("Selecione o PS4", "Cancelar", null,
+                            new System.Collections.Generic.List<string>(devices).ToArray());
+                    if (chosen != null && chosen != "Cancelar" && ip != null)
+                    {
+                        ip.Text = chosen;
+                        UiStateStore.SavePs4Ip(chosen);
+                        if (bottom != null) bottom.Text =
+                            "PS4 detectado: " + chosen + ". BinLoader 9090 não foi acessado.";
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                if (bottom != null) bottom.Text = "Descoberta indisponível. Informe o IP manualmente.";
+            }
+            finally
+            {
+                findPs4.Text = "Localizar PS4";
+                findPs4.IsEnabled = true;
+            }
+        };
+        connectionBody.Children.Add(findPs4);
+        connection.Content = connectionBody;
         body.Children.Add(connection);
 
         var link = Card();
@@ -209,7 +255,7 @@ public static class UiHomeScreen
         link.Content = linkBody;
         body.Children.Add(link);
 
-        body.Children.Add(ProviderCard());
+        // Provider detection is displayed inline below the link; hide the redundant provider grid.
 
         var package = Card();
         var packageBody = new VerticalStackLayout { Spacing = 8 };
@@ -353,7 +399,6 @@ public static class UiHomeScreen
             Children =
             {
                 SectionTitle("Status da atividade", Cyan),
-                StepsRow(),
                 stageText,
                 stageDetail
             }
@@ -362,10 +407,10 @@ public static class UiHomeScreen
 
         var payloadActions = Card();
         var payloadBody = new VerticalStackLayout { Spacing = 9 };
-        payloadBody.Children.Add(SectionTitle("Payload", Cyan));
+        payloadBody.Children.Add(SectionTitle("Envio ao PS4", Cyan));
         if (generate != null) payloadBody.Children.Add(generate);
         if (inject != null) payloadBody.Children.Add(inject);
-        if (local != null) payloadBody.Children.Add(local);
+        if (local != null) { local.IsVisible = false; payloadBody.Children.Add(local); }
         payloadActions.Content = payloadBody;
         body.Children.Add(payloadActions);
 
@@ -402,7 +447,7 @@ public static class UiHomeScreen
 
         body.Children.Add(new Label
         {
-            Text = "Dev. By TaySon  •  Tayson 3.4.0  •  BGFT universal",
+            Text = "Tayson PS4 • BGFT • firmware conforme GoldHEN",
             TextColor = Muted,
             FontSize = 10,
             HorizontalTextAlignment = TextAlignment.Center,
