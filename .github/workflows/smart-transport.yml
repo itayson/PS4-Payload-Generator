@@ -1,0 +1,41 @@
+name: TaySon Smart Transport
+
+on:
+  push:
+    branches:
+      - feature/tayson-smart-transport-v1-20261019
+    paths:
+      - 'smart-transport/**'
+      - '.github/workflows/smart-transport.yml'
+  pull_request:
+    paths:
+      - 'smart-transport/**'
+      - '.github/workflows/smart-transport.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check smart-transport/src/smart-transport.mjs
+          node --check smart-transport/builds/seek-smart-transport-v0.1.js
+      - name: Regression tests
+        run: node --test smart-transport/test/smart-transport.test.mjs
+      - name: Repeatable baseline integration
+        run: |
+          node smart-transport/scripts/apply-smart-transport.mjs \
+            smart-transport/baselines/seek-v12.2-transport-validation.js \
+            smart-transport/builds/seek-smart-transport-v0.1.local.js
+          node --check smart-transport/builds/seek-smart-transport-v0.1.local.js
+          cmp smart-transport/builds/seek-smart-transport-v0.1.js \
+            smart-transport/builds/seek-smart-transport-v0.1.local.js
