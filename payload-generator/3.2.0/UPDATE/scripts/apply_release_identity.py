@@ -18,7 +18,7 @@ import zipfile
 from pathlib import Path
 
 OLD_PACKAGE = "com.phoenixx.ps4remotepkg"
-NEW_PACKAGE = "com.tayson.ps4payloadgenerator"
+NEW_PACKAGE = "com.tayson.ps4payloadgenerator.staging"
 # Established after the owner-approved clean install of experimental v6.3.1.
 # A mismatch would require another uninstall; never publish such an APK.
 PERMANENT_STAGING_SIGNER_SHA256 = "3d8daee7afa38dedd1378f6a6dd0c7cf6604785ef594413c344a5f94e1d56219"
@@ -238,6 +238,9 @@ def main():
     parser.add_argument("--old-package", default=OLD_PACKAGE)
     parser.add_argument("--new-package", default=NEW_PACKAGE)
     args = parser.parse_args()
+    if args.new_package != NEW_PACKAGE:
+        raise ValueError("Release package mismatch: existing experimental installs require "
+                         + NEW_PACKAGE + "; refusing a package rename.")
     if not args.storepass_ref or not args.keypass_ref:
         raise ValueError("Release signing requires --storepass-ref and --keypass-ref env:VARIABLE references.")
     for ref in (args.storepass_ref, args.keypass_ref):
