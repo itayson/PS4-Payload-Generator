@@ -22,9 +22,19 @@ Fluxo preservado: Android → Cloudflare Worker de homologação → ELF em mem�
 ## Restrições para distribuição
 O certificado original da v6.1 experimental tinha SHA-256 `c693d66ac7e2c95411c730aefa0c9da62a617586e9b3a5d57d0dd90ab8f62ec5`; o certificado de teste disponível agora é **diferente** (`12982c4b170f6d983e1a4dea6fc32c7464f70239bdace4562888152f66ef31ca`). Não assinar a v6.2 com chave substituta alegando compatibilidade com atualização in-place. **Não desinstalar v6.1 nem criar app paralelo** para contornar assinatura. Para um APK instalável sobre a v6.1, a cadeia original de assinatura deve estar disponível de modo seguro (CI/keystore original). Nunca enviar a chave para chat ou commitá-la no GitHub.
 
+## Proteção do envio manual (incremento de revisão)
+
+- O botão legado `Enviar ao PS4` executa `PS4RemotePkgMobile.MainPage.BtnInjetar_Clicked`, um lançador `async void` com `MoveNext` separado.
+- O patch IL agora chama `ManualSendGuard.Allow(page)` **antes** de criar essa máquina de estados. Se o IPv4 não é privado e válido, retorna ao app, exibindo aviso, sem criar cliente TCP nem gerar ELF.
+- O método original `MoveNext` e sua sequência de instruções foram preservados, sem alterar a lógica de GoldHEN/BGFT já testada. Verificador `tools/ps4-transport-v62/manual-il`: 5 verificações aprovadas.
+- O histórico recebe `FALHA ELF` / `FALHA ENVIO` também em mensagens explícitas de erro do envio manual, com tratamento local que não mascara falhas.
+- `tools/ps4-transport-v62/verify_signing_identity.py` checa pacote, versionCode e certificado de assinatura antes de declarar instalável um APK de atualização da v6.1.
+- Teste do bloqueio: o certificado disponível neste ambiente (SHA-256 `12982c4b170f6d983e1a4dea6fc32c7464f70239bdace4562888152f66ef31ca`) foi **recusado** pelo verificador por não ser o certificado v6.1. O APK de teste não foi publicado para instalação.
+- Total de verificações de código: 103 originais + 29 autenticação + 33 IPv4 + 5 IL = **170**. Nenhum ensaio físico de envio manual v6.2 executado.
+
 ## Pendente
-- Revisão técnica do comportamento do histórico nos erros reais de TCP.
-- Build assinado com o certificado original de v6.1.
+- Revisão técnica do comportamento do histórico nos erros reais de TCP (ainda pendente com logs de hardware).
+- Build assinado com o certificado original de v6.1 (bloqueado até a chave original ficar disponível de modo seguro).
 - Teste físico da v6.2 com PS4 firmware 12.02; teste distinto para 13.02, sem assumir suporte.
 - Telemetria de conclusão BGFT verdadeira não foi implementada e não deve ser inferida de escrita TCP.
 
