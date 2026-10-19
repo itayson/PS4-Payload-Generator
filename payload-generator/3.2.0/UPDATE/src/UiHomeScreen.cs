@@ -415,6 +415,15 @@ public static class UiHomeScreen
             if (e.PropertyName != "Text") return;
             string status = bottom.Text ?? "";
             var currentStage = UiStageTracker.Current(url?.Text);
+            if (currentStage == UiStageTracker.Stage.Validating &&
+                Field<PkgMetadata>(page, "_currentMeta") != null &&
+                (status.IndexOf("PKG validado", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 status.IndexOf("PKG analisado com sucesso", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 status.IndexOf("Scan completed successfully", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                UiStageTracker.MarkValidated(url?.Text);
+                currentStage = UiStageTracker.Current(url?.Text);
+            }
             if (currentStage >= UiStageTracker.Stage.Validated &&
                 currentStage != UiStageTracker.Stage.Failed)
             {
