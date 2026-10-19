@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed Android APK signing identity gate for in-place v6.1 upgrades.
+"""Fail-closed Android APK signing identity gate for clean-install v6.2 and later upgrades.
 
 Input is a signed APK and the local official build-tools apksigner path.
 Do not read private keystore contents, passwords, APK user data or secrets.
@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 EXPECTED_PACKAGE = "com.tayson.ps4payloadgenerator.staging"
-EXPECTED_CERT_SHA256 = "c693d66ac7e2c95411c730aefa0c9da62a617586e9b3a5d57d0dd90ab8f62ec5"
+EXPECTED_CERT_SHA256 = "12982c4b170f6d983e1a4dea6fc32c7464f70239bdace4562888152f66ef31ca"
 
 def verify(apksigner: str, aapt: str, apk: str) -> None:
     if not Path(apk).is_file():
@@ -21,7 +21,7 @@ def verify(apksigner: str, aapt: str, apk: str) -> None:
         r"Signer #\d+ certificate SHA-256 digest:\s*([0-9a-f]{64})",
         signed.stdout, re.I)
     if len(fingerprints) != 1 or fingerprints[0].lower() != EXPECTED_CERT_SHA256:
-        raise ValueError("Signing certificate mismatch: not an in-place v6.1 update.")
+        raise ValueError("Signing certificate mismatch: not compatible with the v6.2 signing baseline.")
     for scheme in ("v2", "v3"):
         if not re.search(r"^Verified using " + scheme + r" scheme.*:\s*true\s*$",
                          signed.stdout, re.M):
