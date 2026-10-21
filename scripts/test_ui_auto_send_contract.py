@@ -26,6 +26,10 @@ class AutoSendContractTests(unittest.TestCase):
         self.assertNotIn("for (int attempt", write_section)
         self.assertIn("catch (IOException ex)", write_section)
 
+    def test_no_rearm_during_active_send(self):
+        arm = SOURCE.split("static void Arm(Entry url)", 1)[1].split("static async Task ContinueAsync", 1)[0]
+        self.assertIn("if (Busy || SendStarted) return;", arm)
+
     def test_failed_connection_socket_disposed(self):
         self.assertIn("catch (SocketException ex) when (IsRetryableConnectError(ex.SocketErrorCode))", SOURCE)
         self.assertIn("if (attempt < 4) await Task.Delay(350 * attempt);", SOURCE)
