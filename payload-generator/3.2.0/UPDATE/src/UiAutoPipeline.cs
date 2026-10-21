@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Threading;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -256,22 +255,35 @@ public static class UiAutoPipeline
         // received some or all of the ELF before an error is observed here.
         using (client)
         using (NetworkStream stream = client.GetStream())
-        using (var writeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
         {
-            try
+            // This MAUI APK targets trimmed .NET assemblies: do not add new
+            // CancellationTokenSource constructors absent from the base image.
+            Task io = WriteAndFlushAsync(stream, payload);
+            Task completed = await Task.WhenAny(io, Task.Delay(15000));
+            if (!ReferenceEquals(io, completed))
             {
-                await stream.WriteAsync(payload, 0, payload.Length, writeTimeout.Token);
-                await stream.FlushAsync(writeTimeout.Token);
-            }
-            catch (OperationCanceledException) when (writeTimeout.IsCancellationRequested)
-            {
+                // Closing the socket aborts an outstanding write without
+                // resending bytes that the PS4 may already have received.
+                client.Dispose();
+                _ = ObserveWriteFailureAsync(io);
                 throw new BinLoaderWriteTimeoutException();
             }
-            catch (IOException ex)
-            {
-                throw new BinLoaderWriteInterruptedException(ex);
-            }
+            try { await io; }
+            catch (IOException ex) { throw new BinLoaderWriteInterruptedException(ex); }
         }
+    }
+
+    static async Task WriteAndFlushAsync(NetworkStream stream, byte[] payload)
+    {
+        await stream.WriteAsync(payload, 0, payload.Length);
+        await stream.FlushAsync();
+    }
+
+    // Observes a late fault after the connection is discarded on timeout.
+    static async Task ObserveWriteFailureAsync(Task io)
+    {
+        try { await io; }
+        catch { }
     }
 
     static bool IsRetryableConnectError(SocketError error)
