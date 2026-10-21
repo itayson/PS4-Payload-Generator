@@ -12,12 +12,15 @@ class AutoSendContractTests(unittest.TestCase):
         self.assertIn("Registro BGFT não confirmado", SOURCE)
 
     def test_bounded_write_and_flush(self):
-        self.assertIn("new CancellationTokenSource(TimeSpan.FromSeconds(15))", SOURCE)
-        self.assertIn("stream.WriteAsync(payload, 0, payload.Length, writeTimeout.Token)", SOURCE)
-        self.assertIn("stream.FlushAsync(writeTimeout.Token)", SOURCE)
+        self.assertIn("Task.WhenAny(io, Task.Delay(15000))", SOURCE)
+        self.assertIn("stream.WriteAsync(payload, 0, payload.Length)", SOURCE)
+        self.assertIn("stream.FlushAsync()", SOURCE)
+        self.assertIn("client.Dispose();", SOURCE)
+        self.assertNotIn("new CancellationTokenSource(TimeSpan.FromSeconds(15))", SOURCE)
 
     def test_ambiguous_write_failure_is_explicit(self):
-        self.assertIn("catch (OperationCanceledException) when (writeTimeout.IsCancellationRequested)", SOURCE)
+        self.assertIn("throw new BinLoaderWriteTimeoutException();", SOURCE)
+        self.assertIn("ObserveWriteFailureAsync(io)", SOURCE)
         self.assertIn("catch (BinLoaderWriteInterruptedException)", SOURCE)
         self.assertIn("Resultado BGFT desconhecido", SOURCE)
 
@@ -25,6 +28,7 @@ class AutoSendContractTests(unittest.TestCase):
         write_section = SOURCE.split("using (client)", 1)[1].split("static bool IsRetryableConnectError", 1)[0]
         self.assertNotIn("for (int attempt", write_section)
         self.assertIn("catch (IOException ex)", write_section)
+        self.assertIn("WriteAndFlushAsync(stream, payload)", write_section)
 
     def test_no_rearm_during_active_send(self):
         arm = SOURCE.split("static void Arm(Entry url)", 1)[1].split("static async Task ContinueAsync", 1)[0]
