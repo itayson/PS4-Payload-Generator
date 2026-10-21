@@ -98,6 +98,9 @@ public static class UiAutoPipeline
 
         lock (Gate)
         {
+            // A second paste during an active operation must never unlock the
+            // in-flight send and allow a duplicate BGFT registration.
+            if (Busy || SendStarted) return;
             Pending = true;
             Busy = false;
             SendStarted = false;
@@ -163,7 +166,7 @@ public static class UiAutoPipeline
             await SendToBinLoaderAsync(ps4Ip, payload);
 
             // TCP write completion is not a BGFT task acknowledgement.
-            SetStatus(page, bottom, "ELF transmitido ao BinLoader. Registro BGFT não confirmado; verifique a fila no PS4.");
+            SetStatus(page, bottom, "Bytes do ELF escritos na conexão TCP. Registro BGFT não confirmado; verifique a fila no PS4.");
             Reset();
         }
         catch (BinLoaderWriteTimeoutException)
