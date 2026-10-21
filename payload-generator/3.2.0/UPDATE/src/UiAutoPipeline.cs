@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -31,6 +32,14 @@ public static class UiAutoPipeline
     static bool Busy;
     static bool SendStarted;
     static string PendingUrl = "";
+
+    sealed class BinLoaderWriteTimeoutException : TimeoutException { }
+
+    sealed class BinLoaderWriteInterruptedException : IOException
+    {
+        public BinLoaderWriteInterruptedException(IOException inner)
+            : base("Transmissão TCP interrompida; resultado no PS4 desconhecido.", inner) { }
+    }
 
     static T Field<T>(MainPage page, string name) where T : class
         => typeof(MainPage).GetField(name, PrivateInstance)?.GetValue(page) as T;
@@ -88,6 +97,9 @@ public static class UiAutoPipeline
 
         lock (Gate)
         {
+            // A second paste during an active operation must never unlock the
+            // in-flight send and allow a duplicate BGFT registration.
+            if (Busy || SendStarted) return;
             Pending = true;
             Busy = false;
             SendStarted = false;
@@ -152,8 +164,17 @@ public static class UiAutoPipeline
             SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
             await SendToBinLoaderAsync(ps4Ip, payload);
 
-            SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
+            // TCP write completion is not a BGFT task acknowledgement.
+            SetStatus(page, bottom, "Bytes do ELF escritos na conexão TCP. Registro BGFT não confirmado; verifique a fila no PS4.");
             Reset();
+        }
+        catch (BinLoaderWriteTimeoutException)
+        {
+            Fail(bottom, "Tempo esgotado durante a transmissão do ELF. Resultado BGFT desconhecido: confira a fila do PS4 antes de reenviar.");
+        }
+        catch (BinLoaderWriteInterruptedException)
+        {
+            Fail(bottom, "Transmissão do ELF interrompida. Resultado BGFT desconhecido: confira a fila do PS4 antes de reenviar.");
         }
         catch (TimeoutException)
         {
@@ -209,12 +230,17 @@ public static class UiAutoPipeline
                 await connect;
                 break;
             }
-            catch (SocketException ex) when (IsRetryableConnectError(ex.SocketErrorCode) && attempt < 4)
+            catch (SocketException ex) when (IsRetryableConnectError(ex.SocketErrorCode))
             {
                 lastSocket = ex;
                 client.Dispose();
                 client = null;
-                await Task.Delay(350 * attempt);
+                if (attempt < 4) await Task.Delay(350 * attempt);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
             }
         }
 
@@ -225,12 +251,39 @@ public static class UiAutoPipeline
             throw new SocketException((int)SocketError.NotConnected);
         }
 
+        // After connection, never automatically retry: the console may have
+        // received some or all of the ELF before an error is observed here.
         using (client)
         using (NetworkStream stream = client.GetStream())
         {
-            await stream.WriteAsync(payload, 0, payload.Length);
-            await stream.FlushAsync();
+            // This MAUI APK targets trimmed .NET assemblies: do not add new
+            // CancellationTokenSource constructors absent from the base image.
+            Task io = WriteAndFlushAsync(stream, payload);
+            Task completed = await Task.WhenAny(io, Task.Delay(15000));
+            if (!ReferenceEquals(io, completed))
+            {
+                // Closing the socket aborts an outstanding write without
+                // resending bytes that the PS4 may already have received.
+                client.Dispose();
+                _ = ObserveWriteFailureAsync(io);
+                throw new BinLoaderWriteTimeoutException();
+            }
+            try { await io; }
+            catch (IOException ex) { throw new BinLoaderWriteInterruptedException(ex); }
         }
+    }
+
+    static async Task WriteAndFlushAsync(NetworkStream stream, byte[] payload)
+    {
+        await stream.WriteAsync(payload, 0, payload.Length);
+        await stream.FlushAsync();
+    }
+
+    // Observes a late fault after the connection is discarded on timeout.
+    static async Task ObserveWriteFailureAsync(Task io)
+    {
+        try { await io; }
+        catch { }
     }
 
     static bool IsRetryableConnectError(SocketError error)

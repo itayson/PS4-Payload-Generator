@@ -128,6 +128,36 @@ jobs:
           sha256sum /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk /tmp/out/PS4-Payload-Generator-3.4.3-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
 
+      - name: Build isolated pull request APK
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A fresh CI test keystore cannot be assumed to match an installed APK.
+          # Give the candidate an independent Android package identity instead.
+          python3 /tmp/payloadgen/UPDATE/scripts/apply_release_identity.py \
+            --apk /tmp/payloadgen/UPDATE/build/aligned.apk \
+            --icon-source /tmp/payloadgen/UPDATE/assets/tayson-launcher.jpg \
+            --output "/tmp/out/Tayson-PR${{ github.event.pull_request.number }}-AutoSend-LAB.apk" \
+            --unsigned-output "/tmp/out/Tayson-PR${{ github.event.pull_request.number }}-AutoSend-LAB-unsigned.apk" \
+            --tools /tmp/tools \
+            --keystore /tmp/payloadgen/UPDATE/signing/tayson-test.jks \
+            --new-package com.tayson.ps4payloadgenerator.autosendlab \
+            --build-info "/tmp/out/Tayson-PR${{ github.event.pull_request.number }}-build-info.json"
+          /tmp/tools/android/android-15/aapt dump badging "/tmp/out/Tayson-PR${{ github.event.pull_request.number }}-AutoSend-LAB.apk" | grep -q "package: name='com.tayson.ps4payloadgenerator.autosendlab'"
+          sha256sum "/tmp/out/Tayson-PR${{ github.event.pull_request.number }}-AutoSend-LAB.apk" > "/tmp/out/Tayson-PR${{ github.event.pull_request.number }}-SHA256SUMS.txt"
+
+      - name: Upload isolated pull request APK
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tayson-PR${{ github.event.pull_request.number }}-AutoSend-LAB
+          path: |
+            /tmp/out/Tayson-PR${{ github.event.pull_request.number }}-AutoSend-LAB.apk
+            /tmp/out/Tayson-PR${{ github.event.pull_request.number }}-SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Publish 3.4.3 FileKeeper dlproxy prerelease
         if: github.ref == 'refs/heads/feature/3.4.3-filek-dlproxy'
         shell: bash
