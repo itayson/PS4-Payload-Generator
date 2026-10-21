@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Threading;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -31,6 +33,14 @@ public static class UiAutoPipeline
     static bool Busy;
     static bool SendStarted;
     static string PendingUrl = "";
+
+    sealed class BinLoaderWriteTimeoutException : TimeoutException { }
+
+    sealed class BinLoaderWriteInterruptedException : IOException
+    {
+        public BinLoaderWriteInterruptedException(IOException inner)
+            : base("Transmissão TCP interrompida; resultado no PS4 desconhecido.", inner) { }
+    }
 
     static T Field<T>(MainPage page, string name) where T : class
         => typeof(MainPage).GetField(name, PrivateInstance)?.GetValue(page) as T;
@@ -152,8 +162,17 @@ public static class UiAutoPipeline
             SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
             await SendToBinLoaderAsync(ps4Ip, payload);
 
-            SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
+            // TCP write completion is not a BGFT task acknowledgement.
+            SetStatus(page, bottom, "ELF transmitido ao BinLoader. Registro BGFT não confirmado; verifique a fila no PS4.");
             Reset();
+        }
+        catch (BinLoaderWriteTimeoutException)
+        {
+            Fail(bottom, "Tempo esgotado durante a transmissão do ELF. Resultado BGFT desconhecido: confira a fila do PS4 antes de reenviar.");
+        }
+        catch (BinLoaderWriteInterruptedException)
+        {
+            Fail(bottom, "Transmissão do ELF interrompida. Resultado BGFT desconhecido: confira a fila do PS4 antes de reenviar.");
         }
         catch (TimeoutException)
         {
@@ -209,12 +228,17 @@ public static class UiAutoPipeline
                 await connect;
                 break;
             }
-            catch (SocketException ex) when (IsRetryableConnectError(ex.SocketErrorCode) && attempt < 4)
+            catch (SocketException ex) when (IsRetryableConnectError(ex.SocketErrorCode))
             {
                 lastSocket = ex;
                 client.Dispose();
                 client = null;
-                await Task.Delay(350 * attempt);
+                if (attempt < 4) await Task.Delay(350 * attempt);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
             }
         }
 
@@ -225,11 +249,25 @@ public static class UiAutoPipeline
             throw new SocketException((int)SocketError.NotConnected);
         }
 
+        // After connection, never automatically retry: the console may have
+        // received some or all of the ELF before an error is observed here.
         using (client)
         using (NetworkStream stream = client.GetStream())
+        using (var writeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
         {
-            await stream.WriteAsync(payload, 0, payload.Length);
-            await stream.FlushAsync();
+            try
+            {
+                await stream.WriteAsync(payload, 0, payload.Length, writeTimeout.Token);
+                await stream.FlushAsync(writeTimeout.Token);
+            }
+            catch (OperationCanceledException) when (writeTimeout.IsCancellationRequested)
+            {
+                throw new BinLoaderWriteTimeoutException();
+            }
+            catch (IOException ex)
+            {
+                throw new BinLoaderWriteInterruptedException(ex);
+            }
         }
     }
 
