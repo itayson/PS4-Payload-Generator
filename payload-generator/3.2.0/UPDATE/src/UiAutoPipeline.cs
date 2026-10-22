@@ -89,6 +89,9 @@ public static class UiAutoPipeline
 
         lock (Gate)
         {
+            // An in-flight operation owns Busy until its finally block runs.
+            // Pasting again must not create a second sender.
+            if (Busy) return;
             Pending = true;
             Busy = false;
             SendStarted = false;
@@ -272,7 +275,6 @@ public static class UiAutoPipeline
         lock (Gate)
         {
             Pending = false;
-            Busy = false;
             SendStarted = false;
             PendingUrl = "";
         }
