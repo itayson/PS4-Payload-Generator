@@ -90,6 +90,24 @@ public static class UiHomeScreen
             BackgroundColor = Background
         };
 
+        body.Children.Add(new Label { Text = "SEU PS4. SEU CONTROLE.", TextColor = Cyan,
+            FontSize = 10, FontAttributes = FontAttributes.Bold, CharacterSpacing = 1.5 });
+        body.Children.Add(new Label { Text = "Pronto para o próximo jogo?", TextColor = Text,
+            FontSize = 25, FontAttributes = FontAttributes.Bold });
+        var journey = new Label { TextColor = Green, FontSize = 12, LineBreakMode = LineBreakMode.WordWrap };
+        void UpdateJourney()
+        {
+            journey.Text = inject?.IsEnabled == true
+                ? "03 / ENVIAR · ELF preparado. Confirme o PS4 e toque em Enviar."
+                : generate?.IsEnabled == true
+                    ? "02 / GERAR · PKG validado. Prepare o ELF para o console."
+                    : "01 / PREPARAR · Cole o link ou use a Central na aba Worker.";
+        }
+        if (generate != null) generate.PropertyChanged += (_, e) => { if (e.PropertyName == "IsEnabled") UpdateJourney(); };
+        if (inject != null) inject.PropertyChanged += (_, e) => { if (e.PropertyName == "IsEnabled") UpdateJourney(); };
+        UpdateJourney();
+        body.Children.Add(journey);
+
         var ps4Status = new Label
         {
             Text = string.IsNullOrWhiteSpace(ip?.Text) ? "● PS4 não configurado" : "● PS4 configurado",

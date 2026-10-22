@@ -17,7 +17,7 @@ import zipfile
 from pathlib import Path
 
 OLD_PACKAGE = "com.phoenixx.ps4remotepkg"
-NEW_PACKAGE = "com.tayson.ps4payloadgenerator"
+NEW_PACKAGE = "com.tayson.ps4studio"
 MONO_PROVIDER = OLD_PACKAGE + ".mono.MonoRuntimeProvider.__mono_init__"
 ICON_NAMES = ("icone.png", "icone_round.png", "icone_background.png", "icone_foreground.png")
 DENSITIES = ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")

@@ -33,6 +33,9 @@ public static class UiStateStore
     const string WorkerUrlKey = "tayson.ui.worker.v1";
     const int MaxItems = 20;
 
+    public static bool LoadAutoSend() => Preferences.Default.Get("studio.auto-send.v1", "off") == "on";
+    public static void SaveAutoSend(bool enabled) => Preferences.Default.Set("studio.auto-send.v1", enabled ? "on" : "off");
+
     public static string LoadPs4Ip(string fallback = "")
         => Preferences.Default.Get(Ps4IpKey, fallback ?? "");
 

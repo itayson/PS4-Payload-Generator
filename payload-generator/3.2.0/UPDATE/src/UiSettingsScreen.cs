@@ -77,9 +77,10 @@ public static class UiSettingsScreen
         body.Children.Add(ps4);
 
         var worker = Input(UiStateStore.LoadWorkerUrl(), BgftRoutePlanner.DefaultWorkerBase);
+        worker.IsPassword = true;
         var workerHint = new Label
         {
-            Text = "HTTPS sem query string. É usado para VikingFile/Rootz R2 e AkiraBox quando o BGFT precisa da camada de transporte.",
+            Text = "Cole a base HTTPS completa, incluindo /app/… quando fornecido. A Central de Transporte usa /api/link para preparar o PKG antes da análise local.",
             TextColor = Muted,
             FontSize = 10,
             LineBreakMode = LineBreakMode.WordWrap
@@ -101,22 +102,54 @@ public static class UiSettingsScreen
         };
         body.Children.Add(workerCard);
 
+        var workerSaved = new Label { TextColor = Muted, FontSize = 11 };
+        var saveWorker = Action("Salvar somente o Worker", Blue);
+        saveWorker.Clicked += (_, _) =>
+        {
+            try
+            {
+                UiStateStore.SaveWorkerUrl(StudioTransport.WorkerBase(worker.Text));
+                workerSaved.Text = "Worker salvo. O IP do PS4 pode ser configurado depois.";
+                workerSaved.TextColor = Green;
+            }
+            catch (StudioTransportException error)
+            {
+                workerSaved.Text = error.Message;
+                workerSaved.TextColor = Red;
+            }
+        };
+        body.Children.Add(saveWorker);
+        body.Children.Add(workerSaved);
+
+        var reveal = Outline("Mostrar / ocultar endereço do Worker");
+        reveal.Clicked += (_, _) => worker.IsPassword = !worker.IsPassword;
+        body.Children.Add(reveal);
+        var autoSend = Outline(UiStateStore.LoadAutoSend() ? "Envio automático: ATIVADO" : "Envio automático: DESATIVADO");
+        autoSend.Clicked += (_, _) =>
+        {
+            bool enabled = !UiStateStore.LoadAutoSend();
+            UiStateStore.SaveAutoSend(enabled);
+            autoSend.Text = enabled ? "Envio automático: ATIVADO" : "Envio automático: DESATIVADO";
+        };
+        body.Children.Add(autoSend);
+        body.Children.Add(new Label { Text = "Com o envio automático desativado, colar um link não inicia envio ao PS4. O envio manual continua disponível.", TextColor = Muted, FontSize = 11 });
+
         body.Children.Add(StatusCard("Validação de PKG", "Sempre ativa", Green,
             "Magic, Content ID, tamanho e comportamento HTTP são validados antes da geração do ELF."));
         body.Children.Add(StatusCard("Navegador de provedor", "Automático", Cyan,
             "O fluxo de navegador é acionado somente quando o provedor exige contexto de sessão, como AkiraBox."));
-        body.Children.Add(StatusCard("Dados sensíveis", "Não persistidos", Blue,
-            "URLs assinadas, cookies e tokens não são gravados no histórico local."));
+        body.Children.Add(StatusCard("Histórico", "Sem links de download", Blue,
+            "URLs assinadas e cookies não são gravados no histórico. A base privada do Worker permanece nas configurações locais do aplicativo."));
 
         var saveStatus = new Label { TextColor = Muted, FontSize = 11, HorizontalTextAlignment = TextAlignment.Center };
         var save = Action("Salvar configurações", Blue);
         save.Clicked += (_, _) =>
         {
-            string workerValue = (worker.Text ?? "").Trim().TrimEnd('/');
-            if (!Uri.TryCreate(workerValue, UriKind.Absolute, out Uri parsed) ||
-                parsed.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(parsed.Query))
+            string workerValue;
+            try { workerValue = StudioTransport.WorkerBase(worker.Text); }
+            catch (StudioTransportException error)
             {
-                saveStatus.Text = "Worker inválido: use um endereço HTTPS sem query string.";
+                saveStatus.Text = error.Message;
                 saveStatus.TextColor = Red;
                 return;
             }

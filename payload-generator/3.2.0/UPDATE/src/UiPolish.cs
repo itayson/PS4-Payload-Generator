@@ -87,7 +87,7 @@ public static class UiPolish
 
         var bottom = typeof(MainPage).GetField("lblBottomStatus", PrivateInstance)?.GetValue(page) as Label;
         if (bottom != null)
-            bottom.Text = "Tayson 3.4.0 • BGFT universal • BinLoader 9090";
+            bottom.Text = "Tayson PS4 Studio • Base 3.4.3 • Envio manual por padrão";
 
         View modernHome = UiHomeScreen.Build(page);
         Visit(modernHome);
@@ -111,7 +111,7 @@ public static class UiPolish
         {
             worker.Clicked += (_, _) =>
             {
-                var view = UiWorkerScreen.Build();
+                var view = StudioWorkerScreen.Build(page);
                 Visit(view);
                 host.Content = view;
             };

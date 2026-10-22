@@ -209,7 +209,7 @@ public static class UiRedesign
         });
         brand.Children.Add(new Label
         {
-            Text = "PS4 PAYLOAD GENERATOR",
+            Text = "PS4 STUDIO · 1.0",
             TextColor = Cyan,
             FontSize = 10,
             CharacterSpacing = 1.8

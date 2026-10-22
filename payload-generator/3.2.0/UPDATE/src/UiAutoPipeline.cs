@@ -83,6 +83,7 @@ public static class UiAutoPipeline
 
     static void Arm(Entry url)
     {
+        if (!UiStateStore.LoadAutoSend()) return;
         string value = (url?.Text ?? "").Trim();
         if (value.Length == 0) return;
 
@@ -97,6 +98,7 @@ public static class UiAutoPipeline
 
     static async Task ContinueAsync(MainPage page)
     {
+        if (!UiStateStore.LoadAutoSend()) { Reset(); return; }
         Entry url = Field<Entry>(page, "txtUrl");
         Entry ip = Field<Entry>(page, "txtIp");
         Button generate = Field<Button>(page, "btnGerar");
@@ -146,13 +148,19 @@ public static class UiAutoPipeline
             byte[] payload = await Integration.GenerateAsync(page);
             if (payload == null || payload.Length == 0)
                 throw new InvalidOperationException("O ELF gerado está vazio.");
+            if (!UiStateStore.LoadAutoSend())
+            {
+                Reset();
+                SetStatus(page, bottom, "Envio automático desativado. Nenhum payload foi enviado.");
+                return;
+            }
 
             // The ELF stays in memory. Nothing is written to Downloads and no
             // Storage Access Framework/file-picker flow is invoked.
             SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
             await SendToBinLoaderAsync(ps4Ip, payload);
 
-            SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
+            SetStatus(page, bottom, "Payload enviado ao PS4. Confirme o registro BGFT e o download na TV.");
             Reset();
         }
         catch (TimeoutException)

@@ -9,3 +9,9 @@ captures/
 .cxx/
 *.jks
 *.keystore
+bin/
+obj/
+.tools/
+out/
+*.apk
+__pycache__/
