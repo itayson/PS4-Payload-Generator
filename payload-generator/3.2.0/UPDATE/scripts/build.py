@@ -3,10 +3,10 @@
 import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile, zlib
 from pathlib import Path
 
-APP_VERSION = '1.0.0'
-APP_VERSION_CODE = 1
+APP_VERSION = '1.0.1'
+APP_VERSION_CODE = 2
 APP_LABEL = 'Tayson PS4 Studio'
-APK_NAME = 'Tayson-PS4-Studio-1.0.0.apk'
+APK_NAME = 'Tayson-PS4-Studio-1.0.1.apk'
 
 ICON_SIZES = {
     'mipmap-mdpi-v4': 48,

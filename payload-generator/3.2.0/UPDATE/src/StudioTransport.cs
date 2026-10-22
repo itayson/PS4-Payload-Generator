@@ -32,15 +32,58 @@ public sealed class StudioTransport
 
     public static string WorkerBase(string input)
     {
-        string value = (input ?? "").Trim();
-        if (value.Length > 2047 || !Uri.TryCreate(value, UriKind.Absolute, out Uri uri) ||
-            uri.Scheme != "https" || string.IsNullOrEmpty(uri.Host) ||
-            !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) ||
-            !string.IsNullOrEmpty(uri.UserInfo))
-            throw new StudioTransportException("WORKER_CONFIG", "Use a URL HTTPS completa do Worker, sem query, fragmento ou usuário/senha.");
+        string value = CopyBoundary(input ?? "");
+        // Remove presentation wrappers only. Never edit URL bytes inside the address.
+        for (int wrappers = 0; wrappers < 3; wrappers++)
+        {
+            if (value.Length >= 6 && value.StartsWith("```") && value.EndsWith("```"))
+            {
+                string content = value.Substring(3, value.Length - 6);
+                int newline = content.IndexOf('\n');
+                if (newline >= 0)
+                {
+                    string language = content.Substring(0, newline).Trim();
+                    if (language == "" || language == "text" || language == "plaintext")
+                        content = content.Substring(newline + 1);
+                }
+                value = CopyBoundary(content);
+            }
+            else if (value.Length >= 2 &&
+                ((value[0] == '`' && value[value.Length - 1] == '`') ||
+                 (value[0] == '"' && value[value.Length - 1] == '"') ||
+                 (value[0] == '\'' && value[value.Length - 1] == '\'')))
+                value = CopyBoundary(value.Substring(1, value.Length - 2));
+            else break;
+        }
+        if (value.Length == 0)
+            throw new StudioTransportException("WORKER_EMPTY", "O campo está vazio. Use Colar endereço para inserir a URL completa.");
+        if (value.Length > 2047)
+            throw new StudioTransportException("WORKER_LIMIT", "O endereço ultrapassa 2047 caracteres. Cole somente a base do Worker.");
         foreach (char c in value)
-            if (char.IsControl(c)) throw new StudioTransportException("WORKER_CONFIG", "A configuração do Worker contém caracteres de controle.");
+            if (char.IsControl(c) || char.IsWhiteSpace(c) || ClipboardMark(c))
+                throw new StudioTransportException("WORKER_CHARACTERS", "Há espaços, quebras de linha ou marcas invisíveis dentro do endereço. Cole novamente a URL em uma única linha.");
+        if (!value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            throw new StudioTransportException("WORKER_HTTPS", "O endereço precisa começar com https://. Não use apenas o nome do Worker.");
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri uri) || string.IsNullOrEmpty(uri.Host))
+            throw new StudioTransportException("WORKER_FORMAT", "Não foi possível ler o endereço. Cole apenas a URL, sem descrição ou link em Markdown.");
+        if (!string.IsNullOrEmpty(uri.UserInfo))
+            throw new StudioTransportException("WORKER_CREDENTIALS", "Remova usuário e senha antes do domínio. A base privada /app/… é permitida.");
+        if (!string.IsNullOrEmpty(uri.Query))
+            throw new StudioTransportException("WORKER_QUERY", "A base do Worker não pode conter ? e parâmetros. Use a base privada /app/… .");
+        if (!string.IsNullOrEmpty(uri.Fragment))
+            throw new StudioTransportException("WORKER_FRAGMENT", "A base do Worker não pode conter # e fragmento.");
         return uri.AbsoluteUri.TrimEnd('/');
+    }
+
+    static bool ClipboardMark(char c) => c == '\u200b' || c == '\ufeff' ||
+        c == '\u200e' || c == '\u200f' || c == '\u2060' || (c >= '\u2066' && c <= '\u2069');
+
+    static string CopyBoundary(string value)
+    {
+        int start = 0, end = value.Length;
+        while (start < end && (char.IsWhiteSpace(value[start]) || ClipboardMark(value[start]))) start++;
+        while (end > start && (char.IsWhiteSpace(value[end - 1]) || ClipboardMark(value[end - 1]))) end--;
+        return value.Substring(start, end - start);
     }
 
     public static string WorkerHost(string input)

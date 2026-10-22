@@ -209,7 +209,7 @@ public static class UiRedesign
         });
         brand.Children.Add(new Label
         {
-            Text = "PS4 STUDIO · 1.0",
+            Text = "PS4 STUDIO · 1.0.1",
             TextColor = Cyan,
             FontSize = 10,
             CharacterSpacing = 1.8

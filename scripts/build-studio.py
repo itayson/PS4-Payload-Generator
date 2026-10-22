@@ -59,10 +59,10 @@ def main():
         run('build', 'python3', project/'scripts/build.py', '--base', base, '--tools', tools, '--output', output)
         run('identity', 'python3', project/'scripts/apply_release_identity.py',
             '--apk', project/'build/aligned.apk', '--icon-source', project/'assets/tayson-launcher.jpg',
-            '--output', output/'Tayson-PS4-Studio-1.0.0.apk',
+            '--output', output/'Tayson-PS4-Studio-1.0.1.apk',
             '--unsigned-output', output/'Studio-aligned-unsigned.apk', '--tools', tools,
             '--keystore', project/'signing/tayson-test.jks', '--build-info', output/'build-info.json')
-    artifact = output/'Tayson-PS4-Studio-1.0.0.apk'
+    artifact = output/'Tayson-PS4-Studio-1.0.1.apk'
     (output/'SHA256SUMS.txt').write_text(hashlib.sha256(artifact.read_bytes()).hexdigest() + '  ' + artifact.name + '\n')
     metadata = json.loads((output/'build-info.json').read_text())
     if metadata['package'] != 'com.tayson.ps4studio':

@@ -34,10 +34,10 @@ jobs:
       - name: Upload test APK and validation logs
         uses: actions/upload-artifact@v4
         with:
-          name: Tayson-PS4-Studio-1.0.0-test
+          name: Tayson-PS4-Studio-1.0.1-test
           if-no-files-found: error
           path: |
-            out/Tayson-PS4-Studio-1.0.0.apk
+            out/Tayson-PS4-Studio-1.0.1.apk
             out/build-info.json
             out/SHA256SUMS.txt
             out/*.log

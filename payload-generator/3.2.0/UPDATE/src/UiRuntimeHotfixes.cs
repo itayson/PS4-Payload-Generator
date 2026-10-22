@@ -149,7 +149,7 @@ public static class UiRuntimeHotfixes
         }
     }
 
-    static string ReadAndroidClipboard(Label bottom)
+    public static string ReadAndroidClipboard(Label bottom)
     {
         IntPtr serviceClass = IntPtr.Zero;
         IntPtr charsClass = IntPtr.Zero;

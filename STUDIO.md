@@ -1,4 +1,4 @@
-# Tayson PS4 Studio 1.0.0
+# Tayson PS4 Studio 1.0.1
 
 Aplicativo independente derivado do código MIT da versão 3.4.3 do Tayson PS4 Payload Generator. Identidade Android: `com.tayson.ps4studio`. O projeto mantém o fluxo Android → Worker → ELF → GoldHEN/BGFT → download no PS4.
 
@@ -20,6 +20,10 @@ Não há fila de instalações, monitoramento remoto de progresso BGFT ou compro
 
 ## Configurar o Worker
 
+Na versão 1.0.1, o botão **Colar e salvar Worker** lê o texto diretamente da área de transferência. A validação remove somente aspas/crases externas, delimitadores de bloco de código e marcas invisíveis nas bordas. Espaços e marcas dentro do endereço continuam sendo recusados; caminhos de autenticação escapados são preservados. Mensagens `WORKER_EMPTY`, `WORKER_HTTPS`, `WORKER_CHARACTERS`, `WORKER_QUERY` e similares identificam o motivo sem reproduzir credenciais.
+
+A causa exata da rejeição no aparelho ainda não foi reproduzida; o endereço fornecido foi aceito localmente. As alterações cobrem formatos de cópia e oferecem um caminho de salvamento direto sem depender da edição do campo mascarado.
+
 Em Ajustes, cole a base privada completa do Tayson Universal Proxy fornecida para o aplicativo, incluindo `/app/…`. Nenhuma chave administrativa ou chave privada de produção está embutida no clone. A base fica nas preferências locais do aplicativo; ocultá-la visualmente não significa criptografá-la em repouso.
 
 O Worker precisa implementar `POST <base>/api/link`, recebendo a URL como texto UTF-8 e respondendo com uma URL HTTPS `.pkg` do mesmo host/porta. Isso corresponde à extensão já implementada no Tayson Universal Proxy 1.0.1. A API JSON `/resolve` sozinha não atende esse contrato. Para os fluxos legados, foram preservados os endpoints da base 3.4.3.
@@ -29,7 +33,7 @@ Na aba Worker: teste a conexão, cole o link, prepare e valide o PKG, importe a 
 ## Verificação executada neste ambiente
 
 - 103 verificações herdadas de core passaram, usando o template extraído do APK 3.4.3.
-- 45 verificações novas de transporte passaram com mocks: contratos, assinatura da URL preservada, limites, cancelamento, erros, HTML e arquivo simulado de 8 GiB.
+- 66 verificações de transporte/configuração passaram com mocks: contratos, assinatura da URL preservada, limites, cancelamento, erros, HTML, arquivo simulado de 8 GiB e formatos de cópia do endereço.
 - Todos os arquivos C# do módulo compilaram contra as bibliotecas efetivamente extraídas do APK 3.4.3.
 - Auditoria de dependências contra essas bibliotecas: zero membros ausentes/removidos. Foi necessário fornecer ao resolver uma cópia da referência com o nome de identidade observado `merged.dll`; isso ficou apenas no diretório local de ferramentas.
 - Os novos scripts Python passaram por compilação sintática.
@@ -51,7 +55,7 @@ python3 scripts/build-studio.py --base-apk /tmp/studio-base.apk --tools /tmp/stu
 
 O instalador herdado prepara .NET 8.0.425 e ferramentas Android somente no diretório de ferramentas escolhido. A assinatura de teste é criada em diretório temporário e não serve como identidade estável de atualização entre builds. Para distribuição continuada, é necessário usar e preservar uma chave de assinatura própria. A chave de teste não é enviada como artefato.
 
-Saída esperada **quando o workflow concluir com sucesso**: `out/Tayson-PS4-Studio-1.0.0.apk`, `build-info.json`, `SHA256SUMS.txt` e logs. Não existe URL de download de APK antes desse resultado.
+Saída esperada **quando o workflow concluir com sucesso**: `out/Tayson-PS4-Studio-1.0.1.apk`, `build-info.json`, `SHA256SUMS.txt` e logs. Não existe URL de download de APK antes desse resultado.
 
 Para compilar apenas o C# contra referências extraídas, inclusive em Alpine ARM64 com SDK compatível:
 
@@ -65,3 +69,7 @@ O SDK portátil usado localmente é a variante `linux-musl-arm64`; ver a [docume
 ## Licença e atribuição
 
 Mantida a licença MIT de Tayson Daniel Cardoso de Oliveira, em `LICENSE`. O runtime MAUI/JNI e o template são herdados da mesma base utilizada pela versão 3.4.3; o build mantém a verificação dos bytes de DEX e do template entre as fases apropriadas. Este trabalho não redefine ou modifica o gerenciador de transferências do console.
+
+## Instalar esta revisão de testes
+
+A build 1.0.1 usa uma nova assinatura de teste. Para instalar sobre o mesmo identificador Android, será necessário remover somente o Tayson PS4 Studio 1.0.0 antes; isso remove os dados locais desse clone. Não remova o aplicativo original 3.4.3. A configuração do Worker pode ser refeita com o botão Colar e salvar Worker. Uma assinatura persistente continua necessária para atualizações futuras sem reinstalação.

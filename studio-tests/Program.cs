@@ -21,8 +21,36 @@ const string source = "https://mocha.my/file?token=A%2Fb%3D&x=1&x=2";
 const string route = "https://proxy.example/d/random/file.pkg";
 Check(StudioTransport.WorkerBase(" " + worker + "/ ") == worker, "Base path preserved, final slash removed");
 Check(StudioTransport.WorkerHost(worker) == "proxy.example", "Private base path absent from display");
-foreach (string invalid in new[] {"http://proxy.example", "https://u:p@proxy.example", "https://proxy.example?q=secret", "https://proxy.example/#fragment", "https://proxy.example/\nsecret"})
-    await Reject(() => Task.FromResult(StudioTransport.WorkerBase(invalid)), "WORKER_CONFIG");
+foreach (var invalid in new[] {
+    ("", "WORKER_EMPTY"), (" \u200b\ufeff", "WORKER_EMPTY"),
+    ("http://proxy.example", "WORKER_HTTPS"), ("proxy.example/app/key", "WORKER_HTTPS"),
+    ("https://u:p@proxy.example", "WORKER_CREDENTIALS"),
+    ("https://proxy.example?q=secret", "WORKER_QUERY"),
+    ("https://proxy.example/#fragment", "WORKER_FRAGMENT"),
+    ("https://proxy.example/\nsecret", "WORKER_CHARACTERS"),
+    ("https://proxy.example/app/pri\u200bvate-key", "WORKER_CHARACTERS"),
+    ("https://proxy.example/app/private key", "WORKER_CHARACTERS"),
+    ("https://", "WORKER_FORMAT"),
+    ("https://proxy.example/" + new string('a', 2048), "WORKER_LIMIT") })
+    await Reject(() => Task.FromResult(StudioTransport.WorkerBase(invalid.Item1)), invalid.Item2);
+foreach (string pasted in new[] {worker, "\u200b\ufeff" + worker + "\u2069", "\u2066" + worker + "\u2069",
+    "`" + worker + "`", "\"" + worker + "\"", "'" + worker + "'",
+    "```\n" + worker + "\n```", "```text\r\n" + worker + "\r\n```",
+    "```plaintext\n" + worker + "\n```", "```" + worker + "```",
+    "\u200e\u00a0`" + worker + "`\u00a0\u200f"})
+    Check(StudioTransport.WorkerBase(pasted) == worker, "Clipboard presentation removed without editing private path");
+string escapedWorker = "https://proxy.example/app/CaseSensitive_A%2fb%2B%3D";
+Check(StudioTransport.WorkerBase("`" + escapedWorker + "`") == escapedWorker, "Escaped authentication path preserved exactly");
+await Reject(() => Task.FromResult(StudioTransport.WorkerBase("```text\nhttp://proxy.example\n```")), "WORKER_HTTPS");
+try
+{
+    StudioTransport.WorkerBase("https://proxy.example?token=TOP_SECRET");
+    throw new Exception("Expected query rejection");
+}
+catch (StudioTransportException error)
+{
+    Check(error.Code == "WORKER_QUERY" && !StudioTransport.SafeError(error).Contains("TOP_SECRET"), "Configuration diagnosis contains no supplied query");
+}
 
 var state = new State();
 var client = new StudioTransport(() => new Handler(state));

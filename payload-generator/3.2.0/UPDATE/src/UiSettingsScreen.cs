@@ -77,6 +77,9 @@ public static class UiSettingsScreen
         body.Children.Add(ps4);
 
         var worker = Input(UiStateStore.LoadWorkerUrl(), BgftRoutePlanner.DefaultWorkerBase);
+        worker.Keyboard = Keyboard.Url;
+        worker.IsTextPredictionEnabled = false;
+        worker.IsSpellCheckEnabled = false;
         worker.IsPassword = true;
         var workerHint = new Label
         {
@@ -103,21 +106,31 @@ public static class UiSettingsScreen
         body.Children.Add(workerCard);
 
         var workerSaved = new Label { TextColor = Muted, FontSize = 11 };
-        var saveWorker = Action("Salvar somente o Worker", Blue);
-        saveWorker.Clicked += (_, _) =>
+        void SaveWorker(string input)
         {
             try
             {
-                UiStateStore.SaveWorkerUrl(StudioTransport.WorkerBase(worker.Text));
+                string normalized = StudioTransport.WorkerBase(input);
+                UiStateStore.SaveWorkerUrl(normalized);
+                worker.Text = normalized;
                 workerSaved.Text = "Worker salvo. O IP do PS4 pode ser configurado depois.";
                 workerSaved.TextColor = Green;
             }
             catch (StudioTransportException error)
             {
-                workerSaved.Text = error.Message;
+                workerSaved.Text = error.Code + ": " + error.Message;
                 workerSaved.TextColor = Red;
             }
+        }
+        var pasteWorker = Outline("Colar e salvar Worker");
+        pasteWorker.Clicked += (_, _) =>
+        {
+            string copied = UiRuntimeHotfixes.ReadAndroidClipboard(workerSaved);
+            if (!string.IsNullOrEmpty(copied)) SaveWorker(copied);
         };
+        body.Children.Add(pasteWorker);
+        var saveWorker = Action("Salvar somente o Worker", Blue);
+        saveWorker.Clicked += (_, _) => SaveWorker(worker.Text);
         body.Children.Add(saveWorker);
         body.Children.Add(workerSaved);
 
@@ -149,7 +162,7 @@ public static class UiSettingsScreen
             try { workerValue = StudioTransport.WorkerBase(worker.Text); }
             catch (StudioTransportException error)
             {
-                saveStatus.Text = error.Message;
+                saveStatus.Text = error.Code + ": " + error.Message;
                 saveStatus.TextColor = Red;
                 return;
             }
@@ -164,6 +177,7 @@ public static class UiSettingsScreen
 
             UiStateStore.SavePs4Ip(ipValue);
             UiStateStore.SaveWorkerUrl(workerValue);
+            worker.Text = workerValue;
             if (realIp != null) realIp.Text = ipValue;
             saveStatus.Text = "✓ Configurações salvas";
             saveStatus.TextColor = Green;

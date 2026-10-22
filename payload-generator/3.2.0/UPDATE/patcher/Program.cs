@@ -69,7 +69,7 @@ void SetMessage(string property, string text)
 SetMessage("AlertSuccess", "Sucesso");
 SetMessage("AlertError", "Erro");
 SetMessage("AlertNetError", "Erro de rede");
-SetMessage("AlertInjected", "Payload enviado ao PS4. Isso confirma apenas o envio. Confira na TV se o download iniciou; se aparecer Registro: 0x..., fotografe o código completo. Tayson PS4 Studio 1.0.");
+SetMessage("AlertInjected", "Payload enviado ao PS4. Isso confirma apenas o envio. Confira na TV se o download iniciou; se aparecer Registro: 0x..., fotografe o código completo. Tayson PS4 Studio 1.0.1.");
 SetMessage("BtnScan", "Validar PKG");
 SetMessage("BtnInject", "Enviar ao PS4");
 SetMessage("BtnSending", "Enviando…");
@@ -91,7 +91,7 @@ foreach (var method in type.Methods.Where(m => m.HasBody))
 foreach (var instruction in method.Body.Instructions)
     if (instruction.OpCode == OpCodes.Ldstr && (string)instruction.Operand == "PS4 Payload Generator")
     {
-        instruction.Operand = "Tayson PS4 Studio 1.0";
+        instruction.Operand = "Tayson PS4 Studio 1.0.1";
         titleChanges++;
     }
 if (titleChanges == 0) throw new InvalidOperationException("Application title was not located");
