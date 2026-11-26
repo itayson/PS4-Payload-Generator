@@ -5,9 +5,9 @@ Baseline: c88246469e8069ffbb173dde7315f892bf464e5b. Target: 3.5.0, not a release
 - One-touch uses a bounded TCP sender; 9090 and four pre-connect attempts remain defaults.
 - After connecting, failures are ambiguous and must not trigger automatic replay.
 - TCP completion does not confirm execution, BGFT registration, or installation.
-- Settings accepts manually declared firmware and GoldHEN version per IP; advisory only, does not select a native binary.
+- Settings accepts manually declared firmware, GoldHEN version and optional explicit ELF loader TCP port per IP. The release classification is advisory and does not select a native binary. The original manual sender retains 9090.
 - No changes to Worker, native ELF, artwork, history or provider resolution.
-- PR CI produces a 3.5.0-alpha.1 candidate (versionCode 41) with test signing. It is not a stable update; verify signing before installation.
+- PR CI produces a 3.5.0-alpha.2 lab candidate (versionCode 42), with separate Android package com.tayson.ps4payloadgenerator.lab and unique provider authorities. Test signing is intentionally distinct; do not uninstall stable. Side-by-side installation must still be checked on Android.
 - Dependency audit remains mandatory: replace missing ContinueWith with a compatible asynchronous observer.
 
 ## Evidence / targets

@@ -37,13 +37,14 @@ public static class UiStateStore
     public static string LoadConsoleField(string host, string field)
         => Preferences.Default.Get(GoldHenProfileKey + host + "." + field, "");
 
-    public static void SaveConsoleProfile(string host, string firmware, string release)
+    public static void SaveConsoleProfile(string host, string firmware, string release, int port)
     {
         if (!GoldHenCompatibility.ValidProfileField(firmware) ||
-            !GoldHenCompatibility.ValidProfileField(release))
+            !GoldHenCompatibility.ValidProfileField(release) || port < 1 || port > 65535)
             throw new ArgumentException("Perfil inválido.");
         Preferences.Default.Set(GoldHenProfileKey + host + ".firmware", firmware);
         Preferences.Default.Set(GoldHenProfileKey + host + ".release", release);
+        Preferences.Default.Set(GoldHenProfileKey + host + ".port", port.ToString());
     }
 
     public static string LoadPs4Ip(string fallback = "")

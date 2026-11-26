@@ -19,6 +19,13 @@ from pathlib import Path
 OLD_PACKAGE = "com.phoenixx.ps4remotepkg"
 NEW_PACKAGE = "com.tayson.ps4payloadgenerator"
 MONO_PROVIDER = OLD_PACKAGE + ".mono.MonoRuntimeProvider.__mono_init__"
+LAB_PACKAGE = NEW_PACKAGE + ".lab"
+MONO_CLASS = "mono.MonoRuntimeProvider"
+
+def mono_authority(package):
+    # The provider authority, not the inherited Java class, must be unique
+    # to allow a lab installation beside the stable app.
+    return package + ".mono.MonoRuntimeProvider.__mono_init__" if package == LAB_PACKAGE else MONO_PROVIDER
 ICON_NAMES = ("icone.png", "icone_round.png", "icone_background.png", "icone_foreground.png")
 DENSITIES = ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
 EXPECTED_ICONS = {
@@ -124,6 +131,8 @@ def patch_manifest(data, old_package, new_package):
             new_package + ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
         old_package + ".androidx-startup": new_package + ".androidx-startup",
     }
+    if new_package == LAB_PACKAGE:
+        replacements[MONO_PROVIDER] = mono_authority(new_package)
     found = {key: 0 for key in replacements}
     for i, value in enumerate(strings):
         if value in replacements:
@@ -133,8 +142,8 @@ def patch_manifest(data, old_package, new_package):
     missing = [key for key, count in found.items() if count == 0]
     if missing:
         raise ValueError("Expected package strings missing: " + ", ".join(missing))
-    if MONO_PROVIDER not in strings:
-        raise ValueError("Inherited MonoRuntimeProvider class string is missing")
+    if mono_authority(new_package) not in strings or MONO_CLASS not in strings:
+        raise ValueError("MonoRuntimeProvider authority or inherited class string is missing")
 
     chunks[pool_index] = (0x0001, _encode_string_pool(strings, flags))
     body = b"".join(bytes(chunk) for _, chunk in chunks)
@@ -295,7 +304,8 @@ def main():
             args.new_package,
             args.new_package + ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
             args.new_package + ".androidx-startup",
-            MONO_PROVIDER,
+            mono_authority(args.new_package),
+            MONO_CLASS,
         ):
             if required not in text:
                 raise ValueError("Required manifest identity missing: " + required)
@@ -317,6 +327,7 @@ def main():
         details["previous_package"] = args.old_package
         details["package_identity_changed"] = True
         details["mono_runtime_provider_class_preserved"] = True
+        details["mono_provider_authority"] = mono_authority(args.new_package)
         details["launcher_icon_resources_replaced"] = 20
         details["launcher_icon_source_sha256"] = icon_sha
         args.build_info.write_text(json.dumps(details, indent=2) + "\n")

@@ -5,9 +5,9 @@ from pathlib import Path
 
 # Experimental version identity is opt-in in the isolated PR CI only.
 EXPERIMENTAL = os.environ.get('TAYSON_GOLDHEN_EXPERIMENTAL') == '1'
-APP_VERSION = '3.5.0-alpha.1' if EXPERIMENTAL else '3.4.3'
-APP_VERSION_CODE = 41 if EXPERIMENTAL else 40
-APP_LABEL = 'Tayson PS4 Payload Generator'
+APP_VERSION = '3.5.0-alpha.2' if EXPERIMENTAL else '3.4.3'
+APP_VERSION_CODE = 42 if EXPERIMENTAL else 40
+APP_LABEL = 'Tayson PS4 Payload Generator Lab' if EXPERIMENTAL else 'Tayson PS4 Payload Generator'
 APK_NAME = 'PS4-Payload-Generator-3.4.3-TaySon.apk'
 
 ICON_SIZES = {

@@ -110,6 +110,7 @@ public static class UiAutoPipeline
             Busy = true;
         }
 
+        int port = PayloadTransport.DefaultPort;
         try
         {
             string currentUrl = (url?.Text ?? "").Trim();
@@ -137,6 +138,12 @@ public static class UiAutoPipeline
                 return;
             }
 
+            if (!GoldHenCompatibility.TryPort(UiStateStore.LoadConsoleField(ps4Ip, "port"), out port))
+            {
+                Fail(bottom, "Porta do perfil inválida. Revise os Ajustes.");
+                return;
+            }
+
             lock (Gate)
             {
                 if (!Pending || SendStarted) return;
@@ -152,9 +159,9 @@ public static class UiAutoPipeline
             // The ELF stays in memory. Nothing is written to Downloads and no
             // Storage Access Framework/file-picker flow is invoked.
             string release = UiStateStore.LoadConsoleField(ps4Ip, "release");
-            SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090... " +
+            SetStatus(page, bottom, "Conectando ao loader ELF na porta " + port + "... " +
                 GoldHenCompatibility.Describe(release));
-            await PayloadTransport.SendAsync(ps4Ip, payload);
+            await PayloadTransport.SendAsync(ps4Ip, payload, port);
 
             SetStatus(page, bottom, "Payload enviado ao PS4 por TCP. Confirme a execução e o BGFT no console.");
             Reset();
@@ -165,15 +172,15 @@ public static class UiAutoPipeline
         }
         catch (TimeoutException)
         {
-            Fail(bottom, "O PS4:9090 não respondeu após várias tentativas. Confirme que o GoldHEN BinLoader está ativado.");
+            Fail(bottom, "O PS4:" + port + " não respondeu após várias tentativas. Confirme que o loader está ativado.");
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
         {
-            Fail(bottom, "PS4 recusou a conexão na porta 9090 após várias tentativas. Reative o GoldHEN BinLoader e tente novamente.");
+            Fail(bottom, "PS4 recusou a conexão na porta " + port + " após várias tentativas. Confira o loader.");
         }
         catch (SocketException ex)
         {
-            Fail(bottom, "Falha de rede ao conectar ao PS4:9090 (" + ex.SocketErrorCode + ").");
+            Fail(bottom, "Falha de rede ao conectar ao PS4:" + port + " (" + ex.SocketErrorCode + ").");
         }
         catch (Exception ex)
         {

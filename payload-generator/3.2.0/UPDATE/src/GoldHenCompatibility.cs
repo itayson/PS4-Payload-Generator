@@ -23,6 +23,18 @@ public static class GoldHenCompatibility
         return true; // Empty means not declared.
     }
 
+    public static bool TryPort(string value, out int port)
+    {
+        port = PayloadTransport.DefaultPort;
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        if (value.Length > 5) return false;
+        foreach (char c in value)
+            if (c < '0' || c > '9') return false;
+        if (!int.TryParse(value, out int parsed) || parsed < 1 || parsed > 65535) return false;
+        port = parsed;
+        return true;
+    }
+
     public static string Describe(string release)
     {
         switch (Classify(release))
@@ -53,9 +65,18 @@ public static class GoldHenCompatibility
             if (revision >= 5 && revision <= 14) return GoldHenLoaderEvidence.ElfCandidate;
             if (revision >= 1 && revision <= 4) return GoldHenLoaderEvidence.LegacyNeedsVerification;
         }
-        if (value == "2.0b" || value == "2.0" || value == "2.1" ||
-            value == "2.2" || value == "2.3" || value == "2.4b18")
-            return GoldHenLoaderEvidence.LegacyNeedsVerification;
+        // Exact documented builds only; unknown suffixes remain unknown.
+        switch (value)
+        {
+            case "2.0b": case "2.0b2": case "2.0":
+            case "2.1": case "2.1.1": case "2.1.2":
+            case "2.2": case "2.2.1": case "2.2.2": case "2.2.3": case "2.2.4":
+            case "2.3": case "2.4b5": case "2.4b10": case "2.4b11":
+            case "2.4b12": case "2.4b13": case "2.4b14": case "2.4b15":
+            case "2.4b16": case "2.4b16.2": case "2.4b17": case "2.4b17.2":
+            case "2.4b17.3": case "2.4b18":
+                return GoldHenLoaderEvidence.LegacyNeedsVerification;
+        }
         return GoldHenLoaderEvidence.Unknown;
     }
 }
