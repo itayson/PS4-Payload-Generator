@@ -71,11 +71,16 @@ public static class PayloadTransport
         if (await Task.WhenAny(operation, Task.Delay(milliseconds)) != operation)
         {
             // Caller disposes the socket. Observe a later fault from the pending operation.
-            _ = operation.ContinueWith(t => { _ = t.Exception; },
-                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+            _ = ObserveAsync(operation);
             throw new TimeoutException("TCP operation timed out.");
         }
         await operation;
+    }
+
+    static async Task ObserveAsync(Task operation)
+    {
+        try { await operation; }
+        catch (Exception) { /* The caller already reported the timeout. */ }
     }
 
     static bool IsRetryable(SocketError error)

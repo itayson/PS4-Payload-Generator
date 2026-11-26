@@ -151,7 +151,9 @@ public static class UiAutoPipeline
 
             // The ELF stays in memory. Nothing is written to Downloads and no
             // Storage Access Framework/file-picker flow is invoked.
-            SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
+            string release = UiStateStore.LoadConsoleField(ps4Ip, "release");
+            SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090... " +
+                GoldHenCompatibility.Describe(release));
             await PayloadTransport.SendAsync(ps4Ip, payload);
 
             SetStatus(page, bottom, "Payload enviado ao PS4 por TCP. Confirme a execução e o BGFT no console.");

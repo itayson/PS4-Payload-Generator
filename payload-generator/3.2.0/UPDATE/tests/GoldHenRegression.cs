@@ -23,6 +23,11 @@ internal static class GoldHenRegression
         Require(GoldHenCompatibility.Classify("2.4b18.99") == GoldHenLoaderEvidence.Unknown, "unknown revision not assumed");
         Require(GoldHenCompatibility.Classify("") == GoldHenLoaderEvidence.Unknown, "missing version not assumed");
         Require(PayloadTransport.DefaultPort == 9090, "default port preserved");
+        Require(GoldHenCompatibility.ValidProfileField("12.02"), "valid firmware field");
+        Require(GoldHenCompatibility.ValidProfileField("2.4b18.5"), "valid release field");
+        Require(GoldHenCompatibility.ValidProfileField(""), "optional profile field");
+        Require(!GoldHenCompatibility.ValidProfileField("a|b"), "reject profile separator");
+        Require(!GoldHenCompatibility.ValidProfileField(new string('a', 33)), "reject excessive profile length");
 
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();

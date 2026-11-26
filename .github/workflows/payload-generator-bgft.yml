@@ -104,6 +104,9 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          if [[ "${GITHUB_HEAD_REF:-}" == feature/goldhen-universal-compatibility ]]; then
+            export TAYSON_GOLDHEN_EXPERIMENTAL=1
+          fi
           python3 /tmp/payloadgen/UPDATE/scripts/build.py --base /tmp/payloadgen --tools /tmp/tools --output /tmp/out | tee /tmp/out/build.log
           test -s /tmp/payloadgen/UPDATE/build/aligned.apk
 
@@ -127,6 +130,35 @@ jobs:
           cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.4.3.md
           sha256sum /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk /tmp/out/PS4-Payload-Generator-3.4.3-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
+
+      - name: Package isolated GoldHEN candidate
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/goldhen-universal-compatibility'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/goldhen-candidate
+          APK=/tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk
+          /tmp/tools/android/android-15/aapt dump badging "$APK" | grep -q "versionName='3.5.0-alpha.1'"
+          /tmp/tools/android/android-15/aapt dump badging "$APK" | grep -q "versionCode='41'"
+          java -jar /tmp/out/apksigner.jar verify --print-certs "$APK" > /tmp/goldhen-candidate/signing.txt
+          python3 - <<'PY'
+          import hashlib, zipfile
+          with zipfile.ZipFile('/tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk') as z:
+              assert hashlib.sha256(z.read('assets/template.elf')).hexdigest() == 'ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc'
+          PY
+          cp "$APK" /tmp/goldhen-candidate/PS4-Payload-Generator-3.5.0-alpha.1-TaySon.apk
+          cp /tmp/out/{build-info.json,tests.log,build.log} /tmp/goldhen-candidate/
+          cp payload-generator/3.2.0/UPDATE/GOLDHEN-COMPATIBILITY.md /tmp/goldhen-candidate/
+          cd /tmp/goldhen-candidate
+          sha256sum *.apk > SHA256SUMS.txt
+
+      - name: Upload experimental APK and evidence
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/goldhen-universal-compatibility'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PS4-Payload-Generator-3.5.0-alpha.1
+          path: /tmp/goldhen-candidate/
+          if-no-files-found: error
 
       - name: Publish 3.4.3 FileKeeper dlproxy prerelease
         if: github.ref == 'refs/heads/feature/3.4.3-filek-dlproxy'

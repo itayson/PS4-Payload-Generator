@@ -76,6 +76,38 @@ public static class UiSettingsScreen
         };
         body.Children.Add(ps4);
 
+        string profileHost = (ip.Text ?? "").Trim();
+        var firmware = Input(UiStateStore.LoadConsoleField(profileHost, "firmware"), "Ex.: 12.02");
+        var release = Input(UiStateStore.LoadConsoleField(profileHost, "release"), "Ex.: 2.4b18.5");
+        var compatibility = new Label
+        {
+            Text = GoldHenCompatibility.Describe(release.Text),
+            TextColor = Muted, FontSize = 11, LineBreakMode = LineBreakMode.WordWrap
+        };
+        release.TextChanged += (_, _) => compatibility.Text = GoldHenCompatibility.Describe(release.Text);
+        ip.TextChanged += (_, _) =>
+        {
+            string host = (ip.Text ?? "").Trim();
+            firmware.Text = UiStateStore.LoadConsoleField(host, "firmware");
+            release.Text = UiStateStore.LoadConsoleField(host, "release");
+        };
+        var profileCard = Card();
+        profileCard.Content = new VerticalStackLayout
+        {
+            Spacing = 8,
+            Children =
+            {
+                Title("Perfil GoldHEN (experimental)", Cyan),
+                new Label { Text = "Firmware do console", TextColor = Muted, FontSize = 10 },
+                firmware,
+                new Label { Text = "Versão exata do GoldHEN (opcional)", TextColor = Muted, FontSize = 10 },
+                release,
+                compatibility,
+                new Label { Text = "Dados informados manualmente. Não há detecção automática nem certificação do ELF. Salve abaixo.", TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap }
+            }
+        };
+        body.Children.Add(profileCard);
+
         var worker = Input(UiStateStore.LoadWorkerUrl(), BgftRoutePlanner.DefaultWorkerBase);
         var workerHint = new Label
         {
@@ -129,6 +161,16 @@ public static class UiSettingsScreen
                 return;
             }
 
+            string firmwareValue = (firmware.Text ?? "").Trim();
+            string releaseValue = (release.Text ?? "").Trim();
+            if (!GoldHenCompatibility.ValidProfileField(firmwareValue) ||
+                !GoldHenCompatibility.ValidProfileField(releaseValue))
+            {
+                saveStatus.Text = "Perfil inválido: use até 32 caracteres (letras, números, ponto, + ou -).";
+                saveStatus.TextColor = Red;
+                return;
+            }
+            UiStateStore.SaveConsoleProfile(ipValue, firmwareValue, releaseValue);
             UiStateStore.SavePs4Ip(ipValue);
             UiStateStore.SaveWorkerUrl(workerValue);
             if (realIp != null) realIp.Text = ipValue;

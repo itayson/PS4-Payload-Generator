@@ -31,7 +31,20 @@ public static class UiStateStore
     const string HistoryKey = "tayson.ui.history.v2";
     const string Ps4IpKey = "tayson.ui.ps4ip.v1";
     const string WorkerUrlKey = "tayson.ui.worker.v1";
+    const string GoldHenProfileKey = "tayson.ui.goldhen.profile.v1.";
     const int MaxItems = 20;
+
+    public static string LoadConsoleField(string host, string field)
+        => Preferences.Default.Get(GoldHenProfileKey + host + "." + field, "");
+
+    public static void SaveConsoleProfile(string host, string firmware, string release)
+    {
+        if (!GoldHenCompatibility.ValidProfileField(firmware) ||
+            !GoldHenCompatibility.ValidProfileField(release))
+            throw new ArgumentException("Perfil inválido.");
+        Preferences.Default.Set(GoldHenProfileKey + host + ".firmware", firmware);
+        Preferences.Default.Set(GoldHenProfileKey + host + ".release", release);
+    }
 
     public static string LoadPs4Ip(string fallback = "")
         => Preferences.Default.Get(Ps4IpKey, fallback ?? "");

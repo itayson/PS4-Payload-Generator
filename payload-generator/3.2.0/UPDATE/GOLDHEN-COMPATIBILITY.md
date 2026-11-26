@@ -5,8 +5,10 @@ Baseline: c88246469e8069ffbb173dde7315f892bf464e5b. Target: 3.5.0, not a release
 - One-touch uses a bounded TCP sender; 9090 and four pre-connect attempts remain defaults.
 - After connecting, failures are ambiguous and must not trigger automatic replay.
 - TCP completion does not confirm execution, BGFT registration, or installation.
-- Advisory release classification is not yet wired to a settings screen and does not select a native binary.
-- No changes to Worker, native ELF, artwork, history, provider resolution or application version/signature.
+- Settings accepts manually declared firmware and GoldHEN version per IP; advisory only, does not select a native binary.
+- No changes to Worker, native ELF, artwork, history or provider resolution.
+- PR CI produces a 3.5.0-alpha.1 candidate (versionCode 41) with test signing. It is not a stable update; verify signing before installation.
+- Dependency audit remains mandatory: replace missing ContinueWith with a compatible asynchronous observer.
 
 ## Evidence / targets
 GoldHEN official changelog: https://github.com/GoldHEN/GoldHEN/blob/master/CHANGELOG.md
