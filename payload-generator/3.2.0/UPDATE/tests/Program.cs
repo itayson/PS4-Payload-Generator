@@ -212,6 +212,7 @@ await Reject(async()=>{using var router=new BgftRoutePlanner(()=>new RouteHandle
     Check(gallery[0][8] == 1 && gallery[1][8] == 2 && gallery[2][8] == 3, "Artwork gallery preserves preferred PS4 image order");
 }
 
+await GoldHenRegression.RunAsync();
 Console.WriteLine($"RESULT: {passed} checks passed");
 
 sealed class Fixture(string mode)

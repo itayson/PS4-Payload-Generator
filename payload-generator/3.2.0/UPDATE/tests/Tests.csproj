@@ -4,5 +4,7 @@
     <Compile Include="../src/DownloadCore.cs" Link="DownloadCore.cs" />
     <Compile Include="../src/BgftRoutePlanner.cs" Link="BgftRoutePlanner.cs" />
     <Compile Include="../src/UiArtworkStore.cs" Link="UiArtworkStore.cs" />
+    <Compile Include="../src/PayloadTransport.cs" Link="PayloadTransport.cs" />
+    <Compile Include="../src/GoldHenCompatibility.cs" Link="GoldHenCompatibility.cs" />
   </ItemGroup>
 </Project>
