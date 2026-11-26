@@ -37,7 +37,7 @@ public static class UiSettingsScreen
         var ip = Input(UiStateStore.LoadPs4Ip(realIp?.Text ?? ""), "192.168.0.10");
         var ps4Status = new Label
         {
-            Text = "A porta 9090 será aberta somente no envio, para não consumir o listener do GoldHEN.",
+            Text = "A conexão será aberta somente no envio, para não consumir o listener do GoldHEN.",
             TextColor = Muted,
             FontSize = 11,
             FontAttributes = FontAttributes.Bold,
@@ -56,7 +56,7 @@ public static class UiSettingsScreen
 
             UiStateStore.SavePs4Ip(host);
             if (realIp != null) realIp.Text = host;
-            ps4Status.Text = "✓ PS4 configurado. O BinLoader 9090 será usado apenas no envio do payload.";
+            ps4Status.Text = "✓ PS4 configurado. Salve o perfil abaixo para ajustar o envio automático.";
             ps4Status.TextColor = Green;
         };
 
@@ -69,12 +69,49 @@ public static class UiSettingsScreen
                 Title("Conexão com PS4", Cyan),
                 new Label { Text = "IP do console", TextColor = Muted, FontSize = 10 },
                 ip,
-                new Label { Text = "GoldHEN PayLoader/BinLoader • TCP 9090", TextColor = Cyan, FontSize = 11 },
+                new Label { Text = "GoldHEN PayLoader/BinLoader • TCP 9090 padrão", TextColor = Cyan, FontSize = 11 },
                 preparePs4,
                 ps4Status
             }
         };
         body.Children.Add(ps4);
+
+        string profileHost = (ip.Text ?? "").Trim();
+        var firmware = Input(UiStateStore.LoadConsoleField(profileHost, "firmware"), "Ex.: 12.02");
+        var release = Input(UiStateStore.LoadConsoleField(profileHost, "release"), "Ex.: 2.4b18.5");
+        var port = Input(UiStateStore.LoadConsoleField(profileHost, "port"), "9090 (padrão)");
+        var compatibility = new Label
+        {
+            Text = GoldHenCompatibility.Describe(release.Text),
+            TextColor = Muted, FontSize = 11, LineBreakMode = LineBreakMode.WordWrap
+        };
+        release.TextChanged += (_, _) => compatibility.Text = GoldHenCompatibility.Describe(release.Text);
+        ip.TextChanged += (_, _) =>
+        {
+            string host = (ip.Text ?? "").Trim();
+            firmware.Text = UiStateStore.LoadConsoleField(host, "firmware");
+            release.Text = UiStateStore.LoadConsoleField(host, "release");
+            port.Text = UiStateStore.LoadConsoleField(host, "port");
+        };
+        var profileCard = Card();
+        profileCard.Content = new VerticalStackLayout
+        {
+            Spacing = 8,
+            Children =
+            {
+                Title("Perfil GoldHEN (experimental)", Cyan),
+                new Label { Text = "Firmware do console", TextColor = Muted, FontSize = 10 },
+                firmware,
+                new Label { Text = "Versão exata do GoldHEN (opcional)", TextColor = Muted, FontSize = 10 },
+                release,
+                compatibility,
+                new Label { Text = "Porta TCP do envio automático (opcional)", TextColor = Muted, FontSize = 10 },
+                port,
+                new Label { Text = "Use 9090 por padrão. Altere apenas se o seu loader ELF informar outra porta. O envio manual original permanece em 9090.", TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap },
+                new Label { Text = "Dados informados manualmente. Não há detecção automática nem certificação do ELF. Salve abaixo.", TextColor = Muted, FontSize = 10, LineBreakMode = LineBreakMode.WordWrap }
+            }
+        };
+        body.Children.Add(profileCard);
 
         var worker = Input(UiStateStore.LoadWorkerUrl(), BgftRoutePlanner.DefaultWorkerBase);
         var workerHint = new Label
@@ -129,6 +166,22 @@ public static class UiSettingsScreen
                 return;
             }
 
+            string firmwareValue = (firmware.Text ?? "").Trim();
+            string releaseValue = (release.Text ?? "").Trim();
+            if (!GoldHenCompatibility.ValidProfileField(firmwareValue) ||
+                !GoldHenCompatibility.ValidProfileField(releaseValue))
+            {
+                saveStatus.Text = "Perfil inválido: use até 32 caracteres (letras, números, ponto, + ou -).";
+                saveStatus.TextColor = Red;
+                return;
+            }
+            if (!GoldHenCompatibility.TryPort((port.Text ?? "").Trim(), out int portValue))
+            {
+                saveStatus.Text = "Porta inválida: informe um número entre 1 e 65535 ou deixe em branco.";
+                saveStatus.TextColor = Red;
+                return;
+            }
+            UiStateStore.SaveConsoleProfile(ipValue, firmwareValue, releaseValue, portValue);
             UiStateStore.SavePs4Ip(ipValue);
             UiStateStore.SaveWorkerUrl(workerValue);
             if (realIp != null) realIp.Text = ipValue;

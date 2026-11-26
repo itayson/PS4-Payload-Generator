@@ -88,6 +88,8 @@ public static class UiAutoPipeline
 
         lock (Gate)
         {
+            // Ignore repeated paste while the current operation is in flight.
+            if (Busy || SendStarted) return;
             Pending = true;
             Busy = false;
             SendStarted = false;
@@ -108,6 +110,7 @@ public static class UiAutoPipeline
             Busy = true;
         }
 
+        int port = PayloadTransport.DefaultPort;
         try
         {
             string currentUrl = (url?.Text ?? "").Trim();
@@ -135,6 +138,12 @@ public static class UiAutoPipeline
                 return;
             }
 
+            if (!GoldHenCompatibility.TryPort(UiStateStore.LoadConsoleField(ps4Ip, "port"), out port))
+            {
+                Fail(bottom, "Porta do perfil inválida. Revise os Ajustes.");
+                return;
+            }
+
             lock (Gate)
             {
                 if (!Pending || SendStarted) return;
@@ -149,23 +158,29 @@ public static class UiAutoPipeline
 
             // The ELF stays in memory. Nothing is written to Downloads and no
             // Storage Access Framework/file-picker flow is invoked.
-            SetStatus(page, bottom, "Conectando ao GoldHEN BinLoader 9090...");
-            await SendToBinLoaderAsync(ps4Ip, payload);
+            string release = UiStateStore.LoadConsoleField(ps4Ip, "release");
+            SetStatus(page, bottom, "Conectando ao loader ELF na porta " + port + "... " +
+                GoldHenCompatibility.Describe(release));
+            await PayloadTransport.SendAsync(ps4Ip, payload, port);
 
-            SetStatus(page, bottom, "Payload enviado ao PS4. Registro BGFT iniciado.");
+            SetStatus(page, bottom, "Payload enviado ao PS4 por TCP. Confirme a execução e o BGFT no console.");
             Reset();
+        }
+        catch (PayloadDeliveryUncertainException)
+        {
+            Fail(bottom, "Envio interrompido após conectar. Verifique o PS4 antes de repetir; execução e BGFT não confirmados.");
         }
         catch (TimeoutException)
         {
-            Fail(bottom, "O PS4:9090 não respondeu após várias tentativas. Confirme que o GoldHEN BinLoader está ativado.");
+            Fail(bottom, "O PS4:" + port + " não respondeu após várias tentativas. Confirme que o loader está ativado.");
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
         {
-            Fail(bottom, "PS4 recusou a conexão na porta 9090 após várias tentativas. Reative o GoldHEN BinLoader e tente novamente.");
+            Fail(bottom, "PS4 recusou a conexão na porta " + port + " após várias tentativas. Confira o loader.");
         }
         catch (SocketException ex)
         {
-            Fail(bottom, "Falha de rede ao conectar ao PS4:9090 (" + ex.SocketErrorCode + ").");
+            Fail(bottom, "Falha de rede ao conectar ao PS4:" + port + " (" + ex.SocketErrorCode + ").");
         }
         catch (Exception ex)
         {
@@ -176,68 +191,6 @@ public static class UiAutoPipeline
             lock (Gate) Busy = false;
         }
     }
-
-    static async Task SendToBinLoaderAsync(string host, byte[] payload)
-    {
-        TcpClient client = null;
-        SocketException lastSocket = null;
-        bool timedOut = false;
-
-        // Retry only the connection establishment. We never retry after a TCP
-        // connection succeeds, because replaying a partially written ELF could
-        // create duplicate or corrupted BinLoader/BGFT work.
-        for (int attempt = 1; attempt <= 4; attempt++)
-        {
-            client = new TcpClient();
-            try
-            {
-                Task connect = client.ConnectAsync(host, 9090);
-                Task completed = await Task.WhenAny(connect, Task.Delay(2500));
-                if (!ReferenceEquals(completed, connect))
-                {
-                    timedOut = true;
-                    client.Dispose();
-                    client = null;
-                    if (attempt < 4)
-                    {
-                        await Task.Delay(350 * attempt);
-                        continue;
-                    }
-                    throw new TimeoutException("BinLoader connection timeout");
-                }
-
-                await connect;
-                break;
-            }
-            catch (SocketException ex) when (IsRetryableConnectError(ex.SocketErrorCode) && attempt < 4)
-            {
-                lastSocket = ex;
-                client.Dispose();
-                client = null;
-                await Task.Delay(350 * attempt);
-            }
-        }
-
-        if (client == null)
-        {
-            if (lastSocket != null) throw lastSocket;
-            if (timedOut) throw new TimeoutException("BinLoader connection timeout");
-            throw new SocketException((int)SocketError.NotConnected);
-        }
-
-        using (client)
-        using (NetworkStream stream = client.GetStream())
-        {
-            await stream.WriteAsync(payload, 0, payload.Length);
-            await stream.FlushAsync();
-        }
-    }
-
-    static bool IsRetryableConnectError(SocketError error)
-        => error == SocketError.ConnectionRefused ||
-           error == SocketError.TimedOut ||
-           error == SocketError.HostUnreachable ||
-           error == SocketError.NetworkUnreachable;
 
     static void SetStatus(MainPage page, Label bottom, string message)
     {
@@ -264,7 +217,7 @@ public static class UiAutoPipeline
         lock (Gate)
         {
             Pending = false;
-            Busy = false;
+            // ContinueAsync alone releases Busy in its finally block.
             SendStarted = false;
             PendingUrl = "";
         }

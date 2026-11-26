@@ -104,11 +104,17 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          PACKAGE=com.tayson.ps4payloadgenerator
+          if [[ "${GITHUB_HEAD_REF:-}" == feature/goldhen-universal-compatibility ]]; then
+            export TAYSON_GOLDHEN_EXPERIMENTAL=1
+            PACKAGE=com.tayson.ps4payloadgenerator.lab
+          fi
           python3 /tmp/payloadgen/UPDATE/scripts/build.py --base /tmp/payloadgen --tools /tmp/tools --output /tmp/out | tee /tmp/out/build.log
           test -s /tmp/payloadgen/UPDATE/build/aligned.apk
 
           python3 /tmp/payloadgen/UPDATE/scripts/apply_release_identity.py \
             --apk /tmp/payloadgen/UPDATE/build/aligned.apk \
+            --new-package "$PACKAGE" \
             --icon-source /tmp/payloadgen/UPDATE/assets/tayson-launcher.jpg \
             --output /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk \
             --unsigned-output /tmp/out/PS4-Payload-Generator-3.4.3-aligned-unsigned.apk \
@@ -118,7 +124,7 @@ jobs:
 
           test -s /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk
           test -s /tmp/out/PS4-Payload-Generator-3.4.3-aligned-unsigned.apk
-          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk | grep -q "package: name='com.tayson.ps4payloadgenerator'"
+          /tmp/tools/android/android-15/aapt dump badging /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk | grep -Fq "package: name='$PACKAGE'"
 
           cp /tmp/tools/android/android-15/lib/apksigner.jar /tmp/out/apksigner.jar
           cp /tmp/payloadgen/UPDATE/cloudflare/universal_transport_worker_v8.js /tmp/out/
@@ -127,6 +133,47 @@ jobs:
           cp payload-generator/3.2.0/VALIDATION.md /tmp/out/VALIDATION-3.4.3.md
           sha256sum /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk /tmp/out/PS4-Payload-Generator-3.4.3-aligned-unsigned.apk > /tmp/out/SHA256SUMS.txt
           cat /tmp/out/build-info.json
+
+      - name: Package isolated GoldHEN candidate
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/goldhen-universal-compatibility'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/goldhen-candidate
+          APK=/tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk
+          /tmp/tools/android/android-15/aapt dump badging "$APK" | grep -q "versionName='3.5.0-alpha.2'"
+          /tmp/tools/android/android-15/aapt dump badging "$APK" | grep -q "versionCode='42'"
+          /tmp/tools/android/android-15/aapt dump xmltree "$APK" AndroidManifest.xml > /tmp/goldhen-candidate/manifest.txt
+          grep -Fq 'com.tayson.ps4payloadgenerator.lab.mono.MonoRuntimeProvider.__mono_init__' /tmp/goldhen-candidate/manifest.txt
+          grep -Fq 'com.tayson.ps4payloadgenerator.lab.androidx-startup' /tmp/goldhen-candidate/manifest.txt
+          grep -Fq 'mono.MonoRuntimeProvider"' /tmp/goldhen-candidate/manifest.txt
+          java -jar /tmp/out/apksigner.jar verify --print-certs "$APK" > /tmp/goldhen-candidate/signing.txt
+          python3 - <<'PY'
+          import hashlib, zipfile
+          with zipfile.ZipFile('/tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk') as z:
+              assert hashlib.sha256(z.read('assets/template.elf')).hexdigest() == 'ec778c6b39835e6d9ee8681faf99e827b18da0148b8d8e75f0c9d85925f4b1bc'
+          PY
+          cp "$APK" /tmp/goldhen-candidate/PS4-Payload-Generator-3.5.0-alpha.2-TaySon.apk
+          cp /tmp/out/{build-info.json,tests.log,build.log} /tmp/goldhen-candidate/
+          cp payload-generator/3.2.0/UPDATE/GOLDHEN-COMPATIBILITY.md /tmp/goldhen-candidate/
+          cd /tmp/goldhen-candidate
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('build-info.json')
+          info = json.loads(p.read_text())
+          info['apk'] = 'PS4-Payload-Generator-3.5.0-alpha.2-TaySon.apk'
+          p.write_text(json.dumps(info, indent=2) + '\n')
+          PY
+          sha256sum *.apk > SHA256SUMS.txt
+
+      - name: Upload experimental APK and evidence
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/goldhen-universal-compatibility'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PS4-Payload-Generator-3.5.0-alpha.2
+          path: /tmp/goldhen-candidate/
+          if-no-files-found: error
 
       - name: Publish 3.4.3 FileKeeper dlproxy prerelease
         if: github.ref == 'refs/heads/feature/3.4.3-filek-dlproxy'
@@ -188,3 +235,29 @@ jobs:
             /tmp/out/universal_transport_worker_v11_2.js \
             /tmp/out/SHA256SUMS.txt
           sha256sum /tmp/out/PS4-Payload-Generator-3.4.3-TaySon.apk
+  semgrep:
+    name: Semgrep CE — changed C# modules
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/goldhen-universal-compatibility'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pinned scanner
+        run: |
+          python3 -m venv /tmp/semgrep-venv
+          /tmp/semgrep-venv/bin/pip install semgrep==1.187.0
+      - name: Scan modified C# modules
+        run: |
+          mkdir -p /tmp/goldhen-semgrep
+          cd payload-generator/3.2.0/UPDATE/src
+          /tmp/semgrep-venv/bin/semgrep scan --metrics=off --config p/csharp --error --json --output /tmp/goldhen-semgrep/report.json GoldHenCompatibility.cs PayloadTransport.cs UiAutoPipeline.cs UiSettingsScreen.cs UiStateStore.cs Integration.cs
+      - name: Upload static analysis report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoldHEN-Semgrep-CE
+          path: /tmp/goldhen-semgrep/report.json
+          if-no-files-found: warn
+
